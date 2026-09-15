@@ -1,32 +1,60 @@
 # MaiMotionDemo
 
-以 Rust + Tauri + Svelte 製作的 maimai 左右手動作分析 Demo。輸入 simai 譜面，展示候選打法、觸碰與滑行軌跡，以及中途換手。
+**把 simai 譜面變成可播放的左右手動作動畫。** MaiMotionDemo 是 Windows 桌面展示工具：在 maimai 圓盤上呈現 Tap、Hold、Touch 和 Slide 的接觸與移動軌跡，並比較不同的雙手分配方案，包括 Slide 中途換手。
 
-## 開始使用
+[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.0/MaiMotionDemo-v0.1.0-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
 
-Windows 開發環境需有 Rust、Microsoft C++ Build Tools、WebView2 與 Node.js。已驗證 Rust 1.90、Node.js 24。
+## 下載與啟動
+
+從 GitHub Release 下載 `MaiMotionDemo-v0.1.0-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
+
+支援 Windows x64。介面使用系統的 Microsoft Edge WebView2；如果 Windows 缺少 WebView2 Runtime，請先安裝 [Microsoft 官方 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。
+
+## 快速展示
+
+1. 在「編輯」選擇「基本 Tap」範例，按「生成」與「播放」。盤面上粉紅圓形 **L** 是左手、藍色方形 **R** 是右手。
+2. 改選「可行交接」，慢放並拖曳時間軸，觀察左手將 Slide 交給右手的區間。
+3. 在「方案」比較候選打法及成本；在「參數」調整移動、跨側和換手的偏好，重新生成後比較結果。
+
+也可以貼入自己的 simai 譜面本文，例如：
+
+```text
+(120){4}1-5[4:3],8,7,6,E
+```
+
+程式也接受整份 `maidata.txt`，會自動選擇難度編號最大的 `&inote_n` 並在診斷區顯示選取結果。`&first=` 目前只會提示，不會自動套用。
+
+## 功能
+
+- 解析常用 simai 記法：BPM、分割與同時音；Tap、Hold、Touch、Touch Hold；Break、EX、星形與煙火修飾；`- ^ < > v V p q pp qq s z w` Slide 形狀、接續及同頭滑軌。遇到不認得的符號或無效的滑軌端點，畫面會標出錯誤位置。
+- 以 Rust 幾何與動作成本規則搜尋最多三個雙手方案，呈現每隻手的移動、接觸時間、Hold 佔用和 Slide 交接區間。
+- 以 0.25× 至 2× 倍速播放，支援逐時定位、循環片段、音符細節、成本拆解及盤面顯示校準。
+- 在本機分析譜面，不需登入或呼叫 AI API。
+
+單次輸入上限為 10,000 個音符、3,600 秒及 4 MB 原文；過大的搜尋也可能因計算預算而停止。詳細語法、操作和例子見 [使用手冊](USER_GUIDE.md)，simai 原始格式見 [simai 說明](https://w.atwiki.jp/simai/pages/1002.html)。
+
+## 如何理解分析結果
+
+這套演算法依譜面幾何、動作時間與設定的成本規則，搜尋可行的左右手分配。較低的成本只代表目前參數下較受演算法偏好；候選搜尋會剪枝，因此不保證全域最佳，也不能將成本換算成人類使用左右手的機率。
+
+演算法將每隻手簡化為一個接觸點。某些 Slide 曲線與 Touch 感應區使用可辨識的近似位置，並非實機軌道座標或官方判定。「未找到可行方案」也不表示玩家無法完成譜面。這些限制會影響方案與成本，請把動畫當作打法討論與資料分析的起點。
+
+## 從原始碼執行
+
+開發與建置已在 Windows、Rust 1.90、Node.js 24 驗證。請先安裝 Rust、Microsoft C++ Build Tools、Node.js 和 WebView2 Runtime，再於專案根目錄使用 PowerShell：
 
 ```powershell
 npm.cmd ci
 npm.cmd run tauri dev
 ```
 
-打開「可行交接」範例，按播放，再到「方案」查看左右手分工與換手時間。
+建立內嵌介面與 Rust 核心的單一正式執行檔：
 
 ```powershell
 npm.cmd run tauri build -- --no-bundle
 ```
 
-建置後可直接開啟 `src-tauri/target/release/mai-motion-demo.exe`，不需啟動 Vite。詳細操作、語法及限制見 [使用手冊](USER_GUIDE.md)。
-
-## 功能
-
-- 完整的 simai 譜面語法：Tap、Hold、Touch（A–E 區）、Touch Hold、Break／EX／星形／煙火修飾，以及 `- ^ < > v V p q pp qq s z w` 全部 Slide 形狀、連續與同頭滑軌、無起點滑軌、疑似 EACH 與 `||` 註解。可直接貼上 `maidata.txt`。
-- 依距離、速度、姿態及換手成本搜尋最多三個候選方案。
-- 左右手動作、滑行交接、逐時定位、播放倍率及循環片段。整首譜面（近千個音符）可在一秒內分析完。
-- 成本拆解、音符檢視與盤面校準。
-
-這是幾何啟發式 Demo，不代表官方判定或人類唯一正解。Slide 的 `p` `q` `pp` `qq` `s` `z` 與 Touch 感應區位置是可辨識的近似形狀，不是實機軌道座標。
+產物位於 `src-tauri/target/release/mai-motion-demo.exe`。單獨使用 `npm.cmd run dev` 開啟的瀏覽器畫面只有範例模式；要解析任意輸入，請執行 Tauri 桌面程式。
 
 ## 驗證
 
@@ -34,9 +62,4 @@ npm.cmd run tauri build -- --no-bundle
 cargo test --offline
 cargo clippy --offline --all-targets -- -D warnings
 npm.cmd run check
-npm.cmd run build
 ```
-
-Rust 核心可獨立執行；`cargo run --offline --example fixtures` 可重建前端範例資料。
-
-資源：`resource/maimai.png` 為圓盤背景；`resource/Maimai_notes.png` 為音符形狀參考。

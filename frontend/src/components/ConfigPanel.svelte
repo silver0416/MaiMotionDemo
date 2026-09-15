@@ -111,6 +111,17 @@
         onValue={(value) => set('handoverSeconds', value)}
       />
       <NumberField
+        label="Slide 最晚接上時間"
+        hint="手最晚可以比星星晚多久才接上軌道；接上後仍要在原定終點前走完。"
+        value={config.slidePickupSeconds}
+        min={0}
+        max={1}
+        step={0.01}
+        unit="秒"
+        error={errorOf('slidePickupSeconds')}
+        onValue={(value) => set('slidePickupSeconds', value)}
+      />
+      <NumberField
         label="兩次換手最短間隔"
         hint="避免左右手來回抖動。"
         value={config.handoverCooldown}

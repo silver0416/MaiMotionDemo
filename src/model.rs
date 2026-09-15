@@ -144,6 +144,8 @@ pub struct SolverConfig {
     pub contact_seconds: f64,
     pub handover_seconds: f64,
     pub handover_cooldown: f64,
+    /// 手最晚可以比星星晚多久才接上軌道；接上後仍須在原定終點前走完整條路徑。
+    pub slide_pickup_seconds: f64,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -164,6 +166,7 @@ impl Default for SolverConfig {
             contact_seconds: 0.03,
             handover_seconds: 0.04,
             handover_cooldown: 0.2,
+            slide_pickup_seconds: 0.12,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -187,6 +190,11 @@ impl SolverConfig {
             self.speed_reference,
             self.repetition_seconds,
         ];
+        if !self.slide_pickup_seconds.is_finite()
+            || !(0.0..=2.0).contains(&self.slide_pickup_seconds)
+        {
+            return Err("Slide 最晚接上時間必須為 0–2 秒".into());
+        }
         if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
             return Err("時間與速度參數必須為有限正數".into());
         }

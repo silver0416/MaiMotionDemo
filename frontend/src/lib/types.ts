@@ -92,6 +92,7 @@ export interface SolverConfig {
   contactSeconds: number;
   handoverSeconds: number;
   handoverCooldown: number;
+  slidePickupSeconds: number;
   preparationSeconds: number;
   speedReference: number;
   repetitionSeconds: number;

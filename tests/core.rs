@@ -423,3 +423,63 @@ fn one_hand_covers_simultaneous_contacts_at_the_same_point() {
     // 位置不同的三顆同時音仍然無解，不會因此放寬成三隻手。
     assert_eq!(analyze("(120){4}1/4/7,E").status, "no_solution");
 }
+
+#[test]
+fn a_hand_may_pick_up_a_slide_late_when_the_start_is_contested() {
+    // 起點拍擊與移動之間相隔一拍，移動開始的瞬間另外安排了兩顆音符：
+    // 兩隻手都被佔用，手必須稍晚才接上軌道，再於原定終點前走完整條路徑。
+    let r = analyze("(120){4}1-5[4:1],3/7,E");
+    assert_eq!(r.status, "ok");
+    let s = &r.solutions[0];
+    let slide: Vec<_> = s
+        .assignments
+        .iter()
+        .filter(|a| a.note_id == "n0" && a.part == "slide")
+        .collect();
+    assert!(!slide.is_empty());
+    let pickup = slide
+        .iter()
+        .map(|a| a.start_seconds)
+        .fold(f64::MAX, f64::min);
+    let chart = chart("(120){4}1-5[4:1],3/7,E");
+    let motion_start = chart.notes[0].motion_start.unwrap();
+    let motion_end = chart.notes[0].motion_end.unwrap();
+    assert!(pickup > motion_start + 1e-9, "應該晚於移動開始");
+    assert!(pickup <= motion_start + SolverConfig::default().slide_pickup_seconds + 1e-9);
+    // 晚接之後仍然走完整條路徑，而且在原定終點前結束。
+    let last = slide.iter().map(|a| a.end_seconds).fold(0.0, f64::max);
+    near(last, motion_end);
+    let owner = slide[0].hand;
+    let path = &chart.paths[0];
+    let track = if owner == Hand::L {
+        &s.left_segments
+    } else {
+        &s.right_segments
+    };
+    let traced: Vec<_> = track
+        .iter()
+        .filter(|g| g.note_id.as_deref() == Some("n0"))
+        .collect();
+    let first = traced[0].samples[0].point();
+    let end = traced[traced.len() - 1].samples.last().unwrap().point();
+    assert!(first.distance(path.at(0.0)) < 1e-9, "從路徑起點開始");
+    assert!(end.distance(path.at(1.0)) < 1e-9, "走到路徑終點");
+    verify_segments(&s.left_segments);
+    verify_segments(&s.right_segments);
+    near(s.total_cost, s.cost_breakdown.total());
+}
+
+#[test]
+fn an_uncontested_slide_is_picked_up_on_time() {
+    let r = analyze("(120){4}1-5[4:3],8,7,6,E");
+    assert_eq!(r.status, "ok");
+    let chart = chart("(120){4}1-5[4:3],8,7,6,E");
+    // 沒有衝突時，最佳方案不應該無故延後接上（其他候選可以是晚接的變化）。
+    let pickup = r.solutions[0]
+        .assignments
+        .iter()
+        .filter(|a| a.note_id == "n0" && a.part == "slide")
+        .map(|a| a.start_seconds)
+        .fold(f64::MAX, f64::min);
+    near(pickup, chart.notes[0].motion_start.unwrap());
+}

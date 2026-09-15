@@ -16,6 +16,7 @@ export const DEFAULT_CONFIG: SolverConfig = {
   contactSeconds: 0.03,
   handoverSeconds: 0.04,
   handoverCooldown: 0.2,
+  slidePickupSeconds: 0.12,
   preparationSeconds: 1,
   speedReference: 4,
   repetitionSeconds: 0.15,
@@ -180,6 +181,13 @@ export function validateConfig(config: SolverConfig, firstSeconds: number): Conf
   }
   if (config.handoverSeconds > config.checkpointSeconds) {
     issues.push({ field: 'handoverSeconds', message: '交接重疊不可超過搜尋取樣間隔' });
+  }
+  if (
+    !Number.isFinite(config.slidePickupSeconds) ||
+    config.slidePickupSeconds < 0 ||
+    config.slidePickupSeconds > 2
+  ) {
+    issues.push({ field: 'slidePickupSeconds', message: 'Slide 最晚接上時間必須是 0–2 秒' });
   }
   if (config.preparationSeconds > 10) {
     issues.push({ field: 'preparationSeconds', message: '預備時間最多 10 秒' });

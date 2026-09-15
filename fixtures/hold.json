@@ -16,6 +16,7 @@
       "repetitionSeconds": 0.15,
       "repetitionWeight": 1.0,
       "sideWeight": 1.0,
+      "slidePickupSeconds": 0.12,
       "speedReference": 4.0,
       "speedWeight": 1.0,
       "topK": 3
@@ -240,6 +241,7 @@
           "repetitionSeconds": 0.15,
           "repetitionWeight": 1.0,
           "sideWeight": 1.0,
+          "slidePickupSeconds": 0.12,
           "speedReference": 4.0,
           "speedWeight": 1.0,
           "topK": 3
@@ -514,6 +516,7 @@
           "repetitionSeconds": 0.15,
           "repetitionWeight": 1.0,
           "sideWeight": 1.0,
+          "slidePickupSeconds": 0.12,
           "speedReference": 4.0,
           "speedWeight": 1.0,
           "topK": 3

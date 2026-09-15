@@ -221,7 +221,7 @@ impl<'a> Parser<'a> {
         self.chart.duration_seconds = self.chart.duration_seconds.max(note.end_seconds);
         self.chart.notes.push(note);
         if self.chart.notes.len() > MAX_NOTES {
-            return Err(self.error("invalid", "Demo 每次最多分析 500 個音符，請縮短片段", start));
+            return Err(self.error("invalid", "Demo 每次最多分析 10000 個音符，請縮短片段", start));
         }
         Ok(())
     }

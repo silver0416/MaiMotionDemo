@@ -77,7 +77,15 @@ struct Task {
     start: f64,
     end: f64,
     mode: &'static str,
+    /// 接觸任務的固定位置取樣；Slide 的取樣依實際接上的時間現算，這裡為空。
     samples: Vec<MotionSample>,
+    /// chart.paths 的索引，只有 Slide 任務有。
+    path: usize,
+    /// 這條 Slide 的最後一段：到這裡還沒接上就無法再延後。
+    last: bool,
+    /// 整條路徑的弧長與名目移動時間，用來估延後接上時尚未付出的移動量。
+    path_length: f64,
+    span: f64,
     continuation: bool,
 }
 #[derive(Clone)]
@@ -95,7 +103,20 @@ struct State {
     handovers: Chain<Handover>,
     /// 只保留還在進行中的 Slide；結束的項目每個時間點清掉，複製成本才不會隨譜面長度成長。
     owners: BTreeMap<usize, Hand>,
+    /// 每條進行中的 Slide 實際被接上的時間；手晚接上時，剩下的路徑就壓縮在剩餘時間內走完。
+    engaged: BTreeMap<usize, f64>,
+    /// 尚未接上的 Slide 已累積多少「遲早要付」的移動量。延後接上本身不花成本，
+    /// 若直接比較累計成本，延後的狀態永遠比準時的便宜，beam 會把準時解全部剪掉。
+    /// 這筆金額只加進剪枝用的排序鍵，不進入回報的成本，接上時歸零。
+    pending: f64,
+    deposit: BTreeMap<usize, f64>,
     last_handover: BTreeMap<usize, f64>,
+}
+impl State {
+    /// Beam 剪枝用的排序鍵：已付出的成本加上尚未付出的移動量。
+    fn rank(&self) -> f64 {
+        self.cost.total() + self.pending
+    }
 }
 
 fn path_samples(
@@ -140,11 +161,15 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
                     MotionSample::new(n.time_seconds, n.position),
                     MotionSample::new(end, n.position),
                 ],
+                path: usize::MAX,
+                last: false,
+                path_length: 0.0,
+                span: 0.0,
                 continuation: false,
             });
         }
         if let Some(path_id) = &n.path_id {
-            let path = chart.paths.iter().find(|p| &p.id == path_id).unwrap();
+            let path_index = chart.paths.iter().position(|p| &p.id == path_id).unwrap();
             let start = n.motion_start.unwrap();
             let end = n.motion_end.unwrap();
             let count = ((end - start) / c.checkpoint_seconds).ceil() as usize;
@@ -167,13 +192,23 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
             );
             times.sort_by(f64::total_cmp);
             times.dedup_by(|a, b| (*a - *b).abs() < EPS);
+            let samples = &chart.paths[path_index].samples;
+            let length: f64 = samples
+                .windows(2)
+                .map(|w| (w[1].x - w[0].x).hypot(w[1].y - w[0].y))
+                .sum();
+            let steps = times.len() - 1;
             for (k, pair) in times.windows(2).enumerate() {
                 tasks.push(Task {
                     note: i,
                     start: pair[0],
                     end: pair[1],
                     mode: "slide",
-                    samples: path_samples(path, start, end, pair[0], pair[1]),
+                    samples: vec![],
+                    path: path_index,
+                    last: k + 1 == steps,
+                    path_length: length,
+                    span: end - start,
                     continuation: k > 0,
                 });
             }
@@ -264,8 +299,37 @@ fn assign(
 ) -> Option<State> {
     let idx = hand.index();
     let n = &chart.notes[task.note];
-    let start = task.samples[0].point();
-    if state.arms[idx].free > task.start + EPS {
+
+    // Slide 的移動起點只是星星出發的時刻，不是手一定要貼上去的時刻。
+    // 手可以晚一點才接上，剩下的路徑就壓縮在剩餘時間內走完；走得越急，速度成本越高。
+    let engaged = state.engaged.get(&task.note).copied();
+    let (begin, pickup) = if task.mode == "slide" {
+        let finish = n.motion_end.unwrap();
+        let pickup = engaged.unwrap_or_else(|| task.start.max(state.arms[idx].free));
+        let begin = task.start.max(pickup);
+        if begin >= task.end - EPS || pickup >= finish - EPS {
+            return None;
+        }
+        if engaged.is_none() && pickup > n.motion_start.unwrap() + c.slide_pickup_seconds + EPS {
+            return None;
+        }
+        (begin, Some(pickup))
+    } else {
+        (task.start, None)
+    };
+    let samples = match pickup {
+        Some(pickup) => path_samples(
+            &chart.paths[task.path],
+            pickup,
+            n.motion_end.unwrap(),
+            begin,
+            task.end,
+        ),
+        None => task.samples.clone(),
+    };
+    let start = samples[0].point();
+
+    if state.arms[idx].free > begin + EPS {
         // 手上已有任務，但接觸點就在同一個位置：同一隻手一次接觸即可滿足兩者
         // （例如 Slide 起點上的 Break Tap）。不另外產生軌跡段，也不另外計成本。
         if task.mode == "tap" && arm_point_at(&state.arms[idx], task.start).distance(start) <= EPS {
@@ -282,11 +346,11 @@ fn assign(
         }
         return None;
     }
-    if task.start - state.arms[idx].free <= EPS && state.arms[idx].point.distance(start) > EPS {
+    if begin - state.arms[idx].free <= EPS && state.arms[idx].point.distance(start) > EPS {
         return None;
     }
     let old = state.owners.get(&task.note).copied();
-    let switching = task.continuation && old != Some(hand);
+    let switching = engaged.is_some() && old != Some(hand);
     if switching {
         if !c.allow_handover || task.end - task.start + EPS < c.handover_seconds {
             return None;
@@ -307,10 +371,10 @@ fn assign(
     }
     let mut next = state.clone();
     let a = &mut next.arms[idx];
-    if task.start > a.free + EPS {
+    if begin > a.free + EPS {
         let samples = vec![
             MotionSample::new(a.free, a.point),
-            MotionSample::new(task.start, start),
+            MotionSample::new(begin, start),
         ];
         let mode = if a.point.distance(start) < EPS {
             "idle"
@@ -331,7 +395,7 @@ fn assign(
     add_segment(
         a,
         hand,
-        task.samples.clone(),
+        samples,
         task.mode,
         Some(n.id.clone()),
         &mut next.cost,
@@ -348,23 +412,21 @@ fn assign(
         }
         .into(),
         hand,
-        start_seconds: task.start,
+        start_seconds: begin,
         end_seconds: task.end,
     });
-    if task.mode == "slide" {
+    if let Some(pickup) = pickup {
         next.owners.insert(task.note, hand);
+        if next.engaged.insert(task.note, pickup).is_none() {
+            next.pending -= next.deposit.remove(&task.note).unwrap_or(0.0);
+        }
     }
     if switching {
         let old = old.unwrap();
         let until = task.start + c.handover_seconds;
-        let path = chart
-            .paths
-            .iter()
-            .find(|p| Some(&p.id) == n.path_id.as_ref())
-            .unwrap();
         let samples = path_samples(
-            path,
-            n.motion_start.unwrap(),
+            &chart.paths[task.path],
+            pickup.unwrap(),
             n.motion_end.unwrap(),
             task.start,
             until,
@@ -530,6 +592,9 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         assignments: Chain::default(),
         handovers: Chain::default(),
         owners: BTreeMap::new(),
+        engaged: BTreeMap::new(),
+        pending: 0.0,
+        deposit: BTreeMap::new(),
         last_handover: BTreeMap::new(),
     }];
     let tasks = tasks(chart, c)?;
@@ -542,8 +607,35 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= task.start - EPS
             };
             state.owners.retain(|note, _| live(note));
+            state.engaged.retain(|note, _| live(note));
             state.last_handover.retain(|note, _| live(note));
+            state.deposit.retain(|note, held| {
+                let keep = live(note);
+                if !keep {
+                    state.pending -= *held;
+                }
+                keep
+            });
         }
+        // 還沒接上的 Slide 可以先不接，讓手去處理起點與移動之間安排的其他音符；
+        // 最後一段不能再延後，否則這條 Slide 就沒人走了。
+        // 超過最晚接上時間之後就不必再產生「先不接」的分支，那些狀態走不下去。
+        let deferrable = task.mode == "slide"
+            && !task.last
+            && task.end
+                <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
+        // 延後接上這條 Slide，遲早還是要走完整條路徑：先把那段移動與速度負擔計入排序，
+        // 否則「先不接」永遠比已經付出成本的分支便宜，beam 會把準時的解全部剪掉。
+        let share = if deferrable {
+            let dt = task.end - task.start;
+            let span = task.span.max(EPS);
+            c.distance_weight * task.path_length * dt / span
+                + c.speed_weight * task.path_length.powi(2) * dt
+                    / span.powi(2)
+                    / c.speed_reference.powi(2)
+        } else {
+            0.0
+        };
         let mut next = vec![];
         for state in &beam {
             for hand in [Hand::L, Hand::R] {
@@ -551,6 +643,12 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 if let Some(s) = assign(state, task, hand, chart, c) {
                     next.push(s);
                 }
+            }
+            if deferrable && !state.engaged.contains_key(&task.note) {
+                let mut deferred = state.clone();
+                deferred.pending += share;
+                *deferred.deposit.entry(task.note).or_default() += share;
+                next.push(deferred);
             }
         }
         if next.is_empty() {
@@ -560,7 +658,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             d.source_span = Some(Box::new(chart.notes[task.note].source_span.clone()));
             return Err(d);
         }
-        next.sort_by(|a, b| a.cost.total().total_cmp(&b.cost.total()));
+        next.sort_by(|a, b| a.rank().total_cmp(&b.rank()));
         next.truncate(c.beam_width);
         beam = next;
         if expansions > MAX_EXPANSIONS || clock.elapsed() > BUDGET {
