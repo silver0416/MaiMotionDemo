@@ -9,7 +9,7 @@ export interface HandState {
   clamped: boolean;
 }
 
-const CONTACT_MODES = new Set<string>(['tap', 'hold', 'slide', 'handover']);
+const CONTACT_MODES = new Set<string>(['tap', 'hold', 'slide', 'handover', 'glide']);
 
 export function isContactMode(mode: string): boolean {
   return CONTACT_MODES.has(mode);

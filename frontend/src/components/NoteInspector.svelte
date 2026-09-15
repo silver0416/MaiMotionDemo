@@ -151,8 +151,13 @@
       {#if handovers.length > 0}
         <p class="small" style="margin-top: var(--space-3)">
           {#each handovers as handover, index (index)}
-            {formatClock(handover.startSeconds)} – {formatClock(handover.endSeconds)}
-            由 {handover.from} 交給 {handover.to}，重疊期間兩手都在軌道上。
+            {#if handover.swap}
+              {formatClock(handover.startSeconds)} 兩手在同一點碰頭，由 {handover.from} 換成 {handover.to}；
+              互換不需要移動，因此沒有重疊時間。
+            {:else}
+              {formatClock(handover.startSeconds)} – {formatClock(handover.endSeconds)}
+              由 {handover.from} 交給 {handover.to}，重疊期間兩手都在軌道上。
+            {/if}
           {/each}
         </p>
       {/if}

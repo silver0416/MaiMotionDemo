@@ -11,6 +11,9 @@ const EPS: f64 = 1e-8;
 /// MAX_TASKS 同時是記憶體防線：每個事件在 beam 中約佔 26 KB，
 /// 實測一首完整譜面（857 個音符、約 1100 個事件）峰值只有 19 MB。
 const MAX_TASKS: usize = 50_000;
+/// 兩條 Slide 要多近才算「碰頭」。必須近到可以視為同一點，兩手才能原地互換目的地
+/// 而不產生軌跡跳動；只是空間交叉、時間錯開的不算。
+const MEET_TOLERANCE: f64 = 1e-6;
 const MAX_EXPANSIONS: u64 = 120_000_000;
 const BUDGET: Duration = Duration::from_secs(20);
 
@@ -46,6 +49,14 @@ impl<T: Clone> Chain<T> {
             })),
             len: self.len + 1,
         }
+    }
+    fn last(&self) -> Option<&T> {
+        self.head.as_ref().map(|link| &link.value)
+    }
+    /// 取下最後一項，用來把已經記錄的停留改寫成滑移。
+    fn pop(&self) -> Option<(Self, T)> {
+        let link = self.head.as_ref()?;
+        Some((link.prev.clone(), link.value.clone()))
     }
     fn to_vec(&self) -> Vec<T> {
         let mut out = Vec::with_capacity(self.len);
@@ -141,7 +152,100 @@ fn path_samples(
     samples
 }
 
+/// 依照準時追蹤的排程，某條 Slide 在 time 當下的位置。
+fn slide_point(chart: &Chart, note: &Note, time: f64) -> Point {
+    let path = chart
+        .paths
+        .iter()
+        .find(|p| Some(&p.id) == note.path_id.as_ref())
+        .unwrap();
+    let (start, end) = (note.motion_start.unwrap(), note.motion_end.unwrap());
+    path.at((time - start) / (end - start))
+}
+
+/// 兩條 Slide「碰頭」的時刻：同一瞬間經過同一點。只有真的重合才算，
+/// 空間上交叉但時間錯開不算 —— 那種情況手臂本來就得交叉。
+fn meetings(chart: &Chart, c: &SolverConfig) -> Vec<(usize, usize, f64)> {
+    let slides: Vec<usize> = (0..chart.notes.len())
+        .filter(|i| chart.notes[*i].path_id.is_some())
+        .collect();
+    let mut out = vec![];
+    for (k, &i) in slides.iter().enumerate() {
+        for &j in &slides[k + 1..] {
+            let (a, b) = (&chart.notes[i], &chart.notes[j]);
+            let lo = a.motion_start.unwrap().max(b.motion_start.unwrap());
+            let hi = a.motion_end.unwrap().min(b.motion_end.unwrap());
+            if hi <= lo + EPS {
+                continue;
+            }
+            let gap = |t: f64| slide_point(chart, a, t).distance(slide_point(chart, b, t));
+            let steps = (((hi - lo) / (c.checkpoint_seconds / 4.0)).ceil() as usize).clamp(8, 4096);
+            let at = |k: usize| lo + (hi - lo) * k as f64 / steps as f64;
+            for k in 1..steps {
+                let (before, here, after) = (gap(at(k - 1)), gap(at(k)), gap(at(k + 1)));
+                if here > before || here > after {
+                    continue;
+                }
+                // 局部極小值：用三分搜尋逼近真正的碰頭時刻。
+                let (mut left, mut right) = (at(k - 1), at(k + 1));
+                for _ in 0..60 {
+                    let m1 = left + (right - left) / 3.0;
+                    let m2 = right - (right - left) / 3.0;
+                    if gap(m1) <= gap(m2) {
+                        right = m2;
+                    } else {
+                        left = m1;
+                    }
+                }
+                let t = (left + right) / 2.0;
+                if gap(t) <= MEET_TOLERANCE {
+                    out.push((i, j, t));
+                }
+            }
+        }
+    }
+    out
+}
+
 fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
+    // 先算出每條 Slide 的 checkpoint 時間，再把兩條 Slide 的碰頭時刻插進去，
+    // 讓 beam 在那一刻剛好有機會讓兩手互換目的地。
+    let mut schedule: Vec<Vec<f64>> = vec![vec![]; chart.notes.len()];
+    for (i, n) in chart.notes.iter().enumerate() {
+        let (Some(start), Some(end)) = (n.motion_start, n.motion_end) else {
+            continue;
+        };
+        let count = ((end - start) / c.checkpoint_seconds).ceil() as usize;
+        if count > MAX_TASKS {
+            return Err(Diagnostic::plain(
+                "search_limit",
+                "單條 Slide 的 checkpoints 超出計算預算，請調大搜尋取樣間隔".into(),
+            ));
+        }
+        let mut times = (0..=count)
+            .map(|k| start + (end - start) * k as f64 / count as f64)
+            .collect::<Vec<_>>();
+        // Include note onsets so a hand can be released in time for a simultaneous event.
+        times.extend(
+            chart
+                .notes
+                .iter()
+                .map(|n| n.time_seconds)
+                .filter(|t| *t > start && *t < end),
+        );
+        schedule[i] = times;
+    }
+    if c.allow_handover {
+        for (i, j, t) in meetings(chart, c) {
+            schedule[i].push(t);
+            schedule[j].push(t);
+        }
+    }
+    for times in schedule.iter_mut() {
+        times.sort_by(f64::total_cmp);
+        times.dedup_by(|a, b| (*a - *b).abs() < EPS);
+    }
+
     let mut tasks = vec![];
     for (i, n) in chart.notes.iter().enumerate() {
         let holding = n.kind == "hold" || n.kind == "touchHold";
@@ -172,26 +276,7 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
             let path_index = chart.paths.iter().position(|p| &p.id == path_id).unwrap();
             let start = n.motion_start.unwrap();
             let end = n.motion_end.unwrap();
-            let count = ((end - start) / c.checkpoint_seconds).ceil() as usize;
-            if count > MAX_TASKS {
-                return Err(Diagnostic::plain(
-                    "search_limit",
-                    "單條 Slide 的 checkpoints 超出計算預算，請調大搜尋取樣間隔".into(),
-                ));
-            }
-            // Include note onsets so a hand can be released in time for a simultaneous event.
-            let mut times = (0..=count)
-                .map(|k| start + (end - start) * k as f64 / count as f64)
-                .collect::<Vec<_>>();
-            times.extend(
-                chart
-                    .notes
-                    .iter()
-                    .map(|n| n.time_seconds)
-                    .filter(|t| *t > start && *t < end),
-            );
-            times.sort_by(f64::total_cmp);
-            times.dedup_by(|a, b| (*a - *b).abs() < EPS);
+            let times = &schedule[i];
             let samples = &chart.paths[path_index].samples;
             let length: f64 = samples
                 .windows(2)
@@ -231,6 +316,29 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
     Ok(tasks)
 }
 
+/// 一段動作的距離、速度與跨側成本（已乘權重）。抽出來是為了在改寫動作段時
+/// 可以先扣掉舊的貢獻，不重複計算。
+fn segment_terms(samples: &[MotionSample], hand: Hand, c: &SolverConfig) -> (f64, f64, f64) {
+    let (mut distance, mut speed, mut side) = (0.0, 0.0, 0.0);
+    for pair in samples.windows(2) {
+        let dt = pair[1].time_seconds - pair[0].time_seconds;
+        let a = pair[0].point();
+        let b = pair[1].point();
+        let d = a.distance(b);
+        distance += c.distance_weight * d;
+        if dt > EPS {
+            speed += c.speed_weight * d * d / dt / c.speed_reference.powi(2);
+            // Midpoint quadrature is stable under path subdivision, including clipping at x=0.
+            let sign = if hand == Hand::L { 1.0 } else { -1.0 };
+            for i in 0..8 {
+                let x = a.x + (b.x - a.x) * (i as f64 + 0.5) / 8.0;
+                side += c.side_weight * (sign * x).max(0.0).powi(2) * dt / 8.0;
+            }
+        }
+    }
+    (distance, speed, side)
+}
+
 fn add_segment(
     arm: &mut Arm,
     hand: Hand,
@@ -240,22 +348,10 @@ fn add_segment(
     cost: &mut CostBreakdown,
     c: &SolverConfig,
 ) {
-    for pair in samples.windows(2) {
-        let dt = pair[1].time_seconds - pair[0].time_seconds;
-        let a = pair[0].point();
-        let b = pair[1].point();
-        let d = a.distance(b);
-        cost.distance += c.distance_weight * d;
-        if dt > EPS {
-            cost.speed += c.speed_weight * d * d / dt / c.speed_reference.powi(2);
-            // Midpoint quadrature is stable under path subdivision, including clipping at x=0.
-            let sign = if hand == Hand::L { 1.0 } else { -1.0 };
-            for i in 0..8 {
-                let x = a.x + (b.x - a.x) * (i as f64 + 0.5) / 8.0;
-                cost.side += c.side_weight * (sign * x).max(0.0).powi(2) * dt / 8.0;
-            }
-        }
-    }
+    let (distance, speed, side) = segment_terms(&samples, hand, c);
+    cost.distance += distance;
+    cost.speed += speed;
+    cost.side += side;
     let first = samples.first().unwrap();
     let last = samples.last().unwrap();
     arm.point = last.point();
@@ -288,6 +384,65 @@ fn arm_point_at(arm: &Arm, time: f64) -> Point {
     }
     a.point()
         .lerp(b.point(), ((time - a.time_seconds) / dt).clamp(0.0, 1.0))
+}
+
+/// 兩手在同一點碰頭時，原地互換各自要追的 Slide。兩手位置相同，交換之後軌跡仍然連續，
+/// 因此不需要任何移動 —— 這正是玩家在對穿的 Slide 上避免手臂交叉的作法。
+fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<State> {
+    if !c.allow_handover {
+        return None;
+    }
+    let [left, right] = &state.arms;
+    if (left.free - time).abs() > EPS
+        || (right.free - time).abs() > EPS
+        || left.point.distance(right.point) > MEET_TOLERANCE
+    {
+        return None;
+    }
+    // 只處理「一手一條」的單純情形，避免三條以上同時進行時語意不明。
+    if state.owners.len() != 2 {
+        return None;
+    }
+    let mut pairs = state.owners.iter();
+    let (&first, &first_hand) = pairs.next()?;
+    let (&second, &second_hand) = pairs.next()?;
+    if first_hand == second_hand {
+        return None;
+    }
+    for note in [first, second] {
+        let n = &chart.notes[note];
+        if time >= n.motion_end? - EPS {
+            return None;
+        }
+        if state
+            .last_handover
+            .get(&note)
+            .is_some_and(|t| time - t < c.handover_cooldown - EPS)
+        {
+            return None;
+        }
+    }
+    let mut next = state.clone();
+    next.owners.insert(first, second_hand);
+    next.owners.insert(second, first_hand);
+    next.last_handover.insert(first, time);
+    next.last_handover.insert(second, time);
+    // 兩手位置相同，互換不需要任何移動，也沒有交接重疊；因此不收交接費用。
+    // 會不會互換，交由交叉與跨側成本決定。
+    for (note, from, to) in [
+        (first, first_hand, second_hand),
+        (second, second_hand, first_hand),
+    ] {
+        next.handovers = next.handovers.push(Handover {
+            note_id: chart.notes[note].id.clone(),
+            from,
+            to,
+            start_seconds: time,
+            end_seconds: time,
+            swap: true,
+        });
+    }
+    Some(next)
 }
 
 fn assign(
@@ -370,13 +525,59 @@ fn assign(
         }
     }
     let mut next = state.clone();
+
+    // 相鄰又接得很緊的連續接觸不必抬手：真實打法是手貼著面板等速滑過去，而不是
+    // 「停 contactSeconds 再衝刺」。符合條件時把前一次接觸的停留改寫成滑移的前半段，
+    // 整段 [前一顆判定時間, 這一顆判定時間] 因此是等速移動，速度負擔照實際情形計算。
+    // 間隔拉開到 repetitionSeconds 以上就有餘裕抬手，一般人也會抬手，因此不套用。
+    let glide = matches!(task.mode, "tap" | "hold")
+        && c.glide_distance > 0.0
+        && next.arms[idx].free <= begin + EPS
+        && next.arms[idx].segments.last().is_some_and(|s| {
+            s.mode == "tap"
+                && begin > s.start_seconds + EPS
+                && begin - s.start_seconds < c.repetition_seconds - EPS
+        })
+        && {
+            let d = next.arms[idx].point.distance(start);
+            d > EPS && d <= c.glide_distance
+        };
+    if glide {
+        let arm = &mut next.arms[idx];
+        let (rest, previous) = arm.segments.pop().unwrap();
+        let (distance, speed, side) = segment_terms(&previous.samples, hand, c);
+        next.cost.distance -= distance;
+        next.cost.speed -= speed;
+        next.cost.side -= side;
+        let from = previous.samples[0].point();
+        let u = (previous.end_seconds - previous.start_seconds) / (begin - previous.start_seconds);
+        let samples = vec![
+            MotionSample::new(previous.start_seconds, from),
+            MotionSample::new(previous.end_seconds, from.lerp(start, u)),
+        ];
+        let (distance, speed, side) = segment_terms(&samples, hand, c);
+        next.cost.distance += distance;
+        next.cost.speed += speed;
+        next.cost.side += side;
+        arm.point = samples[1].point();
+        arm.segments = rest.push(MotionSegment {
+            mode: "glide".into(),
+            note_id: previous.note_id,
+            start_seconds: previous.start_seconds,
+            end_seconds: previous.end_seconds,
+            samples,
+        });
+    }
+
     let a = &mut next.arms[idx];
     if begin > a.free + EPS {
         let samples = vec![
             MotionSample::new(a.free, a.point),
             MotionSample::new(begin, start),
         ];
-        let mode = if a.point.distance(start) < EPS {
+        let mode = if glide {
+            "glide"
+        } else if a.point.distance(start) < EPS {
             "idle"
         } else {
             "travel"
@@ -384,7 +585,8 @@ fn assign(
         add_segment(a, hand, samples, mode, None, &mut next.cost, c);
     }
     if task.mode == "tap" {
-        if let Some(t) = a.last_tap {
+        // 滑移代表手沒有離開面板，不算一次重新擊打。
+        if let (Some(t), false) = (a.last_tap, glide) {
             next.cost.repetition += c.repetition_weight
                 * (1.0 - (task.start - t) / c.repetition_seconds)
                     .max(0.0)
@@ -448,6 +650,7 @@ fn assign(
             end_seconds: until,
         });
         next.handovers = next.handovers.push(Handover {
+            swap: false,
             note_id: n.id.clone(),
             from: old,
             to: hand,
@@ -624,6 +827,13 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             && !task.last
             && task.end
                 <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
+        // 兩手若在這一刻碰頭，先把「互換目的地」的變化加進 beam，再一起展開這個任務。
+        let swapped: Vec<State> = beam
+            .iter()
+            .filter_map(|state| swap_at(state, task.start, chart, c))
+            .collect();
+        beam.extend(swapped);
+
         // 延後接上這條 Slide，遲早還是要走完整條路徑：先把那段移動與速度負擔計入排序，
         // 否則「先不接」永遠比已經付出成本的分支便宜，beam 會把準時的解全部剪掉。
         let share = if deferrable {

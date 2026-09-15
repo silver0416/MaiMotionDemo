@@ -146,6 +146,9 @@ pub struct SolverConfig {
     pub handover_cooldown: f64,
     /// 手最晚可以比星星晚多久才接上軌道；接上後仍須在原定終點前走完整條路徑。
     pub slide_pickup_seconds: f64,
+    /// 同一隻手連續兩次接觸相距在此以內時，視為不抬手的連續滑移：
+    /// 手從前一顆的判定時間等速滑到下一顆，不停留、不算重新擊打。0 表示關閉。
+    pub glide_distance: f64,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -167,6 +170,7 @@ impl Default for SolverConfig {
             handover_seconds: 0.04,
             handover_cooldown: 0.2,
             slide_pickup_seconds: 0.12,
+            glide_distance: 0.8,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -194,6 +198,9 @@ impl SolverConfig {
             || !(0.0..=2.0).contains(&self.slide_pickup_seconds)
         {
             return Err("Slide 最晚接上時間必須為 0–2 秒".into());
+        }
+        if !self.glide_distance.is_finite() || !(0.0..=2.0).contains(&self.glide_distance) {
+            return Err("滑移距離必須為 0–2".into());
         }
         if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
             return Err("時間與速度參數必須為有限正數".into());
@@ -320,6 +327,8 @@ pub struct Handover {
     pub to: Hand,
     pub start_seconds: f64,
     pub end_seconds: f64,
+    /// 兩手在同一點碰頭並互換目的地。這種交接沒有重疊時間，兩條 Slide 會同時出現一筆。
+    pub swap: bool,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

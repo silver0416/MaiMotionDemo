@@ -9,6 +9,7 @@
       "contactSeconds": 0.03,
       "crossWeight": 1.0,
       "distanceWeight": 1.0,
+      "glideDistance": 0.8,
       "handoverCooldown": 0.2,
       "handoverSeconds": 0.04,
       "handoverWeight": 1.0,

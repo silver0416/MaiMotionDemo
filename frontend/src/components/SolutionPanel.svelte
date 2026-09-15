@@ -206,7 +206,9 @@
                     </span>
                   </td>
                   <td class="mono xsmall">
-                    {formatClock(handover.startSeconds)} – {formatClock(handover.endSeconds)}
+                    {handover.swap
+                      ? `${formatClock(handover.startSeconds)} 碰頭互換`
+                      : `${formatClock(handover.startSeconds)} – ${formatClock(handover.endSeconds)}`}
                   </td>
                   <td>
                     <button

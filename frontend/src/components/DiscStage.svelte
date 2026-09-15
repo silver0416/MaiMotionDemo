@@ -78,14 +78,22 @@
   const handoverMarkers = $derived.by<HandoverMarker[]>(() => {
     const solution = session.solution;
     if (!solution) return [];
-    return solution.handovers.map((handover, index) => {
+    // 碰頭互換兩條 Slide 各記一筆，位置與時間相同，盤面上只畫一個標記。
+    const shown = solution.handovers.filter(
+      (handover, index) =>
+        !handover.swap ||
+        solution.handovers.findIndex(
+          (other) => other.swap && other.startSeconds === handover.startSeconds,
+        ) === index,
+    );
+    return shown.map((handover, index) => {
       const source = handover.from === 'L' ? solution.leftSegments : solution.rightSegments;
       const starts = handover.from === 'L' ? session.leftStarts : session.rightStarts;
       const state = sampleWithStarts(source, starts, handover.startSeconds);
       return {
         key: `${handover.noteId}-${index}`,
         point: state?.point ?? { x: 0, y: 0 },
-        label: `${handover.from}→${handover.to}`,
+        label: handover.swap ? '互換' : `${handover.from}→${handover.to}`,
         active: time >= handover.startSeconds - 0.15 && time <= handover.endSeconds + 0.35,
         startSeconds: handover.startSeconds,
       };
@@ -427,7 +435,7 @@
                   y={point.y - len(0.11)}
                   text-anchor="middle"
                 >
-                  換手 {marker.label}
+                  {marker.label === '互換' ? '兩手互換' : `換手 ${marker.label}`}
                 </text>
               </g>
             {/each}

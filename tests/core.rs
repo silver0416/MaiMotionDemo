@@ -189,7 +189,7 @@ fn handover_has_reachable_overlap_and_lower_cost() {
     assert!(!s.handovers.is_empty());
     verify_segments(&s.left_segments);
     verify_segments(&s.right_segments);
-    for h in &s.handovers {
+    for h in s.handovers.iter().filter(|h| !h.swap) {
         near(
             h.end_seconds - h.start_seconds,
             request.solver_config.handover_seconds,
@@ -482,4 +482,217 @@ fn an_uncontested_slide_is_picked_up_on_time() {
         .map(|a| a.start_seconds)
         .fold(f64::MAX, f64::min);
     near(pickup, chart.notes[0].motion_start.unwrap());
+}
+
+fn hand_sequence(response: &AnalyzeResponse) -> String {
+    let solution = &response.solutions[0];
+    response
+        .chart
+        .as_ref()
+        .unwrap()
+        .notes
+        .iter()
+        .map(|n| {
+            match solution
+                .assignments
+                .iter()
+                .find(|a| a.note_id == n.id)
+                .map(|a| a.hand)
+            {
+                Some(Hand::L) => 'L',
+                Some(Hand::R) => 'R',
+                None => '?',
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn fast_adjacent_run_is_brushed_with_one_hand() {
+    // 相鄰鍵位的高速連擊：真實打法是手不抬起、貼著面板滑過去，而不是雙手交替。
+    let source = "(240){24}8,7,6,5,4,3,E";
+    let r = analyze(source);
+    assert_eq!(r.status, "ok");
+    let hands = hand_sequence(&r);
+    let switches = hands.as_bytes().windows(2).filter(|w| w[0] != w[1]).count();
+    assert!(switches <= 1, "應該單手刷過去，實際為 {hands}");
+    let s = &r.solutions[0];
+    // 手沒有離開面板，所以不算重新擊打。
+    near(s.cost_breakdown.repetition, 0.0);
+    assert!(
+        s.left_segments
+            .iter()
+            .chain(&s.right_segments)
+            .any(|g| g.mode == "glide"),
+        "軌跡應該出現滑移段"
+    );
+    verify_segments(&s.left_segments);
+    verify_segments(&s.right_segments);
+    near(s.total_cost, s.cost_breakdown.total());
+}
+
+#[test]
+fn glide_can_be_switched_off() {
+    // 關掉滑移就回到原本的模型：停留後衝刺，於是偏好雙手交替。
+    let config = SolverConfig {
+        glide_distance: 0.0,
+        ..SolverConfig::default()
+    };
+    let r = analyze_chart(AnalyzeRequest {
+        request_id: "no-glide".into(),
+        source: "(240){24}8,7,6,5,4,3,E".into(),
+        first_seconds: 0.0,
+        solver_config: config,
+    });
+    assert_eq!(r.status, "ok");
+    let hands = hand_sequence(&r);
+    let switches = hands.as_bytes().windows(2).filter(|w| w[0] != w[1]).count();
+    assert!(switches > 1, "關閉滑移後應該回到交替，實際為 {hands}");
+    assert!(r.solutions[0]
+        .left_segments
+        .iter()
+        .chain(&r.solutions[0].right_segments)
+        .all(|g| g.mode != "glide"));
+}
+
+#[test]
+fn repeating_the_same_button_still_counts_as_restriking() {
+    // 同一個點連打必須抬手重按，不是滑移：連打成本要照付。
+    let r = analyze("(240){16}5,5,5,5,5,5,E");
+    assert_eq!(r.status, "ok");
+    assert!(r.solutions[0].cost_breakdown.repetition > 0.0);
+    assert!(r.solutions[0]
+        .left_segments
+        .iter()
+        .chain(&r.solutions[0].right_segments)
+        .all(|g| g.mode != "glide"));
+}
+
+#[test]
+fn glide_does_not_reach_across_non_adjacent_buttons() {
+    // 隔兩鍵（距離 1.414）超過預設滑移距離，仍然算抬手重按。
+    let r = analyze("(240){16}1,3,1,3,E");
+    assert_eq!(r.status, "ok");
+    for s in &r.solutions {
+        assert!(s
+            .left_segments
+            .iter()
+            .chain(&s.right_segments)
+            .all(|g| g.mode != "glide"));
+    }
+}
+
+/// 兩手在 time 當下的距離。
+fn hand_gap(solution: &Solution, time: f64) -> f64 {
+    pose(&solution.left_segments, time).distance(pose(&solution.right_segments, time))
+}
+
+#[test]
+fn hands_swap_destinations_where_crossing_slides_meet() {
+    // 兩條對穿的 Slide 會在盤面中心碰頭。玩家不會就這樣穿過去讓手臂交叉，
+    // 而是在碰頭的瞬間互換目的地。
+    let r = analyze("(120){4}1-5[4:1]/5-1[4:1],E");
+    assert_eq!(r.status, "ok");
+    let s = &r.solutions[0];
+    let swaps: Vec<_> = s.handovers.iter().filter(|h| h.swap).collect();
+    assert_eq!(swaps.len(), 2, "兩條 Slide 應該同時易手");
+    assert_eq!(swaps[0].start_seconds, swaps[1].start_seconds);
+    assert_ne!(swaps[0].note_id, swaps[1].note_id);
+    assert_ne!(swaps[0].from, swaps[1].from);
+    // 互換不需要移動，因此沒有重疊時間。
+    for h in &swaps {
+        near(h.end_seconds - h.start_seconds, 0.0);
+    }
+    // 互換之後兩手各自回到自己的半邊，不再交叉。
+    let chart = chart("(120){4}1-5[4:1]/5-1[4:1],E");
+    let end = chart.notes[0].motion_end.unwrap();
+    let meet = swaps[0].start_seconds;
+    near(hand_gap(s, meet), 0.0);
+    let left = pose(&s.left_segments, end);
+    let right = pose(&s.right_segments, end);
+    assert!(left.x < right.x, "終點時左手應該在右手左邊");
+    near(s.cost_breakdown.cross, 0.0);
+    verify_segments(&s.left_segments);
+    verify_segments(&s.right_segments);
+    near(s.total_cost, s.cost_breakdown.total());
+    // 兩條 Slide 都仍然被完整走完。
+    for note in &chart.notes {
+        let traced: Vec<_> = s
+            .assignments
+            .iter()
+            .filter(|a| a.note_id == note.id && a.part == "slide")
+            .collect();
+        near(
+            traced
+                .iter()
+                .map(|a| a.start_seconds)
+                .fold(f64::MAX, f64::min),
+            note.motion_start.unwrap(),
+        );
+        near(
+            traced.iter().map(|a| a.end_seconds).fold(0.0, f64::max),
+            note.motion_end.unwrap(),
+        );
+    }
+}
+
+#[test]
+fn slides_that_only_cross_without_meeting_keep_the_arms_crossed() {
+    // 空間上交叉但時間錯開、兩手沒有真的碰到：這種情況手臂本來就會交叉，不該硬換。
+    let r = analyze("(120){4}1-4[4:1]/2-6[4:1],E");
+    assert_eq!(r.status, "ok");
+    let s = &r.solutions[0];
+    assert!(s.handovers.iter().all(|h| !h.swap));
+    let chart = chart("(120){4}1-4[4:1]/2-6[4:1],E");
+    let (start, end) = (
+        chart.notes[0].motion_start.unwrap(),
+        chart.notes[0].motion_end.unwrap(),
+    );
+    let closest = (0..=40)
+        .map(|k| hand_gap(s, start + (end - start) * k as f64 / 40.0))
+        .fold(f64::MAX, f64::min);
+    assert!(closest > 0.1, "這組本來就不會碰頭，實際最近距離 {closest}");
+}
+
+#[test]
+fn swapping_follows_the_handover_switch() {
+    let config = SolverConfig {
+        allow_handover: false,
+        ..SolverConfig::default()
+    };
+    let r = analyze_chart(AnalyzeRequest {
+        request_id: "no-swap".into(),
+        source: "(120){4}1-5[4:1]/5-1[4:1],E".into(),
+        first_seconds: 0.0,
+        solver_config: config,
+    });
+    assert_eq!(r.status, "ok");
+    assert!(r.solutions.iter().all(|s| s.handovers.is_empty()));
+}
+
+#[test]
+fn a_comfortable_gap_lifts_the_hand_instead_of_gliding() {
+    // 相鄰鍵位但間隔拉開到連打判定間隔以上：有餘裕抬手，一般人也會抬手。
+    let config = SolverConfig::default();
+    let slow = analyze("(120){4}8,7,6,5,4,3,E");
+    assert_eq!(slow.status, "ok");
+    let chart = chart("(120){4}8,7,6,5,4,3,E");
+    let step = chart.notes[1].time_seconds - chart.notes[0].time_seconds;
+    assert!(step > config.repetition_seconds);
+    for s in &slow.solutions {
+        assert!(
+            s.left_segments
+                .iter()
+                .chain(&s.right_segments)
+                .all(|g| g.mode != "glide"),
+            "間隔 {step} 秒應該抬手，不該是滑移"
+        );
+    }
+    // 同樣的鍵位順序，接得夠緊才滑移。
+    let fast = analyze("(240){24}8,7,6,5,4,3,E");
+    assert!(fast.solutions[0]
+        .left_segments
+        .iter()
+        .chain(&fast.solutions[0].right_segments)
+        .any(|g| g.mode == "glide"));
 }

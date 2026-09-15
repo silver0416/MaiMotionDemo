@@ -111,6 +111,16 @@
         onValue={(value) => set('handoverSeconds', value)}
       />
       <NumberField
+        label="相鄰連擊滑移距離"
+        hint="連續兩次接觸近到這個距離內、且間隔短於下方的連打判定間隔時，當成手不抬起、貼著面板滑過去（相鄰鍵約 0.77，隔兩鍵 1.41）。0 表示關閉。"
+        value={config.glideDistance}
+        min={0}
+        max={2}
+        step={0.05}
+        error={errorOf('glideDistance')}
+        onValue={(value) => set('glideDistance', value)}
+      />
+      <NumberField
         label="Slide 最晚接上時間"
         hint="手最晚可以比星星晚多久才接上軌道；接上後仍要在原定終點前走完。"
         value={config.slidePickupSeconds}
@@ -156,7 +166,7 @@
       />
       <NumberField
         label="同手連打判定間隔"
-        hint="同一隻手相鄰敲擊短於這個時間就開始加成本。"
+        hint="同一隻手相鄰敲擊短於這個時間就開始加成本；也是滑移的門檻，長於這個時間就有餘裕抬手。"
         value={config.repetitionSeconds}
         min={0.02}
         max={1}

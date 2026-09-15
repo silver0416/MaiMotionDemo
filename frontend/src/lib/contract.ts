@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: SolverConfig = {
   handoverSeconds: 0.04,
   handoverCooldown: 0.2,
   slidePickupSeconds: 0.12,
+  glideDistance: 0.8,
   preparationSeconds: 1,
   speedReference: 4,
   repetitionSeconds: 0.15,
@@ -72,6 +73,7 @@ export const WEIGHT_OF_COST: Record<CostKey, WeightKey> = {
 
 export const MODE_LABEL: Record<MotionMode, string> = {
   travel: '移動中',
+  glide: '滑移中',
   tap: '敲擊',
   hold: '按住',
   slide: '滑行',
@@ -188,6 +190,13 @@ export function validateConfig(config: SolverConfig, firstSeconds: number): Conf
     config.slidePickupSeconds > 2
   ) {
     issues.push({ field: 'slidePickupSeconds', message: 'Slide 最晚接上時間必須是 0–2 秒' });
+  }
+  if (
+    !Number.isFinite(config.glideDistance) ||
+    config.glideDistance < 0 ||
+    config.glideDistance > 2
+  ) {
+    issues.push({ field: 'glideDistance', message: '滑移距離必須是 0–2' });
   }
   if (config.preparationSeconds > 10) {
     issues.push({ field: 'preparationSeconds', message: '預備時間最多 10 秒' });

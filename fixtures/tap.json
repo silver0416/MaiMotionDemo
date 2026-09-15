@@ -9,6 +9,7 @@
       "contactSeconds": 0.03,
       "crossWeight": 1.0,
       "distanceWeight": 1.0,
+      "glideDistance": 0.8,
       "handoverCooldown": 0.2,
       "handoverSeconds": 0.04,
       "handoverWeight": 1.0,
@@ -348,6 +349,7 @@
           "contactSeconds": 0.03,
           "crossWeight": 1.0,
           "distanceWeight": 1.0,
+          "glideDistance": 0.8,
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
@@ -365,7 +367,7 @@
           "distance": 6.122934917841436,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.3041856253356742,
+          "side": 0.3041856253356743,
           "speed": 0.5144549204310754
         },
         "handovers": [],
@@ -770,6 +772,7 @@
           "contactSeconds": 0.03,
           "crossWeight": 1.0,
           "distanceWeight": 1.0,
+          "glideDistance": 0.8,
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
@@ -1192,6 +1195,7 @@
           "contactSeconds": 0.03,
           "crossWeight": 1.0,
           "distanceWeight": 1.0,
+          "glideDistance": 0.8,
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
@@ -1209,7 +1213,7 @@
           "distance": 6.006414750754172,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.7636721639250816,
+          "side": 0.7636721639250815,
           "speed": 0.554963295048886
         },
         "handovers": [],
@@ -1542,7 +1546,7 @@
             "startSeconds": 3.53
           }
         ],
-        "totalCost": 7.32505020972814,
+        "totalCost": 7.325050209728139,
         "warnings": [
           "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"

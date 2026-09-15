@@ -93,6 +93,7 @@ export interface SolverConfig {
   handoverSeconds: number;
   handoverCooldown: number;
   slidePickupSeconds: number;
+  glideDistance: number;
   preparationSeconds: number;
   speedReference: number;
   repetitionSeconds: number;
@@ -121,7 +122,7 @@ export interface MotionSample {
   y: number;
 }
 
-export type MotionMode = 'travel' | 'tap' | 'hold' | 'slide' | 'handover' | 'idle';
+export type MotionMode = 'travel' | 'glide' | 'tap' | 'hold' | 'slide' | 'handover' | 'idle';
 
 export interface MotionSegment {
   mode: MotionMode | string;
@@ -147,6 +148,8 @@ export interface Handover {
   to: Hand;
   startSeconds: number;
   endSeconds: number;
+  /** 兩手在同一點碰頭並互換目的地；沒有重疊時間，兩條 Slide 會同時各有一筆 */
+  swap: boolean;
 }
 
 export interface CostBreakdown {
