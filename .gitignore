@@ -7,3 +7,10 @@
 /docs/CONTRACT.md
 /docs/FRONTEND_BRIEF.md
 /docs/HANDOFF.md
+/target/
+/src-tauri/target/
+/src-tauri/gen/
+/node_modules/
+/dist/
+/.local/
+*.log

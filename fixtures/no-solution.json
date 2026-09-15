@@ -1,0 +1,114 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "no-solution",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "crossWeight": 1.0,
+      "distanceWeight": 1.0,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWeight": 1.0,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "repetitionWeight": 1.0,
+      "sideWeight": 1.0,
+      "speedReference": 4.0,
+      "speedWeight": 1.0,
+      "topK": 3
+    },
+    "source": "(120){4}1/4/7,E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 0.5,
+      "notes": [
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "id": "n0",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.38268343236508984,
+            "y": -0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 9,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0
+        },
+        {
+          "button": 4,
+          "endSeconds": 0.0,
+          "id": "n1",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.38268343236508984,
+            "y": 0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 11,
+            "end": 11,
+            "line": 1,
+            "start": 10
+          },
+          "timeSeconds": 0.0
+        },
+        {
+          "button": 7,
+          "endSeconds": 0.0,
+          "id": "n2",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.9238795325112868,
+            "y": -0.38268343236508967
+          },
+          "sourceSpan": {
+            "column": 13,
+            "end": 13,
+            "line": 1,
+            "start": 12
+          },
+          "timeSeconds": 0.0
+        }
+      ],
+      "paths": []
+    },
+    "diagnostics": [
+      {
+        "code": "no_solution",
+        "message": "本模型未找到可行方案：手被佔用或無法連續接觸。這不代表人類無法遊玩；可增加 beamWidth 或縮短片段。",
+        "noteIds": [
+          "n2"
+        ],
+        "severity": "error",
+        "sourceSpan": {
+          "column": 13,
+          "end": 13,
+          "line": 1,
+          "start": 12
+        },
+        "timeSeconds": 0.0
+      }
+    ],
+    "requestId": "no-solution",
+    "schemaVersion": 1,
+    "solutions": [],
+    "status": "no_solution"
+  }
+}

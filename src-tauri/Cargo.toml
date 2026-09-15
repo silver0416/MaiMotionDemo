@@ -1,0 +1,13 @@
+[package]
+name = "mai-motion-demo"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Maimai hand motion visualizer"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+mai-motion-core = { path = ".." }
+tauri = { version = "2.11.5", features = [] }

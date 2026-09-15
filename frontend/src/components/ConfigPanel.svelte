@@ -1,0 +1,261 @@
+<script lang="ts">
+  import NumberField from './NumberField.svelte';
+  import { session } from '../state/session.svelte';
+  import type { SolverConfig } from '../lib/types';
+
+  const issues = $derived(session.configIssues);
+
+  function errorOf(field: string): string | null {
+    return issues.find((issue) => issue.field === field)?.message ?? null;
+  }
+
+  function set<K extends keyof SolverConfig>(key: K, value: SolverConfig[K]) {
+    session.config = { ...session.config, [key]: value };
+  }
+
+  const config = $derived(session.config);
+</script>
+
+<div class="stack">
+  <section class="section">
+    <div class="section-title">
+      <span>搜尋設定</span>
+      {#if session.stale}
+        <span class="badge badge--quiet">需重新生成</span>
+      {/if}
+    </div>
+
+    <p class="field-hint" style="margin-bottom: var(--space-3)">
+      這些參數會送給 Rust 核心重跑搜尋；播放倍率與顯示開關不會重跑。
+      改完之後要按下方的「套用並重新生成」才會生效。
+    </p>
+
+    <div class="stack">
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={config.allowHandover}
+          onchange={(event) => set('allowHandover', event.currentTarget.checked)}
+        />
+        <span>
+          允許 Slide 中途換手
+          <span class="field-hint">關掉之後，一條 Slide 只能由同一隻手從頭做到尾。</span>
+        </span>
+      </label>
+
+      <NumberField
+        label="搜尋寬度 beamWidth"
+        hint="每個時間點保留多少種可能；越大越仔細也越慢（1–256）。"
+        value={config.beamWidth}
+        min={1}
+        max={256}
+        step={1}
+        error={errorOf('beamWidth')}
+        onValue={(value) => set('beamWidth', Math.round(value))}
+      />
+
+      <NumberField
+        label="保留候選方案數 topK"
+        hint="最後要比較幾種打法（1–5，且不大於搜尋寬度）。"
+        value={config.topK}
+        min={1}
+        max={5}
+        step={1}
+        error={errorOf('topK')}
+        onValue={(value) => set('topK', Math.round(value))}
+      />
+
+      <NumberField
+        label="第一拍起始秒數 firstSeconds"
+        hint="譜面開始前的空白秒數，對應請求的 firstSeconds（0–120）。"
+        value={session.firstSeconds}
+        min={0}
+        max={120}
+        step={0.1}
+        unit="秒"
+        error={errorOf('firstSeconds')}
+        onValue={(value) => (session.firstSeconds = value)}
+      />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span>時間與動作模型</span></div>
+    <div class="stack">
+      <NumberField
+        label="搜尋取樣間隔"
+        hint="Slide 上多久考慮一次換手，與畫面幀率無關（0.02–0.2 秒）。"
+        value={config.checkpointSeconds}
+        min={0.02}
+        max={0.2}
+        step={0.005}
+        unit="秒"
+        error={errorOf('checkpointSeconds')}
+        onValue={(value) => set('checkpointSeconds', value)}
+      />
+      <NumberField
+        label="敲擊接觸時間"
+        hint="Tap 觸碰後停留多久才放開。"
+        value={config.contactSeconds}
+        min={0.005}
+        max={0.2}
+        step={0.005}
+        unit="秒"
+        error={errorOf('contactSeconds')}
+        onValue={(value) => set('contactSeconds', value)}
+      />
+      <NumberField
+        label="換手重疊時間"
+        hint="交接時兩手同時在軌道上的長度，不可超過搜尋取樣間隔。"
+        value={config.handoverSeconds}
+        min={0.005}
+        max={0.2}
+        step={0.005}
+        unit="秒"
+        error={errorOf('handoverSeconds')}
+        onValue={(value) => set('handoverSeconds', value)}
+      />
+      <NumberField
+        label="兩次換手最短間隔"
+        hint="避免左右手來回抖動。"
+        value={config.handoverCooldown}
+        min={0.02}
+        max={2}
+        step={0.02}
+        unit="秒"
+        error={errorOf('handoverCooldown')}
+        onValue={(value) => set('handoverCooldown', value)}
+      />
+      <NumberField
+        label="開始前預備時間"
+        hint="雙手在第一顆音符前多久就定位；播放時間會從負數開始（最多 10 秒）。"
+        value={config.preparationSeconds}
+        min={0.1}
+        max={10}
+        step={0.1}
+        unit="秒"
+        error={errorOf('preparationSeconds')}
+        onValue={(value) => set('preparationSeconds', value)}
+      />
+      <NumberField
+        label="速度基準"
+        hint="以每秒幾個盤面半徑為基準計算速度負擔。"
+        value={config.speedReference}
+        min={0.5}
+        max={20}
+        step={0.5}
+        unit="半徑/秒"
+        error={errorOf('speedReference')}
+        onValue={(value) => set('speedReference', value)}
+      />
+      <NumberField
+        label="同手連打判定間隔"
+        hint="同一隻手相鄰敲擊短於這個時間就開始加成本。"
+        value={config.repetitionSeconds}
+        min={0.02}
+        max={1}
+        step={0.01}
+        unit="秒"
+        error={errorOf('repetitionSeconds')}
+        onValue={(value) => set('repetitionSeconds', value)}
+      />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span>成本權重</span></div>
+    <p class="field-hint" style="margin-bottom: var(--space-3)">
+      權重都是 0–100 的啟發式數值。調高某一項，模型就更在意那件事。
+    </p>
+    <div class="stack">
+      <NumberField
+        label="移動距離"
+        hint="越高越偏好省力、少跑動的打法。"
+        value={config.distanceWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('distanceWeight')}
+        onValue={(value) => set('distanceWeight', value)}
+      />
+      <NumberField
+        label="移動速度負擔"
+        hint="越高越避免短時間內的大跨度移動。"
+        value={config.speedWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('speedWeight')}
+        onValue={(value) => set('speedWeight', value)}
+      />
+      <NumberField
+        label="手伸到對側"
+        hint="越高越不希望左手跑到右半邊（右手同理）。"
+        value={config.sideWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('sideWeight')}
+        onValue={(value) => set('sideWeight', value)}
+      />
+      <NumberField
+        label="雙手交叉"
+        hint="越高越避免左手越過右手的姿態。"
+        value={config.crossWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('crossWeight')}
+        onValue={(value) => set('crossWeight', value)}
+      />
+      <NumberField
+        label="同手快速連打"
+        hint="越高越偏好把連續音符分給兩手。"
+        value={config.repetitionWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('repetitionWeight')}
+        onValue={(value) => set('repetitionWeight', value)}
+      />
+      <NumberField
+        label="換手次數"
+        hint="越高越不願意在 Slide 中途換手。"
+        value={config.handoverWeight}
+        min={0}
+        max={20}
+        step={0.1}
+        error={errorOf('handoverWeight')}
+        onValue={(value) => set('handoverWeight', value)}
+      />
+    </div>
+  </section>
+
+  <section class="section">
+    {#if issues.length > 0}
+      <div class="alert alert--error" style="margin-bottom: var(--space-3)">
+        <div class="alert-title">參數超出核心允許範圍</div>
+        <ul class="small">
+          {#each issues as issue, index (index)}
+            <li>{issue.field}：{issue.message}</li>
+          {/each}
+        </ul>
+      </div>
+    {/if}
+    <div class="row row-wrap">
+      <button
+        class="btn btn--primary"
+        onclick={() => session.analyze()}
+        disabled={!session.desktop || session.phase === 'analyzing' || issues.length > 0}
+      >
+        套用並重新生成
+      </button>
+      <button class="btn" onclick={() => session.resetConfig()}>還原預設</button>
+    </div>
+    {#if !session.desktop}
+      <p class="field-hint" style="margin-top: var(--space-2)">
+        瀏覽器預覽不能重跑搜尋；範例顯示的永遠是 fixtures 當初使用的參數。
+      </p>
+    {/if}
+  </section>
+</div>

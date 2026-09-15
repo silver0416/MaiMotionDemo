@@ -1,0 +1,687 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "hold",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "crossWeight": 1.0,
+      "distanceWeight": 1.0,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWeight": 1.0,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "repetitionWeight": 1.0,
+      "sideWeight": 1.0,
+      "speedReference": 4.0,
+      "speedWeight": 1.0,
+      "topK": 3
+    },
+    "source": "(120){4}8h[4:4]/1,2,3,4,E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 2.0,
+      "notes": [
+        {
+          "button": 8,
+          "endSeconds": 2.0,
+          "id": "n0",
+          "kind": "hold",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.38268343236509034,
+            "y": -0.9238795325112865
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 15,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0
+        },
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "id": "n1",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.38268343236508984,
+            "y": -0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 17,
+            "end": 17,
+            "line": 1,
+            "start": 16
+          },
+          "timeSeconds": 0.0
+        },
+        {
+          "button": 2,
+          "endSeconds": 0.5,
+          "id": "n2",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.9238795325112867,
+            "y": -0.3826834323650898
+          },
+          "sourceSpan": {
+            "column": 19,
+            "end": 19,
+            "line": 1,
+            "start": 18
+          },
+          "timeSeconds": 0.5
+        },
+        {
+          "button": 3,
+          "endSeconds": 1.0,
+          "id": "n3",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.9238795325112867,
+            "y": 0.3826834323650898
+          },
+          "sourceSpan": {
+            "column": 21,
+            "end": 21,
+            "line": 1,
+            "start": 20
+          },
+          "timeSeconds": 1.0
+        },
+        {
+          "button": 4,
+          "endSeconds": 1.5,
+          "id": "n4",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.38268343236508984,
+            "y": 0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 23,
+            "end": 23,
+            "line": 1,
+            "start": 22
+          },
+          "timeSeconds": 1.5
+        }
+      ],
+      "paths": []
+    },
+    "diagnostics": [],
+    "requestId": "hold",
+    "schemaVersion": 1,
+    "solutions": [
+      {
+        "assignments": [
+          {
+            "endSeconds": 2.0,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.53,
+            "hand": "R",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.03,
+            "hand": "R",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.53,
+            "hand": "R",
+            "noteId": "n4",
+            "part": "contact",
+            "startSeconds": 1.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "crossWeight": 1.0,
+          "distanceWeight": 1.0,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWeight": 1.0,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "repetitionWeight": 1.0,
+          "sideWeight": 1.0,
+          "speedReference": 4.0,
+          "speedWeight": 1.0,
+          "topK": 3
+        },
+        "costBreakdown": {
+          "cross": 0.0,
+          "distance": 3.826834323650897,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "side": 0.0,
+          "speed": 0.30691470269281984
+        },
+        "handovers": [],
+        "id": "solution-1",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "hold",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.0
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.53
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.03
+          },
+          {
+            "endSeconds": 1.53,
+            "mode": "tap",
+            "noteId": "n4",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 1.53,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.53,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.53
+          }
+        ],
+        "totalCost": 4.133749026343716,
+        "warnings": [
+          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 2.0,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.53,
+            "hand": "L",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.03,
+            "hand": "L",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.53,
+            "hand": "L",
+            "noteId": "n4",
+            "part": "contact",
+            "startSeconds": 1.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "crossWeight": 1.0,
+          "distanceWeight": 1.0,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWeight": 1.0,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "repetitionWeight": 1.0,
+          "sideWeight": 1.0,
+          "speedReference": 4.0,
+          "speedWeight": 1.0,
+          "topK": 3
+        },
+        "costBreakdown": {
+          "cross": 2.293692811011671,
+          "distance": 5.124527718936728,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "side": 1.2740423948001234,
+          "speed": 0.4836913979894568
+        },
+        "handovers": [],
+        "id": "solution-2",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              }
+            ],
+            "startSeconds": 0.53
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": 0.9238795325112867,
+                "y": 0.3826834323650898
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.03
+          },
+          {
+            "endSeconds": 1.53,
+            "mode": "tap",
+            "noteId": "n4",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 1.53,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.53,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": 0.38268343236508984,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.53
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "hold",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.0
+          }
+        ],
+        "totalCost": 9.17595432273798,
+        "warnings": [
+          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
+        ]
+      }
+    ],
+    "status": "ok"
+  }
+}

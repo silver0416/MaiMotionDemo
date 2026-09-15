@@ -1,0 +1,47 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "unsupported",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "crossWeight": 1.0,
+      "distanceWeight": 1.0,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWeight": 1.0,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "repetitionWeight": 1.0,
+      "sideWeight": 1.0,
+      "speedReference": 4.0,
+      "speedWeight": 1.0,
+      "topK": 3
+    },
+    "source": "(120){4}C,E"
+  },
+  "response": {
+    "chart": null,
+    "diagnostics": [
+      {
+        "code": "unsupported",
+        "message": "目前支援外圈 Tap、Hold 與 - ^ < > Slide；此符號尚未支援",
+        "noteIds": [],
+        "severity": "error",
+        "sourceSpan": {
+          "column": 9,
+          "end": 9,
+          "line": 1,
+          "start": 8
+        },
+        "timeSeconds": null
+      }
+    ],
+    "requestId": "unsupported",
+    "schemaVersion": 1,
+    "solutions": [],
+    "status": "unsupported"
+  }
+}

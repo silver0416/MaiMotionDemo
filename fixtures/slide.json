@@ -1,0 +1,2523 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "slide",
+    "solverConfig": {
+      "allowHandover": false,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "crossWeight": 1.0,
+      "distanceWeight": 1.0,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWeight": 1.0,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "repetitionWeight": 1.0,
+      "sideWeight": 1.0,
+      "speedReference": 4.0,
+      "speedWeight": 1.0,
+      "topK": 3
+    },
+    "source": "(120){4}1-5[4:3],8,7,6,E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 2.0,
+      "notes": [
+        {
+          "button": 1,
+          "endSeconds": 2.0,
+          "id": "n0",
+          "kind": "slide",
+          "motionEnd": 2.0,
+          "motionStart": 0.5,
+          "pathId": "p0",
+          "position": {
+            "x": 0.38268343236508984,
+            "y": -0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 16,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0
+        },
+        {
+          "button": 8,
+          "endSeconds": 0.5,
+          "id": "n1",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.38268343236509034,
+            "y": -0.9238795325112865
+          },
+          "sourceSpan": {
+            "column": 18,
+            "end": 18,
+            "line": 1,
+            "start": 17
+          },
+          "timeSeconds": 0.5
+        },
+        {
+          "button": 7,
+          "endSeconds": 1.0,
+          "id": "n2",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.9238795325112868,
+            "y": -0.38268343236508967
+          },
+          "sourceSpan": {
+            "column": 20,
+            "end": 20,
+            "line": 1,
+            "start": 19
+          },
+          "timeSeconds": 1.0
+        },
+        {
+          "button": 6,
+          "endSeconds": 1.5,
+          "id": "n3",
+          "kind": "tap",
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.9238795325112867,
+            "y": 0.3826834323650899
+          },
+          "sourceSpan": {
+            "column": 22,
+            "end": 22,
+            "line": 1,
+            "start": 21
+          },
+          "timeSeconds": 1.5
+        }
+      ],
+      "paths": [
+        {
+          "id": "p0",
+          "samples": [
+            {
+              "u": 0.0,
+              "x": 0.38268343236508984,
+              "y": -0.9238795325112867
+            },
+            {
+              "u": 1.0,
+              "x": -0.3826834323650897,
+              "y": 0.9238795325112867
+            }
+          ]
+        }
+      ]
+    },
+    "diagnostics": [],
+    "requestId": "slide",
+    "schemaVersion": 1,
+    "solutions": [
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 2.0,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.53,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.03,
+            "hand": "L",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.53,
+            "hand": "L",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 1.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": false,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "crossWeight": 1.0,
+          "distanceWeight": 1.0,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWeight": 1.0,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "repetitionWeight": 1.0,
+          "sideWeight": 1.0,
+          "speedReference": 4.0,
+          "speedWeight": 1.0,
+          "topK": 3
+        },
+        "costBreakdown": {
+          "cross": 0.0,
+          "distance": 5.061467458920718,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "side": 0.0366110167327171,
+          "speed": 0.38348035257910695
+        },
+        "handovers": [],
+        "id": "solution-1",
+        "leftSegments": [
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.53
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.03
+          },
+          {
+            "endSeconds": 1.53,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.53
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              }
+            ],
+            "startSeconds": 0.95
+          },
+          {
+            "endSeconds": 1.05,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              },
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.1,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              },
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              }
+            ],
+            "startSeconds": 1.05
+          },
+          {
+            "endSeconds": 1.15,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              },
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              }
+            ],
+            "startSeconds": 1.1
+          },
+          {
+            "endSeconds": 1.2,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              },
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              }
+            ],
+            "startSeconds": 1.15
+          },
+          {
+            "endSeconds": 1.25,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              },
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 1.2
+          },
+          {
+            "endSeconds": 1.3,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              }
+            ],
+            "startSeconds": 1.25
+          },
+          {
+            "endSeconds": 1.35,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              },
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              }
+            ],
+            "startSeconds": 1.3
+          },
+          {
+            "endSeconds": 1.4,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              },
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              }
+            ],
+            "startSeconds": 1.35
+          },
+          {
+            "endSeconds": 1.45,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              },
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              }
+            ],
+            "startSeconds": 1.4
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              }
+            ],
+            "startSeconds": 1.45
+          },
+          {
+            "endSeconds": 1.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              },
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 1.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              },
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              }
+            ],
+            "startSeconds": 1.55
+          },
+          {
+            "endSeconds": 1.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              },
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              }
+            ],
+            "startSeconds": 1.6
+          },
+          {
+            "endSeconds": 1.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              },
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              }
+            ],
+            "startSeconds": 1.65
+          },
+          {
+            "endSeconds": 1.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              },
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              }
+            ],
+            "startSeconds": 1.7
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              },
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              },
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              }
+            ],
+            "startSeconds": 1.8
+          },
+          {
+            "endSeconds": 1.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              },
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              }
+            ],
+            "startSeconds": 1.85
+          },
+          {
+            "endSeconds": 1.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              },
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              }
+            ],
+            "startSeconds": 1.9
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.95
+          }
+        ],
+        "totalCost": 5.481558828232542,
+        "warnings": [
+          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 2.0,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.53,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.03,
+            "hand": "L",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.53,
+            "hand": "L",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 1.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": false,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "crossWeight": 1.0,
+          "distanceWeight": 1.0,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWeight": 1.0,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "repetitionWeight": 1.0,
+          "sideWeight": 1.0,
+          "speedReference": 4.0,
+          "speedWeight": 1.0,
+          "topK": 3
+        },
+        "costBreakdown": {
+          "cross": 0.0,
+          "distance": 6.475681021293813,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "side": 0.06599395621883464,
+          "speed": 0.5497658328905778
+        },
+        "handovers": [],
+        "id": "solution-2",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.53
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.03
+          },
+          {
+            "endSeconds": 1.53,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.53
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              }
+            ],
+            "startSeconds": 0.95
+          },
+          {
+            "endSeconds": 1.05,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              },
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.1,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              },
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              }
+            ],
+            "startSeconds": 1.05
+          },
+          {
+            "endSeconds": 1.15,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              },
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              }
+            ],
+            "startSeconds": 1.1
+          },
+          {
+            "endSeconds": 1.2,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              },
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              }
+            ],
+            "startSeconds": 1.15
+          },
+          {
+            "endSeconds": 1.25,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              },
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 1.2
+          },
+          {
+            "endSeconds": 1.3,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              }
+            ],
+            "startSeconds": 1.25
+          },
+          {
+            "endSeconds": 1.35,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              },
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              }
+            ],
+            "startSeconds": 1.3
+          },
+          {
+            "endSeconds": 1.4,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              },
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              }
+            ],
+            "startSeconds": 1.35
+          },
+          {
+            "endSeconds": 1.45,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              },
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              }
+            ],
+            "startSeconds": 1.4
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              }
+            ],
+            "startSeconds": 1.45
+          },
+          {
+            "endSeconds": 1.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              },
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 1.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              },
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              }
+            ],
+            "startSeconds": 1.55
+          },
+          {
+            "endSeconds": 1.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              },
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              }
+            ],
+            "startSeconds": 1.6
+          },
+          {
+            "endSeconds": 1.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              },
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              }
+            ],
+            "startSeconds": 1.65
+          },
+          {
+            "endSeconds": 1.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              },
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              }
+            ],
+            "startSeconds": 1.7
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              },
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              },
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              }
+            ],
+            "startSeconds": 1.8
+          },
+          {
+            "endSeconds": 1.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              },
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              }
+            ],
+            "startSeconds": 1.85
+          },
+          {
+            "endSeconds": 1.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              },
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              }
+            ],
+            "startSeconds": 1.9
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.95
+          }
+        ],
+        "totalCost": 7.091440810403225,
+        "warnings": [
+          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 2.0,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.53,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.03,
+            "hand": "R",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.53,
+            "hand": "R",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 1.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": false,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "crossWeight": 1.0,
+          "distanceWeight": 1.0,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWeight": 1.0,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "repetitionWeight": 1.0,
+          "sideWeight": 1.0,
+          "speedReference": 4.0,
+          "speedWeight": 1.0,
+          "topK": 3
+        },
+        "costBreakdown": {
+          "cross": 1.1153941278878177,
+          "distance": 6.475681021293813,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "side": 1.1382733674645964,
+          "speed": 0.5203030503411383
+        },
+        "handovers": [],
+        "id": "solution-3",
+        "leftSegments": [
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3571712035407505,
+                "y": -0.8622875636772009
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.3316589747164112,
+                "y": -0.8006955948431151
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.30614674589207186,
+                "y": -0.7391036260090293
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.28063451706773257,
+                "y": -0.6775116571749437
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 0.2551222882433932,
+                "y": -0.6159196883408579
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.2296100594190539,
+                "y": -0.554327719506772
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.20409783059471462,
+                "y": -0.4927357506726863
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.1785856017703753,
+                "y": -0.43114378183860047
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.15307337294603598,
+                "y": -0.3695518130045147
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              }
+            ],
+            "startSeconds": 0.95
+          },
+          {
+            "endSeconds": 1.05,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.12756114412169667,
+                "y": -0.307959844170429
+              },
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.1,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.05,
+                "x": 0.10204891529735732,
+                "y": -0.24636787533634308
+              },
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              }
+            ],
+            "startSeconds": 1.05
+          },
+          {
+            "endSeconds": 1.15,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.1,
+                "x": 0.07653668647301798,
+                "y": -0.18477590650225717
+              },
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              }
+            ],
+            "startSeconds": 1.1
+          },
+          {
+            "endSeconds": 1.2,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.15,
+                "x": 0.051024457648678745,
+                "y": -0.1231839376681716
+              },
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              }
+            ],
+            "startSeconds": 1.15
+          },
+          {
+            "endSeconds": 1.25,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.2,
+                "x": 0.0255122288243394,
+                "y": -0.06159196883408591
+              },
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 1.2
+          },
+          {
+            "endSeconds": 1.3,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.25,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              }
+            ],
+            "startSeconds": 1.25
+          },
+          {
+            "endSeconds": 1.35,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.3,
+                "x": -0.025512228824339234,
+                "y": 0.0615919688340858
+              },
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              }
+            ],
+            "startSeconds": 1.3
+          },
+          {
+            "endSeconds": 1.4,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.35,
+                "x": -0.051024457648678634,
+                "y": 0.12318393766817182
+              },
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              }
+            ],
+            "startSeconds": 1.35
+          },
+          {
+            "endSeconds": 1.45,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.4,
+                "x": -0.07653668647301787,
+                "y": 0.1847759065022574
+              },
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              }
+            ],
+            "startSeconds": 1.4
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.45,
+                "x": -0.10204891529735721,
+                "y": 0.24636787533634297
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              }
+            ],
+            "startSeconds": 1.45
+          },
+          {
+            "endSeconds": 1.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.1275611441216965,
+                "y": 0.30795984417042876
+              },
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 1.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.55,
+                "x": -0.15307337294603596,
+                "y": 0.3695518130045148
+              },
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              }
+            ],
+            "startSeconds": 1.55
+          },
+          {
+            "endSeconds": 1.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.6,
+                "x": -0.1785856017703752,
+                "y": 0.4311437818386006
+              },
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              }
+            ],
+            "startSeconds": 1.6
+          },
+          {
+            "endSeconds": 1.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.65,
+                "x": -0.20409783059471442,
+                "y": 0.49273575067268616
+              },
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              }
+            ],
+            "startSeconds": 1.65
+          },
+          {
+            "endSeconds": 1.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.7,
+                "x": -0.22961005941905377,
+                "y": 0.554327719506772
+              },
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              }
+            ],
+            "startSeconds": 1.7
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.75,
+                "x": -0.2551222882433931,
+                "y": 0.615919688340858
+              },
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.8,
+                "x": -0.28063451706773246,
+                "y": 0.6775116571749438
+              },
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              }
+            ],
+            "startSeconds": 1.8
+          },
+          {
+            "endSeconds": 1.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.85,
+                "x": -0.3061467458920718,
+                "y": 0.7391036260090293
+              },
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              }
+            ],
+            "startSeconds": 1.85
+          },
+          {
+            "endSeconds": 1.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.9,
+                "x": -0.33165897471641104,
+                "y": 0.8006955948431149
+              },
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              }
+            ],
+            "startSeconds": 1.9
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.95,
+                "x": -0.3571712035407504,
+                "y": 0.8622875636772009
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.95
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.53
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.03
+          },
+          {
+            "endSeconds": 1.53,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 1.5,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.53,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.9238795325112867,
+                "y": 0.3826834323650899
+              }
+            ],
+            "startSeconds": 1.53
+          }
+        ],
+        "totalCost": 9.249651566987366,
+        "warnings": [
+          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
+        ]
+      }
+    ],
+    "status": "ok"
+  }
+}

@@ -1,0 +1,200 @@
+import type {
+  AnalyzeResponse,
+  AnalyzeStatus,
+  Hand,
+  MotionMode,
+  Solution,
+  SolverConfig,
+} from './types';
+
+/** 與 src/model.rs 的 SolverConfig::default() 一致。 */
+export const DEFAULT_CONFIG: SolverConfig = {
+  beamWidth: 128,
+  topK: 3,
+  allowHandover: true,
+  checkpointSeconds: 0.05,
+  contactSeconds: 0.03,
+  handoverSeconds: 0.04,
+  handoverCooldown: 0.2,
+  preparationSeconds: 1,
+  speedReference: 4,
+  repetitionSeconds: 0.15,
+  distanceWeight: 1,
+  speedWeight: 1,
+  sideWeight: 1,
+  crossWeight: 1,
+  repetitionWeight: 1,
+  handoverWeight: 1,
+};
+
+export const WEIGHT_KEYS = [
+  'distanceWeight',
+  'speedWeight',
+  'sideWeight',
+  'crossWeight',
+  'repetitionWeight',
+  'handoverWeight',
+] as const;
+
+export type WeightKey = (typeof WEIGHT_KEYS)[number];
+
+export const COST_KEYS = ['distance', 'speed', 'side', 'cross', 'repetition', 'handover'] as const;
+
+export type CostKey = (typeof COST_KEYS)[number];
+
+export const COST_LABEL: Record<CostKey, string> = {
+  distance: '移動距離',
+  speed: '移動速度負擔',
+  side: '手伸到對側',
+  cross: '雙手交叉',
+  repetition: '同手快速連打',
+  handover: '換手次數',
+};
+
+export const COST_HINT: Record<CostKey, string> = {
+  distance: '兩手所有移動段的長度總和（盤面半徑為 1）。',
+  speed: '移動速度相對於速度基準的平方積分，越急越高。',
+  side: '左手跑到右半邊、右手跑到左半邊的姿態成本。',
+  cross: '左手位置越過右手的姿態成本，只是平面代理，不是手臂碰撞偵測。',
+  repetition: '同一手在很短時間內連續敲擊的負擔。',
+  handover: 'Slide 中途換手的一次性費用。',
+};
+
+export const WEIGHT_OF_COST: Record<CostKey, WeightKey> = {
+  distance: 'distanceWeight',
+  speed: 'speedWeight',
+  side: 'sideWeight',
+  cross: 'crossWeight',
+  repetition: 'repetitionWeight',
+  handover: 'handoverWeight',
+};
+
+export const MODE_LABEL: Record<MotionMode, string> = {
+  travel: '移動中',
+  tap: '敲擊',
+  hold: '按住',
+  slide: '滑行',
+  handover: '交接中',
+  idle: '待命',
+};
+
+export const PART_LABEL: Record<string, string> = {
+  head: 'Slide 起點',
+  contact: '接觸',
+  slide: 'Slide 軌道',
+};
+
+export const KIND_LABEL: Record<string, string> = {
+  tap: 'Tap',
+  hold: 'Hold',
+  slide: 'Slide',
+};
+
+export const STATUS_LABEL: Record<AnalyzeStatus, string> = {
+  ok: '分析完成',
+  invalid: '語法錯誤',
+  unsupported: '尚未支援的語法',
+  no_solution: '模型找不到可行方案',
+  search_limit: '搜尋達到上限',
+};
+
+export const STATUS_HINT: Record<AnalyzeStatus, string> = {
+  ok: '核心已回傳譜面與候選方案。',
+  invalid: '原文有語法問題；下方診斷標出行列位置，原文不會被改寫。',
+  unsupported: '這段語法目前不在 Demo 支援範圍，核心不會改成 Tap 帶過。',
+  no_solution: '譜面合法但這組參數下找不到連續可行的雙手動作；只顯示譜面層，不畫假的雙手結果。',
+  search_limit: 'Beam Search 受計算預算限制而停止；可調大搜尋寬度或縮短片段再試。',
+};
+
+export const HAND_LABEL: Record<Hand, string> = { L: '左手', R: '右手' };
+
+export const SUPPORT_NOTES = [
+  'BPM `(120)`、分割 `{4}`、固定秒數分割 `{#0.25}`、逗號推進、結束符號 `E`。',
+  '外圈 Tap `1`–`8`；同時音用 `/`，純 Tap 可直接連寫，例如 `13`。',
+  'Hold `8h[4:4]`、`8h[#1.5]`、`8h[120#4:1]`。',
+  'Slide 直線 `-` 與圓弧 `^` `<` `>`，長度寫法 `[4:3]` 或 `[等待秒##移動秒]`。',
+  '尚未支援：Touch／Wifi／Break／EX、連結與其他修飾；遇到會回報位置與原因。',
+  '單次上限 500 個音符、600 秒。',
+];
+
+export interface ConfigIssue {
+  field: string;
+  message: string;
+}
+
+/** 對應 src/model.rs 的 SolverConfig::validate()，先在前端提示，實際仍由 Rust 判定。 */
+export function validateConfig(config: SolverConfig, firstSeconds: number): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const positives: [string, number][] = [
+    ['checkpointSeconds', config.checkpointSeconds],
+    ['contactSeconds', config.contactSeconds],
+    ['handoverSeconds', config.handoverSeconds],
+    ['handoverCooldown', config.handoverCooldown],
+    ['preparationSeconds', config.preparationSeconds],
+    ['speedReference', config.speedReference],
+    ['repetitionSeconds', config.repetitionSeconds],
+  ];
+  for (const [field, value] of positives) {
+    if (!Number.isFinite(value) || value <= 0) {
+      issues.push({ field, message: '時間與速度參數必須為有限正數' });
+    }
+  }
+  if (!Number.isInteger(config.beamWidth) || config.beamWidth < 1 || config.beamWidth > 256) {
+    issues.push({ field: 'beamWidth', message: '搜尋寬度必須是 1–256 的整數' });
+  }
+  if (!Number.isInteger(config.topK) || config.topK < 1 || config.topK > 5) {
+    issues.push({ field: 'topK', message: '候選數必須是 1–5 的整數' });
+  }
+  if (config.topK > config.beamWidth) {
+    issues.push({ field: 'topK', message: '候選數不可大於搜尋寬度' });
+  }
+  if (config.checkpointSeconds < 0.02 || config.checkpointSeconds > 0.2) {
+    issues.push({ field: 'checkpointSeconds', message: '搜尋取樣間隔必須是 0.02–0.2 秒' });
+  }
+  if (config.handoverSeconds > config.checkpointSeconds) {
+    issues.push({ field: 'handoverSeconds', message: '交接重疊不可超過搜尋取樣間隔' });
+  }
+  if (config.preparationSeconds > 10) {
+    issues.push({ field: 'preparationSeconds', message: '預備時間最多 10 秒' });
+  }
+  for (const key of WEIGHT_KEYS) {
+    const value = config[key];
+    if (!Number.isFinite(value) || value < 0 || value > 100) {
+      issues.push({ field: key, message: '成本權重必須是 0–100 的有限數值' });
+    }
+  }
+  if (!Number.isFinite(firstSeconds) || firstSeconds < 0 || firstSeconds > 120) {
+    issues.push({ field: 'firstSeconds', message: '起始秒數必須是 0–120 秒' });
+  }
+  return issues;
+}
+
+export function configEquals(a: SolverConfig, b: SolverConfig): boolean {
+  return (Object.keys(DEFAULT_CONFIG) as (keyof SolverConfig)[]).every((key) => a[key] === b[key]);
+}
+
+export function cloneConfig(config: SolverConfig): SolverConfig {
+  return { ...config };
+}
+
+/** 成本拆解總和（乘權重後）應等於 totalCost，容許浮點誤差；用於面板上的自我檢查提示。 */
+export function costSum(solution: Solution): number {
+  return COST_KEYS.reduce((sum, key) => sum + solution.costBreakdown[key], 0);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** fixtures 以 unknown 匯入，使用前做最低限度的形狀檢查。 */
+export function asAnalyzeResponse(value: unknown, label: string): AnalyzeResponse {
+  if (
+    !isObject(value) ||
+    typeof value.status !== 'string' ||
+    !Array.isArray(value.diagnostics) ||
+    !Array.isArray(value.solutions)
+  ) {
+    throw new Error(`範例資料格式不符：${label}`);
+  }
+  return value as unknown as AnalyzeResponse;
+}
