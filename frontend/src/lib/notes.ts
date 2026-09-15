@@ -1,5 +1,26 @@
 import type { Note, PathSample, Point } from './types';
 
+/** 音符落點的簡短寫法：外圈鍵為 `3`，Touch 為 `B5` 或 `C`。 */
+export function noteTarget(note: Note): string {
+  if (!note.touchArea) return String(note.button);
+  return `${note.touchArea}${note.button > 0 ? note.button : ''}`;
+}
+
+/** 修飾語標籤，例如 Break、EX、煙火。 */
+export function noteBadges(note: Note): string[] {
+  const m = note.modifiers;
+  const out: string[] = [];
+  if (m.breakNote) out.push('Break');
+  if (m.ex) out.push('EX');
+  if (m.breakSlide) out.push('Break Slide');
+  if (m.exSlide) out.push('EX Slide');
+  if (m.spinStar) out.push('旋轉星');
+  else if (m.star) out.push('星形');
+  if (m.fireworks) out.push('煙火');
+  if (note.kind === 'slide' && !note.hasHead) out.push('無起點');
+  return out;
+}
+
 export type NotePhase = 'upcoming' | 'active' | 'done';
 
 export interface NoteVisual {

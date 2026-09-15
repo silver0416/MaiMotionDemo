@@ -7,8 +7,13 @@ fn main() {
         ("hold", "(120){4}8h[4:4]/1,2,3,4,E"),
         ("slide", "(120){4}1-5[4:3],8,7,6,E"),
         ("handover", "(120){4}8>4[1##3],,,,,,,8,E"),
-        ("unsupported", "(120){4}C,E"),
+        ("touch", "(120){4}A1,B3,C,D5,E7,Ch[4:2],E"),
+        (
+            "shapes",
+            "(120){2}1-5[4:1],3^6[4:1],5v2[4:1],7q3[4:1],1s5[4:1],8w4[4:1],2V84[4:1],E",
+        ),
         ("no-solution", "(120){4}1/4/7,E"),
+        ("invalid", "(120){4}1-2[4:1],E"),
     ] {
         let mut config = SolverConfig::default();
         if name == "handover" {
@@ -34,8 +39,9 @@ fn main() {
         )
         .unwrap();
         println!(
-            "{name}: {}, handovers={}",
+            "{name}: {}, notes={}, handovers={}",
             response.status,
+            response.chart.as_ref().map_or(0, |c| c.notes.len()),
             response.solutions.first().map_or(0, |s| s.handovers.len())
         );
     }

@@ -4,7 +4,6 @@
   import { sampleWithStarts } from '../lib/motion';
   import { playback, RATES } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import { view } from '../state/view.svelte';
 
   const bounds = $derived(session.bounds);
   const span = $derived(Math.max(bounds.end - bounds.start, 1e-6));
@@ -28,7 +27,6 @@
     left: number;
     hand: string;
     kind: string;
-    label: string;
   }
 
   const ticks = $derived.by<Tick[]>(() =>
@@ -40,7 +38,6 @@
         left: ratio(note.timeSeconds),
         hand: hands.length === 1 ? hands[0] : hands.length > 1 ? 'B' : 'N',
         kind: note.kind,
-        label: `${note.id} ${formatClock(note.timeSeconds)}`,
       };
     }),
   );
@@ -50,16 +47,9 @@
       id: `${handover.noteId}-${index}`,
       left: ratio(handover.startSeconds),
       width: Math.max(0.6, ratio(handover.endSeconds) - ratio(handover.startSeconds)),
-      seconds: handover.startSeconds,
     })),
   );
 
-  function seekFromEvent(event: MouseEvent) {
-    const target = event.currentTarget as HTMLElement;
-    const rect = target.getBoundingClientRect();
-    const fraction = (event.clientX - rect.left) / Math.max(rect.width, 1);
-    playback.seek(bounds.start + fraction * span);
-  }
 </script>
 
 <div class="transport">
@@ -82,11 +72,10 @@
     >
 
     <span class="clock mono">{formatClock(time)}</span>
-    <span class="muted small mono">／ {formatClock(bounds.end)}</span>
+    <span class="muted small mono total">／ {formatClock(bounds.end)}</span>
 
     <span class="spacer"></span>
 
-    <span class="small muted">播放倍率</span>
     <div class="row" role="group" aria-label="播放倍率">
       {#each RATES as rate (rate)}
         <button
@@ -99,40 +88,38 @@
     </div>
   </div>
 
+  <!-- 標記層與時間滑桿共用同一條座標軸：標記層左右各內縮半個滑鈕寬度，
+       正好等於滑鈕中心的移動範圍，因此大頭針與上方標記線永遠對齊。 -->
   <div class="timeline">
-    <!-- 標記條：滑鼠點一下即可定位。鍵盤與輔助技術改用下方同功能的時間滑桿，
-         因此這裡刻意不再提供第二個可聚焦控制。 -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="ticks" onclick={seekFromEvent} aria-hidden="true">
-      {#if playback.loopEnabled}
-        <div
-          class="loop-band"
-          style={`left:${ratio(playback.loopStart)}%;width:${Math.max(0.5, ratio(playback.loopEnd) - ratio(playback.loopStart))}%`}
-        ></div>
-      {/if}
-      {#if bounds.start < 0}
-        <div class="zero-mark" style={`left:${ratio(0)}%`}></div>
-      {/if}
-      {#each ticks as tick (tick.id)}
-        <div
-          class="tick"
-          class:tick--left={tick.hand === 'L'}
-          class:tick--right={tick.hand === 'R'}
-          class:tick--both={tick.hand === 'B'}
-          class:tick--slide={tick.kind === 'slide'}
-          class:tick--hold={tick.kind === 'hold'}
-          style={`left:${tick.left}%`}
-          title={tick.label}
-        ></div>
-      {/each}
-      {#each handoverTicks as handover (handover.id)}
-        <div
-          class="handover-band"
-          style={`left:${handover.left}%;width:${handover.width}%`}
-          title={`換手 ${formatClock(handover.seconds)}`}
-        ></div>
-      {/each}
+    <div class="ticks" aria-hidden="true"></div>
+    <div class="marks" aria-hidden="true">
+        {#if playback.loopEnabled}
+          <div
+            class="loop-band"
+            style={`left:${ratio(playback.loopStart)}%;width:${Math.max(0.5, ratio(playback.loopEnd) - ratio(playback.loopStart))}%`}
+          ></div>
+        {/if}
+        {#if bounds.start < 0}
+          <div class="zero-mark" style={`left:${ratio(0)}%`}></div>
+        {/if}
+        {#each ticks as tick (tick.id)}
+          <div
+            class="tick"
+            class:tick--left={tick.hand === 'L'}
+            class:tick--right={tick.hand === 'R'}
+            class:tick--both={tick.hand === 'B'}
+            class:tick--slide={tick.kind === 'slide'}
+            class:tick--hold={tick.kind === 'hold' || tick.kind === 'touchHold'}
+            class:tick--touch={tick.kind === 'touch' || tick.kind === 'touchHold'}
+            style={`left:${tick.left}%`}
+          ></div>
+        {/each}
+        {#each handoverTicks as handover (handover.id)}
+          <div
+            class="handover-band"
+            style={`left:${handover.left}%;width:${handover.width}%`}
+          ></div>
+        {/each}
       <div class="playhead" style={`left:${ratio(time)}%`}></div>
     </div>
 
@@ -176,31 +163,27 @@
     {#if session.hasHands}
       <span class="hand-state">
         <span class="badge badge--left">L</span>
-        <span class="mono">
+        <span class="mono state-text">
           {leftState ? (MODE_LABEL[leftState.mode] ?? leftState.mode) : '—'}
           {leftState?.noteId ? ` ${leftState.noteId}` : ''}
         </span>
       </span>
       <span class="hand-state">
         <span class="badge badge--right">R</span>
-        <span class="mono">
+        <span class="mono state-text">
           {rightState ? (MODE_LABEL[rightState.mode] ?? rightState.mode) : '—'}
           {rightState?.noteId ? ` ${rightState.noteId}` : ''}
         </span>
       </span>
     {:else}
-      <span class="muted xsmall">目前沒有可播放的雙手方案</span>
+      <span class="muted xsmall hands-empty">沒有可播放的方案</span>
     {/if}
   </div>
 
   <div class="row row-wrap xsmall muted legend">
-    <span><span class="swatch swatch--left"></span>左手 L（實線・圓形）</span>
-    <span><span class="swatch swatch--right"></span>右手 R（虛線・方形）</span>
-    <span><span class="swatch swatch--accent"></span>換手標記</span>
-    <span>空心圓＝Tap，長條＝Hold，星形＋箭頭＝Slide</span>
-    {#if view.approach && view.noteMode === 'window'}
-      <span>音符飛入為視覺效果，判定時間以 Rust 資料為準</span>
-    {/if}
+    <span><span class="swatch swatch--left"></span>左手 L・實線圓形</span>
+    <span><span class="swatch swatch--right"></span>右手 R・虛線方形</span>
+    <span><span class="swatch swatch--accent"></span>換手</span>
   </div>
 </div>
 
@@ -215,31 +198,47 @@
     border-radius: var(--radius-md);
   }
 
+  /* 時間與手部狀態都保留固定寬度：內容變動時播放列的換行數不變，
+     盤面高度因此穩定，不會在切換範例或播放時被重新縮放。 */
   .clock {
+    min-width: 9ch;
     font-size: var(--fs-lg);
     font-weight: 700;
     letter-spacing: 0.02em;
   }
 
+  .total {
+    min-width: 9ch;
+  }
+
   .timeline {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    --thumb: 14px;
+    position: relative;
+    height: 26px;
   }
 
   .ticks {
-    position: relative;
-    height: 22px;
+    position: absolute;
+    inset: 0;
     background: var(--c-control);
     border: 1px solid var(--c-border);
     border-radius: var(--radius-sm);
     overflow: hidden;
-    cursor: pointer;
+    pointer-events: none;
+  }
+
+  .marks {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    pointer-events: none;
+    left: calc(var(--thumb) / 2);
+    right: calc(var(--thumb) / 2);
   }
 
   .tick {
     position: absolute;
-    top: 4px;
+    top: 5px;
     width: 3px;
     height: 8px;
     margin-left: -1px;
@@ -263,8 +262,12 @@
   }
 
   .tick--hold {
-    height: 11px;
+    height: 12px;
     width: 5px;
+  }
+
+  .tick--touch {
+    top: 9px;
   }
 
   .handover-band {
@@ -299,14 +302,65 @@
     background: var(--c-text);
   }
 
+  /* 滑桿疊在標記層上，軌道透明，只留下大頭針。 */
   .seek {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+  }
+
+  .seek::-webkit-slider-runnable-track {
+    height: 100%;
+    background: transparent;
+  }
+
+  .seek::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: var(--thumb);
+    height: var(--thumb);
+    border: 2px solid var(--c-bg);
+    border-radius: 50%;
+    background: var(--c-text);
+  }
+
+  .seek:disabled::-webkit-slider-thumb {
+    background: var(--c-border-strong);
+  }
+
+  .seek::-moz-range-track {
+    height: 100%;
+    background: transparent;
+  }
+
+  .seek::-moz-range-thumb {
+    width: var(--thumb);
+    height: var(--thumb);
+    border: 2px solid var(--c-bg);
+    border-radius: 50%;
+    background: var(--c-text);
   }
 
   .hand-state {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
+  }
+
+  .state-text {
+    display: inline-block;
+    min-width: 8ch;
+  }
+
+  .hands-empty {
+    display: inline-block;
+    min-width: 21ch;
+    text-align: right;
   }
 
   .legend {

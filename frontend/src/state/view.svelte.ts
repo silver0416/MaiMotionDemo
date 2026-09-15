@@ -14,7 +14,8 @@ export class ViewSettings {
   approachSeconds = $state(0.85);
   showLeft = $state(true);
   showRight = $state(true);
-  showFullTrack = $state(true);
+  /** 整段軌跡預設關閉：長譜面會在盤面留下滿場細線，反而看不清楚目前的動作。 */
+  showFullTrack = $state(false);
   showRecentTrail = $state(true);
   trailSeconds = $state(1.2);
   showAssignmentTags = $state(true);

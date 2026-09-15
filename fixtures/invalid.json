@@ -1,7 +1,7 @@
 {
   "request": {
     "firstSeconds": 0.0,
-    "requestId": "unsupported",
+    "requestId": "invalid",
     "solverConfig": {
       "allowHandover": true,
       "beamWidth": 128,
@@ -20,28 +20,28 @@
       "speedWeight": 1.0,
       "topK": 3
     },
-    "source": "(120){4}C,E"
+    "source": "(120){4}1-2[4:1],E"
   },
   "response": {
     "chart": null,
     "diagnostics": [
       {
-        "code": "unsupported",
-        "message": "目前支援外圈 Tap、Hold 與 - ^ < > Slide；此符號尚未支援",
+        "code": "invalid",
+        "message": "直線 Slide 終點必須與起點相隔 2–6 個鍵位",
         "noteIds": [],
         "severity": "error",
         "sourceSpan": {
           "column": 9,
-          "end": 9,
+          "end": 16,
           "line": 1,
           "start": 8
         },
         "timeSeconds": null
       }
     ],
-    "requestId": "unsupported",
-    "schemaVersion": 1,
+    "requestId": "invalid",
+    "schemaVersion": 2,
     "solutions": [],
-    "status": "unsupported"
+    "status": "invalid"
   }
 }

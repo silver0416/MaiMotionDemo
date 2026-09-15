@@ -29,8 +29,18 @@
         {
           "button": 1,
           "endSeconds": 0.0,
+          "hasHead": true,
           "id": "n0",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -44,13 +54,24 @@
             "line": 1,
             "start": 8
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         },
         {
           "button": 4,
           "endSeconds": 0.0,
+          "hasHead": true,
           "id": "n1",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -64,13 +85,24 @@
             "line": 1,
             "start": 10
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         },
         {
           "button": 7,
           "endSeconds": 0.0,
+          "hasHead": true,
           "id": "n2",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -84,7 +116,8 @@
             "line": 1,
             "start": 12
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         }
       ],
       "paths": []
@@ -107,7 +140,7 @@
       }
     ],
     "requestId": "no-solution",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "solutions": [],
     "status": "no_solution"
   }

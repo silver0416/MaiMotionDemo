@@ -25,11 +25,6 @@
       {/if}
     </div>
 
-    <p class="field-hint" style="margin-bottom: var(--space-3)">
-      這些參數會送給 Rust 核心重跑搜尋；播放倍率與顯示開關不會重跑。
-      改完之後要按下方的「套用並重新生成」才會生效。
-    </p>
-
     <div class="stack">
       <label class="check">
         <input
@@ -39,12 +34,12 @@
         />
         <span>
           允許 Slide 中途換手
-          <span class="field-hint">關掉之後，一條 Slide 只能由同一隻手從頭做到尾。</span>
+          <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
         </span>
       </label>
 
       <NumberField
-        label="搜尋寬度 beamWidth"
+        label="搜尋寬度"
         hint="每個時間點保留多少種可能；越大越仔細也越慢（1–256）。"
         value={config.beamWidth}
         min={1}
@@ -55,7 +50,7 @@
       />
 
       <NumberField
-        label="保留候選方案數 topK"
+        label="保留候選方案數"
         hint="最後要比較幾種打法（1–5，且不大於搜尋寬度）。"
         value={config.topK}
         min={1}
@@ -66,8 +61,8 @@
       />
 
       <NumberField
-        label="第一拍起始秒數 firstSeconds"
-        hint="譜面開始前的空白秒數，對應請求的 firstSeconds（0–120）。"
+        label="起始秒數"
+        hint="譜面開始前的空白秒數（0–120）。"
         value={session.firstSeconds}
         min={0}
         max={120}
@@ -84,7 +79,7 @@
     <div class="stack">
       <NumberField
         label="搜尋取樣間隔"
-        hint="Slide 上多久考慮一次換手，與畫面幀率無關（0.02–0.2 秒）。"
+        hint="Slide 上多久考慮一次換手（0.02–0.2 秒）。"
         value={config.checkpointSeconds}
         min={0.02}
         max={0.2}
@@ -128,7 +123,7 @@
       />
       <NumberField
         label="開始前預備時間"
-        hint="雙手在第一顆音符前多久就定位；播放時間會從負數開始（最多 10 秒）。"
+        hint="雙手在第一顆音符前多久就定位（最多 10 秒）。"
         value={config.preparationSeconds}
         min={0.1}
         max={10}
@@ -163,10 +158,10 @@
   </section>
 
   <section class="section">
-    <div class="section-title"><span>成本權重</span></div>
-    <p class="field-hint" style="margin-bottom: var(--space-3)">
-      權重都是 0–100 的啟發式數值。調高某一項，模型就更在意那件事。
-    </p>
+    <div class="section-title">
+      <span>成本權重</span>
+      <span class="muted xsmall">0–100，越高越在意</span>
+    </div>
     <div class="stack">
       <NumberField
         label="移動距離"
@@ -253,9 +248,7 @@
       <button class="btn" onclick={() => session.resetConfig()}>還原預設</button>
     </div>
     {#if !session.desktop}
-      <p class="field-hint" style="margin-top: var(--space-2)">
-        瀏覽器預覽不能重跑搜尋；範例顯示的永遠是 fixtures 當初使用的參數。
-      </p>
+      <p class="field-hint" style="margin-top: var(--space-2)">瀏覽器預覽不能重跑搜尋。</p>
     {/if}
   </section>
 </div>

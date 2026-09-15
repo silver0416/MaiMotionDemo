@@ -29,8 +29,18 @@
         {
           "button": 8,
           "endSeconds": 2.0,
+          "hasHead": true,
           "id": "n0",
           "kind": "hold",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -44,13 +54,24 @@
             "line": 1,
             "start": 8
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         },
         {
           "button": 1,
           "endSeconds": 0.0,
+          "hasHead": true,
           "id": "n1",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -64,13 +85,24 @@
             "line": 1,
             "start": 16
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         },
         {
           "button": 2,
           "endSeconds": 0.5,
+          "hasHead": true,
           "id": "n2",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -84,13 +116,24 @@
             "line": 1,
             "start": 18
           },
-          "timeSeconds": 0.5
+          "timeSeconds": 0.5,
+          "touchArea": null
         },
         {
           "button": 3,
           "endSeconds": 1.0,
+          "hasHead": true,
           "id": "n3",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -104,13 +147,24 @@
             "line": 1,
             "start": 20
           },
-          "timeSeconds": 1.0
+          "timeSeconds": 1.0,
+          "touchArea": null
         },
         {
           "button": 4,
           "endSeconds": 1.5,
+          "hasHead": true,
           "id": "n4",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -124,14 +178,15 @@
             "line": 1,
             "start": 22
           },
-          "timeSeconds": 1.5
+          "timeSeconds": 1.5,
+          "touchArea": null
         }
       ],
       "paths": []
     },
     "diagnostics": [],
     "requestId": "hold",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "solutions": [
       {
         "assignments": [

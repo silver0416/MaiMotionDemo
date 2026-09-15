@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { KIND_LABEL, PART_LABEL } from '../lib/contract';
+  import { KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
+  import { noteBadges, noteTarget } from '../lib/notes';
   import { formatClock, formatDelta, formatNumber } from '../lib/format';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
@@ -33,6 +34,7 @@
     if (target && target.motionStart !== null) playback.seek(target.motionStart);
   }
 
+  const badges = $derived(note ? noteBadges(note) : []);
   const assignments = $derived(note ? (session.assignmentsByNote.get(note.id) ?? []) : []);
   const handovers = $derived(note ? (session.handoversByNote.get(note.id) ?? []) : []);
 </script>
@@ -58,7 +60,7 @@
           >
             <span class="mono">{item.id}</span>
             <span>{KIND_LABEL[item.kind] ?? item.kind}</span>
-            <span class="mono">鍵 {item.button}</span>
+            <span class="mono">{noteTarget(item)}</span>
             <span class="mono">{formatClock(item.timeSeconds)}</span>
             <span class="mono hand-cell">
               {session.solution ? handsOf(session.solution, item.id) : '—'}
@@ -75,8 +77,19 @@
       <dl class="kv">
         <dt>種類</dt>
         <dd>{KIND_LABEL[note.kind] ?? note.kind}</dd>
-        <dt>鍵位</dt>
-        <dd>{note.button}</dd>
+        <dt>落點</dt>
+        <dd>{noteTarget(note)}</dd>
+        {#if note.pathId}
+          {@const path = session.pathById.get(note.pathId)}
+          {#if path}
+            <dt>形狀</dt>
+            <dd>{shapeLabel(path.shape)} {path.startButton}→{path.endButton}</dd>
+          {/if}
+        {/if}
+        {#if badges.length > 0}
+          <dt>修飾</dt>
+          <dd>{badges.join('、')}</dd>
+        {/if}
         <dt>判定時間</dt>
         <dd>{formatClock(note.timeSeconds)}</dd>
         <dt>結束時間</dt>
@@ -88,10 +101,6 @@
         {#if note.motionEnd !== null}
           <dt>移動結束</dt>
           <dd>{formatClock(note.motionEnd)}</dd>
-        {/if}
-        {#if note.pathId}
-          <dt>路徑</dt>
-          <dd>{note.pathId}</dd>
         {/if}
         <dt>盤面座標</dt>
         <dd>{formatNumber(note.position.x, 3)}, {formatNumber(note.position.y, 3)}</dd>
@@ -109,7 +118,7 @@
     <section class="section">
       <div class="section-title"><span>目前候選的分配</span></div>
       {#if assignments.length === 0}
-        <p class="small muted">這個候選沒有針對此音符的指派資料。</p>
+        <p class="small muted">這個候選沒有此音符的指派資料。</p>
       {:else}
         <table class="table">
           <thead>
@@ -142,8 +151,8 @@
       {#if handovers.length > 0}
         <p class="small" style="margin-top: var(--space-3)">
           {#each handovers as handover, index (index)}
-            這段 Slide 在 {formatClock(handover.startSeconds)} – {formatClock(handover.endSeconds)}
-            由 {handover.from} 交給 {handover.to}；重疊期間兩手都在軌道上。
+            {formatClock(handover.startSeconds)} – {formatClock(handover.endSeconds)}
+            由 {handover.from} 交給 {handover.to}，重疊期間兩手都在軌道上。
           {/each}
         </p>
       {/if}
@@ -177,14 +186,11 @@
             {/each}
           </tbody>
         </table>
-        <p class="field-hint" style="margin-top: var(--space-2)">
-          成本是整段譜面的總分，不是這顆音符單獨的分數；候選差距小代表模型對這裡的判斷本來就接近。
-        </p>
       </section>
     {/if}
   {:else}
     <section class="section">
-      <p class="small muted">在盤面點選音符，或從上方清單選一顆，即可看到它的分配與候選差異。</p>
+      <p class="small muted">在盤面或清單選一顆音符。</p>
     </section>
   {/if}
 </div>

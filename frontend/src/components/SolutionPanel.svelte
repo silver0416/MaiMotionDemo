@@ -67,20 +67,17 @@
       <div class="section-title"><span>沒有可用方案</span></div>
       <div class="alert alert--warn">
         <div class="alert-title">{status ? (STATUS_LABEL[status] ?? status) : '無方案'}</div>
-        <p>
-          這個狀態下不會畫出任何雙手動作。畫面只保留核心確定的譜面層，原因見「編輯」分頁的診斷。
-        </p>
+        <p>只顯示譜面層，原因見「編輯」分頁的診斷。</p>
       </div>
       <p class="small muted" style="margin-top: var(--space-3)">
-        可以嘗試：調大搜尋寬度、關閉或開啟交接、放寬接觸時間，或縮短片段後重新生成。
-        搜尋剪枝找不到方案不等於人類打不出來。
+        可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
       </p>
     </section>
   {:else}
     <section class="section">
       <div class="section-title">
-        <span>候選方案（最多 {solutions.length} 個）</span>
-        <span class="muted xsmall">成本越低代表模型越偏好</span>
+        <span>候選方案</span>
+        <span class="muted xsmall">成本越低越偏好</span>
       </div>
       <div class="candidates" role="radiogroup" aria-label="候選方案">
         {#each solutions as item, index (item.id)}
@@ -97,10 +94,10 @@
               <span class="mono cost">{formatNumber(item.totalCost)}</span>
             </span>
             <span class="xsmall muted">
-              與最佳差 {formatDelta(item.totalCost - best)}・起始觸碰 L {stats.touch.L}／R {stats.touch
-                .R}{stats.slideNotes > 0
-                ? `・Slide 軌道 L ${stats.slide.L}／R ${stats.slide.R}`
-                : ''}・換手 {stats.handovers} 次
+              {formatDelta(item.totalCost - best)}・觸碰 L{stats.touch.L}／R{stats.touch.R}{stats.slideNotes >
+              0
+                ? `・軌道 L${stats.slide.L}／R${stats.slide.R}`
+                : ''}・換手 {stats.handovers}
             </span>
           </button>
         {/each}
@@ -133,26 +130,11 @@
           </tbody>
         </table>
         <p class="small" style="margin-top: var(--space-3)">
-          {#if stats.slideNotes > 0}
-            這個候選的起始觸碰（Tap、Hold 與 Slide 起點）由左手負責 {stats.touch.L} 顆、右手負責 {stats
-              .touch.R} 顆；全譜 {stats.slideNotes} 條 Slide 軌道中，左手參與 {stats.slide.L} 條、右手參與 {stats
-              .slide.R} 條。
-          {:else}
-            這個候選的起始觸碰（Tap 與 Hold）由左手負責 {stats.touch.L} 顆、右手負責 {stats.touch.R} 顆，
-            這段譜面沒有 Slide 軌道。
-          {/if}
-          {stats.handovers > 0
-            ? `其中 Slide 途中換手 ${stats.handovers} 次。`
-            : '全程沒有換手。'}
-          總成本 {formatNumber(solution.totalCost)}。
+          換手 {stats.handovers} 次・總成本 {formatNumber(solution.totalCost)}
         </p>
         <p class="field-hint" style="margin-top: var(--space-2)">
-          「起始觸碰」只算 head／contact，「Slide 軌道」算實際跟著軌道移動的部分；
-          一條 Slide 中途換手時，兩手都會各算一次參與，所以兩欄不可以直接相加。
-        </p>
-        <p class="field-hint" style="margin-top: var(--space-2)">
-          成本是本 Demo 的啟發式模型偏好，不是官方判定、人類真實機率或完整人體模型；
-          手部模型採「單手單接觸點、準時追蹤軌道」近似，Beam Search 也不保證全域最優。
+          「起始觸碰」只算 Tap、Hold 與 Slide 起點；中途換手時兩手各算一次參與，兩欄不能相加。
+          成本是本 Demo 的啟發式偏好，不是官方判定或人體模型。
         </p>
       </section>
 
@@ -189,10 +171,9 @@
             {/each}
           </tbody>
         </table>
-        {#if sumCheck}
-          <p class="xsmall muted" style="margin-top: var(--space-2)">
-            各項加總 {formatNumber(sumCheck.sum)}，與 totalCost 差 {formatNumber(sumCheck.diff, 6)}
-            {sumCheck.diff < 1e-6 ? '（符合契約的浮點誤差範圍）' : '（超出預期，請回報核心）'}
+        {#if sumCheck && sumCheck.diff >= 1e-6}
+          <p class="xsmall" style="margin-top: var(--space-2); color: var(--c-danger)">
+            各項加總 {formatNumber(sumCheck.sum)} 與 totalCost 不符，請回報核心。
           </p>
         {/if}
       </section>
@@ -200,9 +181,7 @@
       <section class="section">
         <div class="section-title"><span>換手</span></div>
         {#if solution.handovers.length === 0}
-          <p class="small muted">
-            這個候選沒有換手。慢速大跨度 Slide 只是增加可換手的空間，成本沒有更低就不會換。
-          </p>
+          <p class="small muted">這個候選沒有換手。</p>
         {:else}
           <table class="table">
             <thead>
@@ -243,9 +222,6 @@
               {/each}
             </tbody>
           </table>
-          <p class="xsmall muted" style="margin-top: var(--space-2)">
-            交接區間內兩手都在同一條 Slide 上接觸，這是模型的重疊時間，不是遊戲判定規則。
-          </p>
         {/if}
       </section>
 
@@ -262,7 +238,7 @@
 
       <section class="section">
         <details>
-          <summary>這份結果使用的參數（configSnapshot）</summary>
+          <summary>這份結果使用的參數</summary>
           <dl class="kv">
             <dt>搜尋寬度</dt>
             <dd>{solution.configSnapshot.beamWidth}</dd>

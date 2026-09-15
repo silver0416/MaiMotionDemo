@@ -111,6 +111,18 @@ ul {
   color: var(--c-text-dim);
 }
 
+/* 只留給輔助技術的標籤文字，畫面上不佔位。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .small {
   font-size: var(--fs-sm);
 }
@@ -187,6 +199,14 @@ textarea {
   border-color: var(--c-text);
   color: var(--c-on-invert);
   font-weight: 600;
+}
+
+/* 選中狀態的 hover 必須比 .btn:hover 更具體，否則會被改成深色底配深色字。 */
+.btn.is-active:hover:not(:disabled),
+.btn[aria-pressed='true']:hover:not(:disabled) {
+  background: var(--c-text-strong);
+  border-color: var(--c-text-strong);
+  color: var(--c-on-invert);
 }
 
 .btn--primary {

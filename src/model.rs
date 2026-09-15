@@ -47,6 +47,12 @@ impl Diagnostic {
             time_seconds: None,
         }
     }
+    pub fn info(code: &str, message: String) -> Self {
+        Self {
+            severity: "info".into(),
+            ..Self::plain(code, message)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,7 +66,13 @@ pub struct PathSample {
 #[serde(rename_all = "camelCase")]
 pub struct SlidePath {
     pub id: String,
+    /// 形狀符號，連續寫法會接起來（例如 `-^`）。純顯示用，不影響求解。
+    pub shape: String,
+    pub start_button: u8,
+    pub end_button: u8,
     pub samples: Vec<PathSample>,
+    /// Wifi 的兩條側線；其餘形狀為空。手的移動一律以 samples 為準。
+    pub branches: Vec<Vec<PathSample>>,
 }
 impl SlidePath {
     pub fn at(&self, u: f64) -> Point {
@@ -78,15 +90,41 @@ impl SlidePath {
 #[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: String,
+    /// tap / hold / slide / touch / touchHold
     pub kind: String,
+    /// 按鍵或 Touch 區編號 1–8；Touch C 區為 0。
     pub button: u8,
+    /// Touch 區代號 A–E；按鍵音符為 None。
+    pub touch_area: Option<String>,
     pub time_seconds: f64,
     pub end_seconds: f64,
     pub position: Point,
     pub path_id: Option<String>,
     pub motion_start: Option<f64>,
     pub motion_end: Option<f64>,
+    /// Slide 是否有起點觸碰；`?` `!` 與 `*` 的第二條之後為 false。
+    pub has_head: bool,
+    pub modifiers: Modifiers,
     pub source_span: SourceSpan,
+}
+
+/// simai 修飾語。這些只影響判定與外觀，不改變本 Demo 的手部動作模型。
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Modifiers {
+    /// `b` Break
+    pub break_note: bool,
+    /// `x` EX
+    pub ex: bool,
+    /// `$` 強制星形；`$$` 為旋轉星形
+    pub star: bool,
+    pub spin_star: bool,
+    /// `f` Touch 煙火
+    pub fireworks: bool,
+    /// Slide 本體的 `b`
+    pub break_slide: bool,
+    /// Slide 本體的 `x`
+    pub ex_slide: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

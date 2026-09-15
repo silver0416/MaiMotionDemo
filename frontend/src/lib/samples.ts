@@ -2,8 +2,10 @@ import tapFixture from '../../../fixtures/tap.json';
 import holdFixture from '../../../fixtures/hold.json';
 import slideFixture from '../../../fixtures/slide.json';
 import handoverFixture from '../../../fixtures/handover.json';
+import touchFixture from '../../../fixtures/touch.json';
+import shapesFixture from '../../../fixtures/shapes.json';
 import noSolutionFixture from '../../../fixtures/no-solution.json';
-import unsupportedFixture from '../../../fixtures/unsupported.json';
+import invalidFixture from '../../../fixtures/invalid.json';
 import { DEFAULT_CONFIG, asAnalyzeResponse, cloneConfig } from './contract';
 import type { AnalyzeResponse, SolverConfig } from './types';
 
@@ -54,12 +56,14 @@ function build(
 
 /** 由 `cargo run --offline --example fixtures` 產生的真實核心輸出。 */
 export const SAMPLES: Sample[] = [
-  build('tap', '基本 Tap', '八個外圈 Tap 依序落下，看兩手如何分工。', tapFixture),
-  build('hold', '同時 Tap 與 Hold', 'Hold 佔住一手，另一手必須連續移動。', holdFixture),
-  build('slide', 'Slide 不交接', '一條直線 Slide 由單手完成，後面接三個 Tap。', slideFixture),
-  build('handover', '可行交接', '慢速長圓弧 Slide，中途換手比較划算。', handoverFixture),
-  build('no-solution', '無方案', '三顆同時 Tap 超出雙手模型容量。', noSolutionFixture),
-  build('unsupported', '未支援語法', 'Touch 音符 `C` 目前不支援，核心回報位置。', unsupportedFixture),
+  build('tap', '基本 Tap', '八個外圈 Tap 依序落下。', tapFixture),
+  build('hold', 'Tap 與 Hold', 'Hold 佔住一手，另一手連續移動。', holdFixture),
+  build('slide', 'Slide 不交接', '直線 Slide 由單手完成。', slideFixture),
+  build('handover', '可行交接', '慢速長圓弧，中途換手比較划算。', handoverFixture),
+  build('touch', 'Touch 區', 'A／B／C／D／E 五種感應區與 Touch Hold。', touchFixture),
+  build('shapes', 'Slide 形狀', '直線、圓弧、V、繞圈、S、Wifi、大 V。', shapesFixture),
+  build('no-solution', '無方案', '三顆同時 Tap 超出雙手容量。', noSolutionFixture),
+  build('invalid', '語法錯誤', '相鄰鍵位不能用直線 Slide，核心回報位置。', invalidFixture),
 ];
 
 export function findSample(id: string | null): Sample | null {

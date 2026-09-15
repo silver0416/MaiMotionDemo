@@ -8,7 +8,6 @@
   import type { AnalyzeStatus, Diagnostic } from '../lib/types';
 
   let textarea: HTMLTextAreaElement | null = $state(null);
-  let loadingSampleId = $state<string | null>(null);
 
   const diagnostics = $derived<Diagnostic[]>(session.response?.diagnostics ?? []);
   const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
@@ -19,10 +18,8 @@
   }
 
   async function loadSample(id: string) {
-    loadingSampleId = id;
     const sample = SAMPLES.find((item) => item.id === id);
     if (sample) await session.loadSample(sample);
-    loadingSampleId = null;
   }
 
   function jumpTo(diagnostic: Diagnostic) {
@@ -37,15 +34,10 @@
 
 <div class="stack">
   <section class="section">
-    <div class="section-title">
-      <span>simai 原文</span>
-      {#if session.stale && session.result}
-        <span class="badge badge--quiet">結果與目前原文不同</span>
-      {/if}
-    </div>
+    <div class="section-title"><span>simai 原文</span></div>
 
     <div class="stack-sm">
-      <label class="field-label" for="simai-source">編輯區（重新生成不會改寫這裡的內容）</label>
+      <label class="field-label sr-only" for="simai-source">simai 原文</label>
       <textarea
         id="simai-source"
         class="textarea"
@@ -68,10 +60,7 @@
       </div>
 
       {#if !session.desktop}
-        <p class="field-hint">
-          目前是瀏覽器預覽，沒有 Rust 核心可呼叫，因此「生成」停用。
-          下方範例顯示的是 fixtures 內預先產生的核心輸出，不是對編輯區內容的分析。
-        </p>
+        <p class="field-hint">瀏覽器預覽沒有 Rust 核心，只能看下方範例的預先輸出。</p>
       {/if}
     </div>
   </section>
@@ -84,7 +73,7 @@
           class="sample"
           class:is-current={session.result?.sampleId === sample.id}
           onclick={() => loadSample(sample.id)}
-          disabled={analyzing || loadingSampleId !== null}
+          disabled={analyzing}
         >
           <span class="sample-title">{sample.title}</span>
           <span class="sample-source mono xsmall">{sample.source}</span>
@@ -92,11 +81,6 @@
         </button>
       {/each}
     </div>
-    <p class="field-hint">
-      {session.desktop
-        ? '載入後會把原文與參數填入編輯區，並立即交給 Rust 重新分析。'
-        : '載入後會把原文與參數填入編輯區，並顯示 fixtures 內附的核心輸出（範例模式）。'}
-    </p>
   </section>
 
   <section class="section">
@@ -110,10 +94,10 @@
     {/if}
 
     {#if analyzing}
-      <p class="small">分析中，請稍候。核心一次只處理一份譜面，舊的回應會被丟棄。</p>
+      <p class="small muted">分析中…</p>
     {:else if !session.result}
       <p class="small muted">
-        尚未產生結果。{session.desktop ? '輸入 simai 原文後按「生成」，' : '選一個範例，'}即可看到譜面與雙手動作。
+        {session.desktop ? '輸入原文後按「生成」。' : '選一個範例。'}
       </p>
     {:else if status}
       <div class="stack-sm">
@@ -123,7 +107,9 @@
           </span>
           <span class="muted xsmall mono">schema v{session.response?.schemaVersion}</span>
         </div>
-        <p class="small">{STATUS_HINT[status] ?? ''}</p>
+        {#if STATUS_HINT[status]}
+          <p class="small">{STATUS_HINT[status]}</p>
+        {/if}
       </div>
     {/if}
 
@@ -132,7 +118,11 @@
         {#each diagnostics as diagnostic, index (index)}
           <li class="diagnostic">
             <div class="row row-wrap">
-              <span class="badge" class:badge--danger={diagnostic.severity === 'error'}>
+              <span
+                class="badge"
+                class:badge--danger={diagnostic.severity === 'error'}
+                class:badge--quiet={diagnostic.severity !== 'error'}
+              >
                 {diagnostic.code}
               </span>
               {#if diagnostic.sourceSpan}
@@ -165,9 +155,6 @@
                 </button>
               {/each}
             </div>
-            {#if session.stale && diagnostic.sourceSpan}
-              <p class="xsmall muted">編輯區內容已變更，位置可能不再對應，請重新生成。</p>
-            {/if}
           </li>
         {/each}
       </ul>
@@ -175,12 +162,13 @@
   </section>
 
   <section class="section">
-    <div class="section-title"><span>支援範圍</span></div>
-    <ul class="small support">
-      {#each SUPPORT_NOTES as item (item)}
-        <li>{item}</li>
+    <div class="section-title"><span>支援語法</span></div>
+    <dl class="support">
+      {#each SUPPORT_NOTES as item (item.title)}
+        <dt>{item.title}</dt>
+        <dd class="mono">{item.body}</dd>
       {/each}
-    </ul>
+    </dl>
   </section>
 </div>
 
@@ -257,9 +245,19 @@
   }
 
   .support {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+    font-size: var(--fs-xs);
+  }
+
+  .support dt {
     color: var(--c-text-dim);
+  }
+
+  .support dd {
+    margin: 0;
+    overflow-wrap: anywhere;
   }
 </style>

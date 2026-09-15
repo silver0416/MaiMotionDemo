@@ -4,11 +4,11 @@ mod parser;
 mod solver;
 
 pub use model::*;
-pub use parser::parse_chart;
+pub use parser::{parse_chart, ParseOutput};
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {
-        schema_version: 1,
+        schema_version: 2,
         request_id: request.request_id,
         status: "invalid".into(),
         diagnostics: vec![],
@@ -31,7 +31,9 @@ pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
             .into();
             response.diagnostics.push(diagnostic);
         }
-        Ok(chart) => {
+        Ok(parsed) => {
+            let chart = parsed.chart;
+            response.diagnostics.extend(parsed.notices);
             match solver::solve(&chart, &request.solver_config) {
                 Ok(solutions) => {
                     response.status = "ok".into();

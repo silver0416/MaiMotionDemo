@@ -29,8 +29,18 @@
         {
           "button": 1,
           "endSeconds": 2.0,
+          "hasHead": true,
           "id": "n0",
           "kind": "slide",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": 2.0,
           "motionStart": 0.5,
           "pathId": "p0",
@@ -44,13 +54,24 @@
             "line": 1,
             "start": 8
           },
-          "timeSeconds": 0.0
+          "timeSeconds": 0.0,
+          "touchArea": null
         },
         {
           "button": 8,
           "endSeconds": 0.5,
+          "hasHead": true,
           "id": "n1",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -64,13 +85,24 @@
             "line": 1,
             "start": 17
           },
-          "timeSeconds": 0.5
+          "timeSeconds": 0.5,
+          "touchArea": null
         },
         {
           "button": 7,
           "endSeconds": 1.0,
+          "hasHead": true,
           "id": "n2",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -84,13 +116,24 @@
             "line": 1,
             "start": 19
           },
-          "timeSeconds": 1.0
+          "timeSeconds": 1.0,
+          "touchArea": null
         },
         {
           "button": 6,
           "endSeconds": 1.5,
+          "hasHead": true,
           "id": "n3",
           "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
           "motionEnd": null,
           "motionStart": null,
           "pathId": null,
@@ -104,11 +147,14 @@
             "line": 1,
             "start": 21
           },
-          "timeSeconds": 1.5
+          "timeSeconds": 1.5,
+          "touchArea": null
         }
       ],
       "paths": [
         {
+          "branches": [],
+          "endButton": 5,
           "id": "p0",
           "samples": [
             {
@@ -121,13 +167,15 @@
               "x": -0.3826834323650897,
               "y": 0.9238795325112867
             }
-          ]
+          ],
+          "shape": "-",
+          "startButton": 1
         }
       ]
     },
     "diagnostics": [],
     "requestId": "slide",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "solutions": [
       {
         "assignments": [

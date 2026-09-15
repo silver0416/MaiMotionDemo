@@ -1,7 +1,7 @@
 {
   "request": {
     "firstSeconds": 0.0,
-    "requestId": "tap",
+    "requestId": "touch",
     "solverConfig": {
       "allowHandover": true,
       "beamWidth": 128,
@@ -20,18 +20,18 @@
       "speedWeight": 1.0,
       "topK": 3
     },
-    "source": "(120){4}1,2,3,4,5,6,7,8,E"
+    "source": "(120){4}A1,B3,C,D5,E7,Ch[4:2],E"
   },
   "response": {
     "chart": {
-      "durationSeconds": 4.0,
+      "durationSeconds": 3.5,
       "notes": [
         {
           "button": 1,
           "endSeconds": 0.0,
           "hasHead": true,
           "id": "n0",
-          "kind": "tap",
+          "kind": "touch",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -45,55 +45,55 @@
           "motionStart": null,
           "pathId": null,
           "position": {
-            "x": 0.38268343236508984,
-            "y": -0.9238795325112867
+            "x": 0.3444150891285809,
+            "y": -0.831491579260158
           },
           "sourceSpan": {
             "column": 9,
-            "end": 9,
+            "end": 10,
             "line": 1,
             "start": 8
           },
           "timeSeconds": 0.0,
-          "touchArea": null
-        },
-        {
-          "button": 2,
-          "endSeconds": 0.5,
-          "hasHead": true,
-          "id": "n1",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.9238795325112867,
-            "y": -0.3826834323650898
-          },
-          "sourceSpan": {
-            "column": 11,
-            "end": 11,
-            "line": 1,
-            "start": 10
-          },
-          "timeSeconds": 0.5,
-          "touchArea": null
+          "touchArea": "A"
         },
         {
           "button": 3,
+          "endSeconds": 0.5,
+          "hasHead": true,
+          "id": "n1",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.3880294036547404,
+            "y": 0.1607270415933377
+          },
+          "sourceSpan": {
+            "column": 12,
+            "end": 13,
+            "line": 1,
+            "start": 11
+          },
+          "timeSeconds": 0.5,
+          "touchArea": "B"
+        },
+        {
+          "button": 0,
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n2",
-          "kind": "tap",
+          "kind": "touch",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -107,39 +107,8 @@
           "motionStart": null,
           "pathId": null,
           "position": {
-            "x": 0.9238795325112867,
-            "y": 0.3826834323650898
-          },
-          "sourceSpan": {
-            "column": 13,
-            "end": 13,
-            "line": 1,
-            "start": 12
-          },
-          "timeSeconds": 1.0,
-          "touchArea": null
-        },
-        {
-          "button": 4,
-          "endSeconds": 1.5,
-          "hasHead": true,
-          "id": "n3",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.38268343236508984,
-            "y": 0.9238795325112867
+            "x": 0.0,
+            "y": 0.0
           },
           "sourceSpan": {
             "column": 15,
@@ -147,15 +116,15 @@
             "line": 1,
             "start": 14
           },
-          "timeSeconds": 1.5,
-          "touchArea": null
+          "timeSeconds": 1.0,
+          "touchArea": "C"
         },
         {
           "button": 5,
-          "endSeconds": 2.0,
+          "endSeconds": 1.5,
           "hasHead": true,
-          "id": "n4",
-          "kind": "tap",
+          "id": "n3",
+          "kind": "touch",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -169,55 +138,24 @@
           "motionStart": null,
           "pathId": null,
           "position": {
-            "x": -0.3826834323650897,
-            "y": 0.9238795325112867
+            "x": 5.5109105961630896e-17,
+            "y": 0.9
           },
           "sourceSpan": {
             "column": 17,
-            "end": 17,
+            "end": 18,
             "line": 1,
             "start": 16
           },
-          "timeSeconds": 2.0,
-          "touchArea": null
-        },
-        {
-          "button": 6,
-          "endSeconds": 2.5,
-          "hasHead": true,
-          "id": "n5",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": -0.9238795325112867,
-            "y": 0.3826834323650899
-          },
-          "sourceSpan": {
-            "column": 19,
-            "end": 19,
-            "line": 1,
-            "start": 18
-          },
-          "timeSeconds": 2.5,
-          "touchArea": null
+          "timeSeconds": 1.5,
+          "touchArea": "D"
         },
         {
           "button": 7,
-          "endSeconds": 3.0,
+          "endSeconds": 2.0,
           "hasHead": true,
-          "id": "n6",
-          "kind": "tap",
+          "id": "n4",
+          "kind": "touch",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -231,24 +169,24 @@
           "motionStart": null,
           "pathId": null,
           "position": {
-            "x": -0.9238795325112868,
-            "y": -0.38268343236508967
+            "x": -0.42,
+            "y": 5.143516556418883e-17
           },
           "sourceSpan": {
-            "column": 21,
+            "column": 20,
             "end": 21,
             "line": 1,
-            "start": 20
+            "start": 19
           },
-          "timeSeconds": 3.0,
-          "touchArea": null
+          "timeSeconds": 2.0,
+          "touchArea": "E"
         },
         {
-          "button": 8,
+          "button": 0,
           "endSeconds": 3.5,
           "hasHead": true,
-          "id": "n7",
-          "kind": "tap",
+          "id": "n5",
+          "kind": "touchHold",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -262,23 +200,23 @@
           "motionStart": null,
           "pathId": null,
           "position": {
-            "x": -0.38268343236509034,
-            "y": -0.9238795325112865
+            "x": 0.0,
+            "y": 0.0
           },
           "sourceSpan": {
             "column": 23,
-            "end": 23,
+            "end": 29,
             "line": 1,
             "start": 22
           },
-          "timeSeconds": 3.5,
-          "touchArea": null
+          "timeSeconds": 2.5,
+          "touchArea": "C"
         }
       ],
       "paths": []
     },
     "diagnostics": [],
-    "requestId": "tap",
+    "requestId": "touch",
     "schemaVersion": 2,
     "solutions": [
       {
@@ -313,31 +251,17 @@
           },
           {
             "endSeconds": 2.03,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n4",
             "part": "contact",
             "startSeconds": 2.0
           },
           {
-            "endSeconds": 2.53,
+            "endSeconds": 3.5,
             "hand": "L",
             "noteId": "n5",
             "part": "contact",
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.03,
-            "hand": "L",
-            "noteId": "n6",
-            "part": "contact",
-            "startSeconds": 3.0
-          },
-          {
-            "endSeconds": 3.53,
-            "hand": "L",
-            "noteId": "n7",
-            "part": "contact",
-            "startSeconds": 3.5
           }
         ],
         "configSnapshot": {
@@ -360,17 +284,17 @@
         },
         "costBreakdown": {
           "cross": 0.0,
-          "distance": 6.122934917841436,
+          "distance": 4.098846537387009,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.3041856253356742,
-          "speed": 0.5144549204310754
+          "side": 0.0,
+          "speed": 0.3277138009713248
         },
         "handovers": [],
         "id": "solution-1",
         "leftSegments": [
           {
-            "endSeconds": 2.5,
+            "endSeconds": 2.0,
             "mode": "travel",
             "noteId": null,
             "samples": [
@@ -380,120 +304,66 @@
                 "y": -0.38268343236508967
               },
               {
-                "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "timeSeconds": 2.0,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 2.53,
+            "endSeconds": 2.03,
             "mode": "tap",
+            "noteId": "n4",
+            "samples": [
+              {
+                "timeSeconds": 2.0,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
+              },
+              {
+                "timeSeconds": 2.03,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
+              }
+            ],
+            "startSeconds": 2.0
+          },
+          {
+            "endSeconds": 2.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 2.03,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
+              },
+              {
+                "timeSeconds": 2.5,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 2.03
+          },
+          {
+            "endSeconds": 3.5,
+            "mode": "hold",
             "noteId": "n5",
             "samples": [
               {
                 "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "x": 0.0,
+                "y": 0.0
               },
               {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "timeSeconds": 3.5,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
-              },
-              {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              }
-            ],
-            "startSeconds": 2.53
-          },
-          {
-            "endSeconds": 3.03,
-            "mode": "tap",
-            "noteId": "n6",
-            "samples": [
-              {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              },
-              {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              }
-            ],
-            "startSeconds": 3.0
-          },
-          {
-            "endSeconds": 3.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              },
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.03
-          },
-          {
-            "endSeconds": 3.53,
-            "mode": "tap",
-            "noteId": "n7",
-            "samples": [
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.5
-          },
-          {
-            "endSeconds": 4.0,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 4.0,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.53
           }
         ],
         "rightSegments": [
@@ -509,8 +379,8 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": -1.0
@@ -522,13 +392,13 @@
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": 0.0
@@ -540,13 +410,13 @@
             "samples": [
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.03
@@ -558,13 +428,13 @@
             "samples": [
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.5
@@ -576,13 +446,13 @@
             "samples": [
               {
                 "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 0.53
@@ -594,13 +464,13 @@
             "samples": [
               {
                 "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               },
               {
                 "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 1.0
@@ -612,13 +482,13 @@
             "samples": [
               {
                 "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               },
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.03
@@ -630,73 +500,37 @@
             "samples": [
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
                 "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.5
           },
           {
-            "endSeconds": 2.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.53
-          },
-          {
-            "endSeconds": 2.03,
-            "mode": "tap",
-            "noteId": "n4",
-            "samples": [
-              {
-                "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 2.0
-          },
-          {
-            "endSeconds": 4.0,
+            "endSeconds": 3.5,
             "mode": "idle",
             "noteId": null,
             "samples": [
               {
-                "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "timeSeconds": 1.53,
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
-                "timeSeconds": 4.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "timeSeconds": 3.5,
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
-            "startSeconds": 2.03
+            "startSeconds": 1.53
           }
         ],
-        "totalCost": 6.941575463608185,
+        "totalCost": 4.426560338358334,
         "warnings": [
           "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
@@ -720,7 +554,7 @@
           },
           {
             "endSeconds": 1.03,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n2",
             "part": "contact",
             "startSeconds": 1.0
@@ -740,25 +574,11 @@
             "startSeconds": 2.0
           },
           {
-            "endSeconds": 2.53,
+            "endSeconds": 3.5,
             "hand": "L",
             "noteId": "n5",
             "part": "contact",
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.03,
-            "hand": "L",
-            "noteId": "n6",
-            "part": "contact",
-            "startSeconds": 3.0
-          },
-          {
-            "endSeconds": 3.53,
-            "hand": "L",
-            "noteId": "n7",
-            "part": "contact",
-            "startSeconds": 3.5
           }
         ],
         "configSnapshot": {
@@ -781,17 +601,17 @@
         },
         "costBreakdown": {
           "cross": 0.0,
-          "distance": 6.77178161548435,
+          "distance": 4.40104127767499,
           "handover": 0.0,
           "repetition": 0.0,
           "side": 0.0,
-          "speed": 0.5456611149972616
+          "speed": 0.27573480423814595
         },
         "handovers": [],
         "id": "solution-2",
         "leftSegments": [
           {
-            "endSeconds": 2.0,
+            "endSeconds": 1.0,
             "mode": "travel",
             "noteId": null,
             "samples": [
@@ -801,12 +621,48 @@
                 "y": -0.38268343236508967
               },
               {
-                "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "timeSeconds": 1.0,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 1.03,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.03,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 1.0
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.03,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 2.0,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
+              }
+            ],
+            "startSeconds": 1.03
           },
           {
             "endSeconds": 2.03,
@@ -815,13 +671,13 @@
             "samples": [
               {
                 "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               },
               {
                 "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               }
             ],
             "startSeconds": 2.0
@@ -833,124 +689,34 @@
             "samples": [
               {
                 "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               },
               {
                 "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 2.03
           },
           {
-            "endSeconds": 2.53,
-            "mode": "tap",
+            "endSeconds": 3.5,
+            "mode": "hold",
             "noteId": "n5",
             "samples": [
               {
                 "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "x": 0.0,
+                "y": 0.0
               },
               {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "timeSeconds": 3.5,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
-              },
-              {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              }
-            ],
-            "startSeconds": 2.53
-          },
-          {
-            "endSeconds": 3.03,
-            "mode": "tap",
-            "noteId": "n6",
-            "samples": [
-              {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              },
-              {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              }
-            ],
-            "startSeconds": 3.0
-          },
-          {
-            "endSeconds": 3.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
-              },
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.03
-          },
-          {
-            "endSeconds": 3.53,
-            "mode": "tap",
-            "noteId": "n7",
-            "samples": [
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.5
-          },
-          {
-            "endSeconds": 4.0,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 4.0,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.53
           }
         ],
         "rightSegments": [
@@ -966,8 +732,8 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": -1.0
@@ -979,13 +745,13 @@
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": 0.0
@@ -997,13 +763,13 @@
             "samples": [
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.03
@@ -1015,52 +781,16 @@
             "samples": [
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.53
-          },
-          {
-            "endSeconds": 1.03,
-            "mode": "tap",
-            "noteId": "n2",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 1.0
           },
           {
             "endSeconds": 1.5,
@@ -1068,17 +798,17 @@
             "noteId": null,
             "samples": [
               {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "timeSeconds": 0.53,
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
-            "startSeconds": 1.03
+            "startSeconds": 0.53
           },
           {
             "endSeconds": 1.53,
@@ -1087,37 +817,37 @@
             "samples": [
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
                 "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.5
           },
           {
-            "endSeconds": 4.0,
+            "endSeconds": 3.5,
             "mode": "idle",
             "noteId": null,
             "samples": [
               {
                 "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
-                "timeSeconds": 4.0,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "timeSeconds": 3.5,
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.53
           }
         ],
-        "totalCost": 7.317442730481612,
+        "totalCost": 4.676776081913136,
         "warnings": [
           "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
@@ -1155,31 +885,17 @@
           },
           {
             "endSeconds": 2.03,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n4",
             "part": "contact",
             "startSeconds": 2.0
           },
           {
-            "endSeconds": 2.53,
+            "endSeconds": 3.5,
             "hand": "R",
             "noteId": "n5",
             "part": "contact",
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.03,
-            "hand": "L",
-            "noteId": "n6",
-            "part": "contact",
-            "startSeconds": 3.0
-          },
-          {
-            "endSeconds": 3.53,
-            "hand": "R",
-            "noteId": "n7",
-            "part": "contact",
-            "startSeconds": 3.5
           }
         ],
         "configSnapshot": {
@@ -1202,18 +918,18 @@
         },
         "costBreakdown": {
           "cross": 0.0,
-          "distance": 6.006414750754172,
+          "distance": 4.578846537387009,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.7636721639250816,
-          "speed": 0.554963295048886
+          "side": 0.0,
+          "speed": 0.3564470758122987
         },
         "handovers": [],
         "id": "solution-3",
         "leftSegments": [
           {
-            "endSeconds": 3.0,
-            "mode": "idle",
+            "endSeconds": 2.0,
+            "mode": "travel",
             "noteId": null,
             "samples": [
               {
@@ -1222,48 +938,48 @@
                 "y": -0.38268343236508967
               },
               {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
+                "timeSeconds": 2.0,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 3.03,
+            "endSeconds": 2.03,
             "mode": "tap",
-            "noteId": "n6",
+            "noteId": "n4",
             "samples": [
               {
-                "timeSeconds": 3.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
+                "timeSeconds": 2.0,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               },
               {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
+                "timeSeconds": 2.03,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               }
             ],
-            "startSeconds": 3.0
+            "startSeconds": 2.0
           },
           {
-            "endSeconds": 4.0,
+            "endSeconds": 3.5,
             "mode": "idle",
             "noteId": null,
             "samples": [
               {
-                "timeSeconds": 3.03,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
+                "timeSeconds": 2.03,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               },
               {
-                "timeSeconds": 4.0,
-                "x": -0.9238795325112868,
-                "y": -0.38268343236508967
+                "timeSeconds": 3.5,
+                "x": -0.42,
+                "y": 5.143516556418883e-17
               }
             ],
-            "startSeconds": 3.03
+            "startSeconds": 2.03
           }
         ],
         "rightSegments": [
@@ -1279,8 +995,8 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": -1.0
@@ -1292,13 +1008,13 @@
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               }
             ],
             "startSeconds": 0.0
@@ -1310,13 +1026,13 @@
             "samples": [
               {
                 "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.3444150891285809,
+                "y": -0.831491579260158
               },
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.03
@@ -1328,13 +1044,13 @@
             "samples": [
               {
                 "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               }
             ],
             "startSeconds": 0.5
@@ -1346,13 +1062,13 @@
             "samples": [
               {
                 "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
+                "x": 0.3880294036547404,
+                "y": 0.1607270415933377
               },
               {
                 "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 0.53
@@ -1364,13 +1080,13 @@
             "samples": [
               {
                 "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               },
               {
                 "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 1.0
@@ -1382,13 +1098,13 @@
             "samples": [
               {
                 "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
+                "x": 0.0,
+                "y": 0.0
               },
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.03
@@ -1400,52 +1116,16 @@
             "samples": [
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
                 "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               }
             ],
             "startSeconds": 1.5
-          },
-          {
-            "endSeconds": 2.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.53
-          },
-          {
-            "endSeconds": 2.03,
-            "mode": "tap",
-            "noteId": "n4",
-            "samples": [
-              {
-                "timeSeconds": 2.0,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 2.0
           },
           {
             "endSeconds": 2.5,
@@ -1453,92 +1133,38 @@
             "noteId": null,
             "samples": [
               {
-                "timeSeconds": 2.03,
-                "x": -0.3826834323650897,
-                "y": 0.9238795325112867
+                "timeSeconds": 1.53,
+                "x": 5.5109105961630896e-17,
+                "y": 0.9
               },
               {
                 "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "x": 0.0,
+                "y": 0.0
               }
             ],
-            "startSeconds": 2.03
+            "startSeconds": 1.53
           },
           {
-            "endSeconds": 2.53,
-            "mode": "tap",
+            "endSeconds": 3.5,
+            "mode": "hold",
             "noteId": "n5",
             "samples": [
               {
                 "timeSeconds": 2.5,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "x": 0.0,
+                "y": 0.0
               },
               {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
+                "timeSeconds": 3.5,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 2.5
-          },
-          {
-            "endSeconds": 3.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 2.53,
-                "x": -0.9238795325112867,
-                "y": 0.3826834323650899
-              },
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 2.53
-          },
-          {
-            "endSeconds": 3.53,
-            "mode": "tap",
-            "noteId": "n7",
-            "samples": [
-              {
-                "timeSeconds": 3.5,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.5
-          },
-          {
-            "endSeconds": 4.0,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 3.53,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              },
-              {
-                "timeSeconds": 4.0,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
-              }
-            ],
-            "startSeconds": 3.53
           }
         ],
-        "totalCost": 7.32505020972814,
+        "totalCost": 4.935293613199308,
         "warnings": [
           "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"

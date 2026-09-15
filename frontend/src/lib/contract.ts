@@ -88,7 +88,31 @@ export const KIND_LABEL: Record<string, string> = {
   tap: 'Tap',
   hold: 'Hold',
   slide: 'Slide',
+  touch: 'Touch',
+  touchHold: 'Touch Hold',
 };
+
+/** 形狀符號 → 一般人看得懂的名稱。 */
+export const SHAPE_LABEL: Record<string, string> = {
+  '-': '直線',
+  '^': '圓弧',
+  '<': '逆向圓弧',
+  '>': '順向圓弧',
+  v: '折返中心',
+  V: '大 V',
+  p: '左繞圈',
+  q: '右繞圈',
+  pp: '左大繞圈',
+  qq: '右大繞圈',
+  s: 'S 形',
+  z: 'Z 形',
+  w: 'Wifi',
+};
+
+export function shapeLabel(shape: string): string {
+  if (SHAPE_LABEL[shape]) return SHAPE_LABEL[shape];
+  return shape;
+}
 
 export const STATUS_LABEL: Record<AnalyzeStatus, string> = {
   ok: '分析完成',
@@ -99,22 +123,25 @@ export const STATUS_LABEL: Record<AnalyzeStatus, string> = {
 };
 
 export const STATUS_HINT: Record<AnalyzeStatus, string> = {
-  ok: '核心已回傳譜面與候選方案。',
-  invalid: '原文有語法問題；下方診斷標出行列位置，原文不會被改寫。',
-  unsupported: '這段語法目前不在 Demo 支援範圍，核心不會改成 Tap 帶過。',
-  no_solution: '譜面合法但這組參數下找不到連續可行的雙手動作；只顯示譜面層，不畫假的雙手結果。',
-  search_limit: 'Beam Search 受計算預算限制而停止；可調大搜尋寬度或縮短片段再試。',
+  ok: '',
+  invalid: '下方診斷標出行列位置。',
+  unsupported: '這段語法不在支援範圍，核心不會改成 Tap 帶過。',
+  no_solution: '譜面合法，但這組參數找不到可行的雙手動作，因此只顯示譜面層。',
+  search_limit: '已達計算預算；可調大搜尋寬度或縮短片段。',
 };
 
 export const HAND_LABEL: Record<Hand, string> = { L: '左手', R: '右手' };
 
-export const SUPPORT_NOTES = [
-  'BPM `(120)`、分割 `{4}`、固定秒數分割 `{#0.25}`、逗號推進、結束符號 `E`。',
-  '外圈 Tap `1`–`8`；同時音用 `/`，純 Tap 可直接連寫，例如 `13`。',
-  'Hold `8h[4:4]`、`8h[#1.5]`、`8h[120#4:1]`。',
-  'Slide 直線 `-` 與圓弧 `^` `<` `>`，長度寫法 `[4:3]` 或 `[等待秒##移動秒]`。',
-  '尚未支援：Touch／Wifi／Break／EX、連結與其他修飾；遇到會回報位置與原因。',
-  '單次上限 500 個音符、600 秒。',
+export const SUPPORT_NOTES: { title: string; body: string }[] = [
+  { title: '節奏', body: '(120) {4} {#0.25} , ` E ||註解' },
+  { title: 'Tap', body: '1–8，同時音 / 或直接連寫；修飾 b x $ $$' },
+  { title: 'Hold', body: '1h[4:1] 1h[#1.5] 1h[120#4:1]' },
+  { title: 'Touch', body: 'A1–A8 B1–B8 C D1–D8 E1–E8，Touch Hold Ch[4:1]，煙火 f' },
+  { title: 'Slide 形狀', body: '- ^ < > v V p q pp qq s z w' },
+  { title: 'Slide 長度', body: '[4:1] [#1.5] [160#8:1] [等待##移動]' },
+  { title: 'Slide 組合', body: '連續 1-3-5[4:1]、接續 1-3[4:1]-5[4:1]、同頭 *、無頭 ? !' },
+  { title: '檔案', body: '可直接貼 maidata.txt，自動取難度最高的 &inote_n' },
+  { title: '上限', body: '10000 個音符、3600 秒；超出計算預算會回報 search_limit' },
 ];
 
 export interface ConfigIssue {

@@ -85,47 +85,30 @@
 <div class="app">
   <header class="app-bar">
     <h1>MaiMotionDemo</h1>
-    <span class="muted small">simai 雙手動作檢視器</span>
     <span class="spacer"></span>
-    {#if session.desktop}
-      <span class="badge badge--live">桌面版・呼叫 Rust 核心</span>
-    {:else}
-      <span class="badge badge--sample">瀏覽器預覽・僅能顯示範例</span>
+    <!-- 桌面版是常態，不需要標記；只有不能生成的瀏覽器預覽要講。 -->
+    {#if !session.desktop}
+      <span class="badge badge--sample">瀏覽器預覽</span>
     {/if}
-    {#if status}
+    {#if isSample}
+      <span class="badge badge--sample">範例{sample ? `・${sample.title}` : ''}</span>
+    {/if}
+    {#if session.phase === 'analyzing'}
+      <span class="badge badge--quiet">分析中</span>
+    {:else if session.stale && session.result}
+      <span class="badge badge--quiet">結果已過期</span>
+    {/if}
+    {#if session.errorMessage}
+      <span class="badge badge--danger">未完成</span>
+    {:else if status}
       <span class="badge" class:badge--danger={status !== 'ok'} class:badge--quiet={status === 'ok'}>
         {STATUS_LABEL[status] ?? status}
       </span>
-    {/if}
-    {#if session.phase === 'analyzing'}
-      <span class="badge badge--quiet">分析中…</span>
     {/if}
   </header>
 
   <main class="layout">
     <section class="stage-column">
-      {#if isSample}
-        <div class="alert alert--warn banner">
-          <span class="badge badge--sample">範例模式</span>
-          <span>
-            畫面顯示的是 fixtures 內預先產生的核心輸出{sample ? `（${sample.title}）` : ''}，
-            不是對編輯區內容的分析。正式生成必須在桌面版呼叫 Rust。
-          </span>
-        </div>
-      {/if}
-      {#if session.stale && session.result}
-        <div class="alert banner">
-          <span class="badge badge--quiet">結果已過期</span>
-          <span>編輯區的原文或參數已變更，下面顯示的仍是上一次的結果。</span>
-        </div>
-      {/if}
-      {#if session.errorMessage}
-        <div class="alert alert--error banner">
-          <span class="badge badge--danger">未完成</span>
-          <span>{session.errorMessage}</span>
-        </div>
-      {/if}
-
       <div class="stage-area">
         <DiscStage />
       </div>
@@ -177,6 +160,7 @@
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
+    white-space: nowrap;
     background: var(--c-panel);
     border-bottom: 1px solid var(--c-border);
   }
@@ -190,8 +174,8 @@
     min-height: 0;
   }
 
-  /* 直向 flex：橫幅可能有 0–3 條，盤面一律吃剩下的空間，
-     播放列固定不縮，因此任何視窗尺寸下播放控制都留在畫面內。 */
+  /* 狀態一律用標題列的標記表示，盤面欄位的高度因此固定，
+     切換範例時盤面不會被重新縮放（那正是先前的閃爍來源）。 */
   .stage-column {
     display: flex;
     flex-direction: column;
@@ -211,14 +195,6 @@
     flex: 1 1 auto;
     min-height: 0;
     min-width: 0;
-  }
-
-  .banner {
-    display: flex;
-    flex: none;
-    align-items: baseline;
-    gap: var(--space-2);
-    flex-wrap: wrap;
   }
 
   .side-column {

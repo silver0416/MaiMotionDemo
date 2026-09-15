@@ -1,9 +1,75 @@
 use crate::geometry::button;
 use crate::*;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const EPS: f64 = 1e-8;
+
+/// 計算預算。狀態複製已是常數成本，上限因此由整體工作量與時間決定，
+/// 不再靠音符數量的硬性上限來遮掩搜尋成本。
+/// MAX_TASKS 同時是記憶體防線：每個事件在 beam 中約佔 26 KB，
+/// 實測一首完整譜面（857 個音符、約 1100 個事件）峰值只有 19 MB。
+const MAX_TASKS: usize = 50_000;
+const MAX_EXPANSIONS: u64 = 120_000_000;
+const BUDGET: Duration = Duration::from_secs(20);
+
+/// 不可變的單向串列。Beam Search 每展開一步就要複製一份狀態；用結構共享把
+/// 複製成本壓到 O(1)，整體搜尋才會隨音符數線性成長，而不是平方成長。
+struct Chain<T> {
+    head: Option<Arc<Link<T>>>,
+    len: usize,
+}
+struct Link<T> {
+    prev: Chain<T>,
+    value: T,
+}
+impl<T> Clone for Chain<T> {
+    fn clone(&self) -> Self {
+        Self {
+            head: self.head.clone(),
+            len: self.len,
+        }
+    }
+}
+impl<T> Default for Chain<T> {
+    fn default() -> Self {
+        Self { head: None, len: 0 }
+    }
+}
+impl<T: Clone> Chain<T> {
+    fn push(&self, value: T) -> Self {
+        Self {
+            head: Some(Arc::new(Link {
+                prev: self.clone(),
+                value,
+            })),
+            len: self.len + 1,
+        }
+    }
+    fn to_vec(&self) -> Vec<T> {
+        let mut out = Vec::with_capacity(self.len);
+        let mut cursor = self.head.as_ref();
+        while let Some(link) = cursor {
+            out.push(link.value.clone());
+            cursor = link.prev.head.as_ref();
+        }
+        out.reverse();
+        out
+    }
+}
+/// 逐節釋放，長譜面的串列才不會在遞迴 drop 時爆堆疊。
+impl<T> Drop for Chain<T> {
+    fn drop(&mut self) {
+        let mut cursor = self.head.take();
+        while let Some(link) = cursor {
+            match Arc::try_unwrap(link) {
+                Ok(mut link) => cursor = link.prev.head.take(),
+                Err(_) => break,
+            }
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Task {
@@ -19,14 +85,15 @@ struct Arm {
     point: Point,
     free: f64,
     last_tap: Option<f64>,
-    segments: Vec<MotionSegment>,
+    segments: Chain<MotionSegment>,
 }
 #[derive(Clone)]
 struct State {
     arms: [Arm; 2],
     cost: CostBreakdown,
-    assignments: Vec<Assignment>,
-    handovers: Vec<Handover>,
+    assignments: Chain<Assignment>,
+    handovers: Chain<Handover>,
+    /// 只保留還在進行中的 Slide；結束的項目每個時間點清掉，複製成本才不會隨譜面長度成長。
     owners: BTreeMap<usize, Hand>,
     last_handover: BTreeMap<usize, f64>,
 }
@@ -56,31 +123,35 @@ fn path_samples(
 fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
     let mut tasks = vec![];
     for (i, n) in chart.notes.iter().enumerate() {
-        let end = if n.kind == "hold" {
+        let holding = n.kind == "hold" || n.kind == "touchHold";
+        let end = if holding {
             n.end_seconds
         } else {
             n.time_seconds + c.contact_seconds
         };
-        tasks.push(Task {
-            note: i,
-            start: n.time_seconds,
-            end,
-            mode: if n.kind == "hold" { "hold" } else { "tap" },
-            samples: vec![
-                MotionSample::new(n.time_seconds, n.position),
-                MotionSample::new(end, n.position),
-            ],
-            continuation: false,
-        });
+        // `?` `!` 與 `*` 的第二條之後沒有起點觸碰，不建立接觸任務。
+        if n.has_head {
+            tasks.push(Task {
+                note: i,
+                start: n.time_seconds,
+                end,
+                mode: if holding { "hold" } else { "tap" },
+                samples: vec![
+                    MotionSample::new(n.time_seconds, n.position),
+                    MotionSample::new(end, n.position),
+                ],
+                continuation: false,
+            });
+        }
         if let Some(path_id) = &n.path_id {
             let path = chart.paths.iter().find(|p| &p.id == path_id).unwrap();
             let start = n.motion_start.unwrap();
             let end = n.motion_end.unwrap();
             let count = ((end - start) / c.checkpoint_seconds).ceil() as usize;
-            if count > 12000 {
+            if count > MAX_TASKS {
                 return Err(Diagnostic::plain(
                     "search_limit",
-                    "Slide checkpoints 超出 Demo 計算預算".into(),
+                    "單條 Slide 的 checkpoints 超出計算預算，請調大搜尋取樣間隔".into(),
                 ));
             }
             // Include note onsets so a hand can be released in time for a simultaneous event.
@@ -116,10 +187,10 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
             .then_with(|| a.mode.cmp(b.mode))
             .then_with(|| a.note.cmp(&b.note))
     });
-    if tasks.len() > 12000 {
+    if tasks.len() > MAX_TASKS {
         return Err(Diagnostic::plain(
             "search_limit",
-            "事件數超出 Demo 計算預算，請縮短片段".into(),
+            "事件數超出計算預算，請縮短片段或調大搜尋取樣間隔".into(),
         ));
     }
     Ok(tasks)
@@ -154,13 +225,34 @@ fn add_segment(
     let last = samples.last().unwrap();
     arm.point = last.point();
     arm.free = last.time_seconds;
-    arm.segments.push(MotionSegment {
+    arm.segments = arm.segments.push(MotionSegment {
         mode: mode.into(),
         note_id,
         start_seconds: first.time_seconds,
         end_seconds: last.time_seconds,
         samples,
     });
+}
+
+/// 手在 time 當下的位置。time 落在目前這段動作之內時要插值，不能只看段尾。
+fn arm_point_at(arm: &Arm, time: f64) -> Point {
+    let Some(link) = arm.segments.head.as_ref() else {
+        return arm.point;
+    };
+    let samples = &link.value.samples;
+    if time <= samples[0].time_seconds {
+        return samples[0].point();
+    }
+    let index = samples
+        .partition_point(|s| s.time_seconds < time)
+        .clamp(1, samples.len() - 1);
+    let (a, b) = (&samples[index - 1], &samples[index]);
+    let dt = b.time_seconds - a.time_seconds;
+    if dt <= EPS {
+        return b.point();
+    }
+    a.point()
+        .lerp(b.point(), ((time - a.time_seconds) / dt).clamp(0.0, 1.0))
 }
 
 fn assign(
@@ -174,6 +266,20 @@ fn assign(
     let n = &chart.notes[task.note];
     let start = task.samples[0].point();
     if state.arms[idx].free > task.start + EPS {
+        // 手上已有任務，但接觸點就在同一個位置：同一隻手一次接觸即可滿足兩者
+        // （例如 Slide 起點上的 Break Tap）。不另外產生軌跡段，也不另外計成本。
+        if task.mode == "tap" && arm_point_at(&state.arms[idx], task.start).distance(start) <= EPS {
+            let mut next = state.clone();
+            next.arms[idx].last_tap = Some(task.start);
+            next.assignments = next.assignments.push(Assignment {
+                note_id: n.id.clone(),
+                part: if n.kind == "slide" { "head" } else { "contact" }.into(),
+                hand,
+                start_seconds: task.start,
+                end_seconds: task.end,
+            });
+            return Some(next);
+        }
         return None;
     }
     if task.start - state.arms[idx].free <= EPS && state.arms[idx].point.distance(start) > EPS {
@@ -231,7 +337,7 @@ fn assign(
         &mut next.cost,
         c,
     );
-    next.assignments.push(Assignment {
+    next.assignments = next.assignments.push(Assignment {
         note_id: n.id.clone(),
         part: if task.mode == "slide" {
             "slide"
@@ -272,14 +378,14 @@ fn assign(
             &mut next.cost,
             c,
         );
-        next.assignments.push(Assignment {
+        next.assignments = next.assignments.push(Assignment {
             note_id: n.id.clone(),
             part: "slide".into(),
             hand: old,
             start_seconds: task.start,
             end_seconds: until,
         });
-        next.handovers.push(Handover {
+        next.handovers = next.handovers.push(Handover {
             note_id: n.id.clone(),
             from: old,
             to: hand,
@@ -292,44 +398,81 @@ fn assign(
     Some(next)
 }
 
-fn position(segments: &[MotionSegment], time: f64) -> Point {
-    let i = segments
-        .partition_point(|s| s.end_seconds < time)
-        .min(segments.len() - 1);
-    let samples = &segments[i].samples;
-    let j = samples
-        .partition_point(|s| s.time_seconds < time)
-        .clamp(1, samples.len() - 1);
-    let a = &samples[j - 1];
-    let b = &samples[j];
-    let dt = b.time_seconds - a.time_seconds;
-    a.point().lerp(
-        b.point(),
-        if dt <= EPS {
-            1.0
-        } else {
-            ((time - a.time_seconds) / dt).clamp(0.0, 1.0)
-        },
-    )
+/// 把連續的動作段攤平成單調的取樣序列，供交叉成本以線性掃描計算。
+fn flatten(segments: &[MotionSegment]) -> Vec<MotionSample> {
+    let mut out: Vec<MotionSample> = vec![];
+    for segment in segments {
+        for sample in &segment.samples {
+            if out
+                .last()
+                .is_some_and(|last| (last.time_seconds - sample.time_seconds).abs() < EPS)
+            {
+                continue;
+            }
+            out.push(sample.clone());
+        }
+    }
+    out
 }
 
-fn cross_cost(arms: &[Arm; 2], c: &SolverConfig) -> f64 {
-    let mut times = arms
-        .iter()
-        .flat_map(|a| {
-            a.segments
-                .iter()
-                .flat_map(|s| s.samples.iter().map(|p| p.time_seconds))
-        })
-        .collect::<Vec<_>>();
-    times.sort_by(f64::total_cmp);
-    times.dedup_by(|a, b| (*a - *b).abs() < EPS);
+/// 查詢時間單調遞增，游標只會前進，因此整段掃描是線性的。
+fn advance(samples: &[MotionSample], cursor: &mut usize, time: f64) -> Point {
+    while *cursor + 1 < samples.len() && samples[*cursor + 1].time_seconds < time {
+        *cursor += 1;
+    }
+    let a = &samples[*cursor];
+    let b = &samples[(*cursor + 1).min(samples.len() - 1)];
+    let dt = b.time_seconds - a.time_seconds;
+    if dt <= EPS {
+        return b.point();
+    }
+    a.point()
+        .lerp(b.point(), ((time - a.time_seconds) / dt).clamp(0.0, 1.0))
+}
+
+fn cross_cost(left: &[MotionSegment], right: &[MotionSegment], c: &SolverConfig) -> f64 {
+    let (left, right) = (flatten(left), flatten(right));
+    if left.is_empty() || right.is_empty() {
+        return 0.0;
+    }
+    // 兩手取樣時間各自遞增，直接合併成共同的積分格點。
+    let mut times = Vec::with_capacity(left.len() + right.len());
+    let (mut i, mut j) = (0, 0);
+    while i < left.len() || j < right.len() {
+        let t = match (left.get(i), right.get(j)) {
+            (Some(a), Some(b)) => {
+                if a.time_seconds <= b.time_seconds {
+                    i += 1;
+                    a.time_seconds
+                } else {
+                    j += 1;
+                    b.time_seconds
+                }
+            }
+            (Some(a), None) => {
+                i += 1;
+                a.time_seconds
+            }
+            (None, Some(b)) => {
+                j += 1;
+                b.time_seconds
+            }
+            (None, None) => break,
+        };
+        if times
+            .last()
+            .is_none_or(|last: &f64| (t - *last).abs() >= EPS)
+        {
+            times.push(t);
+        }
+    }
     let mut cost = 0.0;
-    for p in times.windows(2) {
-        for i in 0..4 {
-            let t = p[0] + (p[1] - p[0]) * (i as f64 + 0.5) / 4.0;
-            let x = position(&arms[0].segments, t).x - position(&arms[1].segments, t).x;
-            cost += x.max(0.0).powi(2) * (p[1] - p[0]) / 4.0;
+    let (mut lc, mut rc) = (0, 0);
+    for pair in times.windows(2) {
+        for k in 0..4 {
+            let t = pair[0] + (pair[1] - pair[0]) * (k as f64 + 0.5) / 4.0;
+            let x = advance(&left, &mut lc, t).x - advance(&right, &mut rc, t).x;
+            cost += x.max(0.0).powi(2) * (pair[1] - pair[0]) / 4.0;
         }
     }
     c.cross_weight * cost
@@ -372,27 +515,35 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             point: button(7),
             free: start,
             last_tap: None,
-            segments: vec![],
+            segments: Chain::default(),
         },
         Arm {
             point: button(2),
             free: start,
             last_tap: None,
-            segments: vec![],
+            segments: Chain::default(),
         },
     ];
     let mut beam = vec![State {
         arms,
         cost: CostBreakdown::default(),
-        assignments: vec![],
-        handovers: vec![],
+        assignments: Chain::default(),
+        handovers: Chain::default(),
         owners: BTreeMap::new(),
         last_handover: BTreeMap::new(),
     }];
     let tasks = tasks(chart, c)?;
     let clock = Instant::now();
-    let mut expansions = 0;
+    let mut expansions: u64 = 0;
     for task in &tasks {
+        // 已經結束的 Slide 不會再被查詢；清掉之後每個狀態要複製的資料量才是常數。
+        for state in &mut beam {
+            let live = |note: &usize| {
+                chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= task.start - EPS
+            };
+            state.owners.retain(|note, _| live(note));
+            state.last_handover.retain(|note, _| live(note));
+        }
         let mut next = vec![];
         for state in &beam {
             for hand in [Hand::L, Hand::R] {
@@ -412,7 +563,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         next.sort_by(|a, b| a.cost.total().total_cmp(&b.cost.total()));
         next.truncate(c.beam_width);
         beam = next;
-        if expansions > 350_000 || clock.elapsed() > Duration::from_secs(20) {
+        if expansions > MAX_EXPANSIONS || clock.elapsed() > BUDGET {
             return Err(Diagnostic::plain(
                 "search_limit",
                 "分析已達計算預算，請縮短片段或降低 beamWidth".into(),
@@ -435,13 +586,15 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         }
         // Crossing is evaluated on both completed trajectories. Beam pruning uses the
         // other additive terms; future free-hand travel is not known until assigned.
-        state.cost.cross = cross_cost(&state.arms, c);
+        let left = state.arms[0].segments.to_vec();
+        let right = state.arms[1].segments.to_vec();
+        state.cost.cross = cross_cost(&left, &right, c);
     }
     beam.sort_by(|a, b| a.cost.total().total_cmp(&b.cost.total()));
     let mut solutions = vec![];
     let mut signatures = std::collections::BTreeSet::new();
     for state in beam {
-        let assignments = merge_assignments(state.assignments);
+        let assignments = merge_assignments(state.assignments.to_vec());
         let signature = serde_json::to_string(&assignments).unwrap();
         if !signatures.insert(signature) {
             continue;
@@ -452,9 +605,9 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             total_cost: state.cost.total(),
             cost_breakdown: state.cost,
             assignments,
-            handovers: state.handovers,
-            left_segments: left.segments,
-            right_segments: right.segments,
+            handovers: state.handovers.to_vec(),
+            left_segments: left.segments.to_vec(),
+            right_segments: right.segments.to_vec(),
             config_snapshot: c.clone(),
             warnings: vec![
                 "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。".into(),

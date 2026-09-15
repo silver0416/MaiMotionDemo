@@ -36,22 +36,45 @@ export interface PathSample {
 
 export interface SlidePath {
   id: string;
+  /** 形狀符號，連續寫法會接起來（例如 `-^`） */
+  shape: string;
+  startButton: number;
+  endButton: number;
   samples: PathSample[];
+  /** Wifi 的兩條側線；其餘形狀為空陣列 */
+  branches: PathSample[][];
 }
 
-export type NoteKind = 'tap' | 'hold' | 'slide';
+export type NoteKind = 'tap' | 'hold' | 'slide' | 'touch' | 'touchHold';
+
+export type TouchArea = 'A' | 'B' | 'C' | 'D' | 'E';
+
+export interface Modifiers {
+  breakNote: boolean;
+  ex: boolean;
+  star: boolean;
+  spinStar: boolean;
+  fireworks: boolean;
+  breakSlide: boolean;
+  exSlide: boolean;
+}
 
 export interface Note {
   id: string;
   kind: NoteKind | string;
-  /** 1–8 外圈鍵位 */
+  /** 1–8 外圈鍵位或 Touch 區編號；Touch C 區為 0 */
   button: number;
+  /** Touch 區代號 A–E；按鍵音符為 null */
+  touchArea: TouchArea | string | null;
   timeSeconds: number;
   endSeconds: number;
   position: Point;
   pathId: string | null;
   motionStart: number | null;
   motionEnd: number | null;
+  /** Slide 是否有起點觸碰（`?` `!` 與 `*` 的第二條之後為 false） */
+  hasHead: boolean;
+  modifiers: Modifiers;
   sourceSpan: SourceSpan;
 }
 

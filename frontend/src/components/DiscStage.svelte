@@ -15,7 +15,7 @@
   } from '../lib/disc';
   import { approachScale, noteVisual, pathLength, scalePoint, type NoteVisual } from '../lib/notes';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
-  import { MODE_LABEL, KIND_LABEL } from '../lib/contract';
+  import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
   import { formatClock } from '../lib/format';
   import { session } from '../state/session.svelte';
   import { playback } from '../state/playback.svelte';
@@ -119,6 +119,27 @@
     return toStageLength(calibration, value);
   }
 
+  function diamondPath(atPoint: Point, radius: number): string {
+    const p = px(atPoint);
+    const r = len(radius);
+    return `M${p.x} ${p.y - r}L${p.x + r} ${p.y}L${p.x} ${p.y + r}L${p.x - r} ${p.y}Z`;
+  }
+
+  /** 音符的簡短說明，例如「Tap 3」「Touch B5」「Slide 直線 1→5」。 */
+  function noteCaption(note: Note): string {
+    const kind = KIND_LABEL[note.kind] ?? note.kind;
+    if (note.touchArea) {
+      return `${kind} ${note.touchArea}${note.button > 0 ? note.button : ''}`;
+    }
+    if (note.kind === 'slide' && note.pathId) {
+      const path = session.pathById.get(note.pathId);
+      if (path) {
+        return `${kind} ${shapeLabel(path.shape)} ${path.startButton}→${path.endButton}`;
+      }
+    }
+    return `${kind} ${note.button}`;
+  }
+
   function starPath(atPoint: Point, outer: number, inner: number): string {
     const p = px(atPoint);
     const ro = len(outer);
@@ -155,10 +176,9 @@
   }
 
   function noteLabel(note: Note, visual: NoteVisual): string {
-    const kind = KIND_LABEL[note.kind] ?? note.kind;
     const tag = tagFor(note.id);
     const hand = tag ? `，指派 ${tag.text}` : '，此候選沒有指派資料';
-    return `${kind} 音符 ${note.id}，鍵位 ${note.button}，時間 ${formatClock(note.timeSeconds)}${hand}。目前狀態 ${
+    return `${noteCaption(note)}，音符 ${note.id}，時間 ${formatClock(note.timeSeconds)}${hand}。目前狀態 ${
       visual.phase === 'upcoming' ? '未到' : visual.phase === 'active' ? '進行中' : '已過'
     }`;
   }
@@ -240,8 +260,12 @@
                 <g
                   class="slide-path"
                   class:is-selected={session.selectedNoteId === visual.note.id}
+                  class:is-break={visual.note.modifiers.breakSlide}
                   opacity={visual.opacity}
                 >
+                  {#each path.branches as branch, index (index)}
+                    <path class="slide-path-branch" d={polylinePath(branch, calibration)} />
+                  {/each}
                   <path class="slide-path-base" d={polylinePath(path.samples, calibration)} />
                   {#if visual.slideU > 0}
                     <path class="slide-path-done" d={partialPath(path.samples, visual.slideU)} />
@@ -272,6 +296,8 @@
                 class="note"
                 class:is-selected={session.selectedNoteId === note.id}
                 class:is-active={visual.phase === 'active'}
+                class:is-break={note.modifiers.breakNote}
+                class:is-ex={note.modifiers.ex}
                 opacity={visual.opacity}
                 role="button"
                 tabindex="0"
@@ -279,7 +305,24 @@
                 onclick={() => selectNote(note.id)}
                 onkeydown={(event) => onNoteKey(event, note.id)}
               >
-                {#if note.kind === 'hold'}
+                {#if note.kind === 'touch' || note.kind === 'touchHold'}
+                  {@const at = scalePoint(note.position, factor)}
+                  {@const mark = px(at)}
+                  <path class="touch-ring" d={diamondPath(at, 0.105)} />
+                  <path class="touch-core" d={diamondPath(at, 0.055)} />
+                  {#if note.kind === 'touchHold' && visual.phase === 'active'}
+                    <path class="touch-progress" d={diamondPath(at, 0.055 + 0.05 * (1 - visual.progress))} />
+                  {/if}
+                  <text
+                    class="touch-label"
+                    x={mark.x}
+                    y={mark.y}
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                  >
+                    {note.touchArea}{note.button > 0 ? note.button : ''}
+                  </text>
+                {:else if note.kind === 'hold'}
                   {@const ends = holdEnds(note, visual)}
                   {@const head = px(ends.head)}
                   {@const tail = px(ends.tail)}
@@ -314,7 +357,9 @@
                   {/if}
                   <circle class="note-ring" cx={head.x} cy={head.y} r={len(0.085)} />
                 {:else if note.kind === 'slide'}
-                  <path class="note-star" d={starPath(scalePoint(note.position, factor), 0.1, 0.045)} />
+                  {#if note.hasHead}
+                    <path class="note-star" d={starPath(scalePoint(note.position, factor), 0.1, 0.045)} />
+                  {/if}
                   {#if visual.slideU > 0 && visual.slideU < 1 && note.pathId}
                     {@const path = session.pathById.get(note.pathId)}
                     {#if path}
@@ -497,9 +542,21 @@
     stroke-linecap: round;
   }
 
+  .slide-path-branch {
+    fill: none;
+    stroke: #55606f;
+    stroke-width: 4;
+    stroke-linecap: round;
+  }
+
   .slide-path.is-selected .slide-path-base {
     stroke: var(--c-accent);
     stroke-width: 7;
+  }
+
+  .slide-path.is-break .slide-path-base,
+  .slide-path.is-break .slide-path-branch {
+    stroke: #c9863a;
   }
 
   .chevron {
@@ -553,6 +610,51 @@
 
   .hold-progress {
     stroke: #eef2f8;
+  }
+
+  .touch-ring {
+    fill: none;
+    stroke: #eef2f8;
+    stroke-width: 6;
+    stroke-linejoin: round;
+  }
+
+  .touch-core {
+    fill: none;
+    stroke: #8e9aab;
+    stroke-width: 4;
+    stroke-linejoin: round;
+  }
+
+  .touch-progress {
+    fill: none;
+    stroke: #eef2f8;
+    stroke-width: 4;
+    stroke-linejoin: round;
+  }
+
+  .touch-label {
+    fill: #c8d1de;
+    font-family: var(--font-mono);
+    font-size: 26px;
+    font-weight: 700;
+    paint-order: stroke;
+    stroke: #000;
+    stroke-width: 5px;
+  }
+
+  /* Break 與 EX 只換筆觸顏色，形狀維持一致，不單靠顏色傳達種類。 */
+  .note.is-break .note-ring,
+  .note.is-break .note-star,
+  .note.is-break .touch-ring,
+  .note.is-break .hold-bar {
+    stroke: #f0913a;
+  }
+
+  .note.is-ex .note-core,
+  .note.is-ex .touch-core {
+    stroke: var(--c-focus);
+    stroke-width: 6;
   }
 
   .note.is-active .note-ring {

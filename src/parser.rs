@@ -1,4 +1,30 @@
-use crate::{geometry, Chart, Diagnostic, Note, SourceSpan};
+use crate::geometry::{self, Segment, Shape};
+use crate::{Chart, Diagnostic, Modifiers, Note, SourceSpan};
+
+/// 疑似 EACH（`` ` ``）的位移：一小節的 1/384，也就是 1/96 拍。
+const PSEUDO_EACH_BEATS: f64 = 1.0 / 96.0;
+
+const MAX_NOTES: usize = 10_000;
+const MAX_SECONDS: f64 = 3600.0;
+
+fn is_shape_start(c: char) -> bool {
+    matches!(
+        c,
+        '-' | '^' | '<' | '>' | 'v' | 'V' | 'p' | 'q' | 's' | 'z' | 'w'
+    )
+}
+
+fn is_note_start(c: char) -> bool {
+    ('1'..='8').contains(&c) || matches!(c, 'A' | 'B' | 'C' | 'D' | 'E')
+}
+
+/// 一段有自己長度的 Slide 本體。連續寫法與 `*` 會產生多個本體。
+struct Body {
+    segments: Vec<Segment>,
+    motion_start: f64,
+    motion_end: f64,
+    modifiers: Modifiers,
+}
 
 struct Parser<'a> {
     source: &'a str,
@@ -7,20 +33,38 @@ struct Parser<'a> {
     bpm: Option<f64>,
     division: Option<f64>,
     fixed_step: Option<f64>,
+    /// 目前逗號位置的時間。
     time: f64,
+    /// 疑似 EACH 在本組內累積的位移數。
+    pseudo: u32,
     chart: Chart,
 }
+
 impl<'a> Parser<'a> {
     fn peek(&self) -> Option<char> {
         self.chars.get(self.at).map(|x| x.1)
     }
+    fn peek_at(&self, offset: usize) -> Option<char> {
+        self.chars.get(self.at + offset).map(|x| x.1)
+    }
+    fn eat(&mut self, c: char) -> bool {
+        if self.peek() == Some(c) {
+            self.at += 1;
+            true
+        } else {
+            false
+        }
+    }
     fn span(&self, start: usize) -> SourceSpan {
+        self.span_between(start, self.at)
+    }
+    fn span_between(&self, start: usize, end: usize) -> SourceSpan {
         let begin = self.chars.get(start).map_or(self.source.len(), |c| c.0);
-        let end = self.chars.get(self.at).map_or(self.source.len(), |c| c.0);
+        let end = self.chars.get(end).map_or(self.source.len(), |c| c.0);
         let prefix = &self.source[..begin];
         SourceSpan {
             start: begin,
-            end,
+            end: end.max(begin),
             line: prefix.chars().filter(|c| *c == '\n').count() + 1,
             column: prefix.rsplit('\n').next().unwrap_or("").chars().count() + 1,
         }
@@ -63,6 +107,26 @@ impl<'a> Parser<'a> {
         self.bpm
             .ok_or_else(|| self.error("invalid", "請先指定 BPM，例如 (120)", start))
     }
+    fn beat(&self, start: usize) -> Result<f64, Diagnostic> {
+        Ok(60.0 / self.bpm(start)?)
+    }
+    /// 目前這顆音符的時間，含疑似 EACH 位移。
+    fn now(&self, start: usize) -> Result<f64, Diagnostic> {
+        if self.pseudo == 0 {
+            return Ok(self.time);
+        }
+        Ok(self.time + self.pseudo as f64 * self.beat(start)? * PSEUDO_EACH_BEATS)
+    }
+    fn digit(&mut self, start: usize, what: &str) -> Result<u8, Diagnostic> {
+        let c = self
+            .peek()
+            .filter(|c| ('1'..='8').contains(c))
+            .ok_or_else(|| self.error("invalid", what, start))?;
+        self.at += 1;
+        Ok(c as u8 - b'0')
+    }
+
+    /// `[n:m]`、`[#秒]`、`[bpm#n:m]`。回傳秒數。
     fn duration(&self, s: &str, start: usize) -> Result<f64, Diagnostic> {
         let result = if let Some(seconds) = s.strip_prefix('#') {
             self.positive(seconds, start)?
@@ -73,11 +137,7 @@ impl<'a> Parser<'a> {
                 (self.bpm(start)?, s)
             };
             let (n, m) = rest.split_once(':').ok_or_else(|| {
-                self.error(
-                    "unsupported",
-                    "此持續時間寫法尚未支援，請用 [n:m] 或 [#秒數]",
-                    start,
-                )
+                self.error("invalid", "長度需寫成 [n:m]、[#秒數] 或 [bpm#n:m]", start)
             })?;
             240.0 * self.positive(m, start)? / self.positive(n, start)? / bpm
         };
@@ -86,117 +146,396 @@ impl<'a> Parser<'a> {
         }
         Ok(result)
     }
-    fn note(&mut self) -> Result<(), Diagnostic> {
-        let start = self.at;
-        let c = self
-            .peek()
-            .ok_or_else(|| self.error("invalid", "缺少音符", start))?;
-        if !('1'..='8').contains(&c) {
-            self.at += 1;
-            return Err(self.error(
-                "unsupported",
-                "目前支援外圈 Tap、Hold 與 - ^ < > Slide；此符號尚未支援",
-                start,
-            ));
-        }
-        let button = c as u8 - b'0';
-        self.at += 1;
-        let id = format!("n{}", self.chart.notes.len());
-        let mut note = Note {
-            id: id.clone(),
-            kind: "tap".into(),
-            button,
-            time_seconds: self.time,
-            end_seconds: self.time,
-            position: geometry::button(button),
-            path_id: None,
-            motion_start: None,
-            motion_end: None,
-            source_span: self.span(start),
-        };
-        if self.peek() == Some('h') {
-            self.at += 1;
-            let s = self.enclosed('[', ']')?;
-            note.kind = "hold".into();
-            note.end_seconds += self.duration(&s, start)?;
-        } else if self
-            .peek()
-            .is_some_and(|c| matches!(c, '-' | '^' | '<' | '>'))
-        {
-            let shape = self.peek().unwrap();
-            self.at += 1;
-            let end = self
-                .peek()
-                .filter(|c| ('1'..='8').contains(c))
-                .ok_or_else(|| self.error("invalid", "Slide 缺少 1–8 終點", start))?
-                as u8
-                - b'0';
-            self.at += 1;
-            let s = self.enclosed('[', ']')?;
-            let (wait, duration) = if let Some((w, d)) = s.split_once("##") {
+
+    /// Slide 的長度規格，回傳（等待秒數, 移動秒數）。
+    /// `[n:m]`、`[#秒]`、`[bpm#n:m]`、`[等待秒##移動規格]`。
+    fn slide_time(&self, s: &str, start: usize) -> Result<(f64, f64), Diagnostic> {
+        if let Some((w, d)) = s.split_once("##") {
+            let wait = if w.is_empty() {
+                self.beat(start)?
+            } else {
                 let wait = w
                     .parse::<f64>()
                     .map_err(|_| self.error("invalid", "Slide 等待時間錯誤", start))?;
                 if !wait.is_finite() || !(0.0..=120.0).contains(&wait) {
                     return Err(self.error("invalid", "Slide 等待時間須為 0–120 秒", start));
                 }
-                let duration = if d.contains(':') || d.starts_with('#') {
-                    self.duration(d, start)?
-                } else {
-                    self.duration(&format!("#{d}"), start)?
-                };
-                (wait, duration)
-            } else {
-                if s.contains('#') {
-                    return Err(self.error(
-                        "unsupported",
-                        "Slide 局部 BPM 時間寫法尚未支援，請用 [n:m] 或 [等待秒##移動秒]",
-                        start,
-                    ));
-                }
-                (60.0 / self.bpm(start)?, self.duration(&s, start)?)
+                wait
             };
-            let path_id = format!("p{}", self.chart.paths.len());
-            let path = geometry::path(path_id.clone(), button, end, shape)
-                .map_err(|m| self.error("invalid", &m, start))?;
-            self.chart.paths.push(path);
-            note.kind = "slide".into();
-            note.path_id = Some(path_id);
-            note.motion_start = Some(self.time + wait);
-            note.motion_end = Some(self.time + wait + duration);
-            note.end_seconds = self.time + wait + duration;
+            let duration = if d.contains(':') || d.starts_with('#') {
+                self.duration(d, start)?
+            } else {
+                self.duration(&format!("#{d}"), start)?
+            };
+            return Ok((wait, duration));
         }
-        note.source_span = self.span(start);
+        // [bpm#n:m]：等待與移動都用這個局部 BPM。
+        if let Some((b, rest)) = s.split_once('#') {
+            if !b.is_empty() {
+                let bpm = self.positive(b, start)?;
+                let (n, m) = rest
+                    .split_once(':')
+                    .ok_or_else(|| self.error("invalid", "局部 BPM 長度需寫成 [bpm#n:m]", start))?;
+                let duration = 240.0 * self.positive(m, start)? / self.positive(n, start)? / bpm;
+                if !duration.is_finite() || !(0.001..=120.0).contains(&duration) {
+                    return Err(self.error("invalid", "單一長音時間須為 0.001–120 秒", start));
+                }
+                return Ok((60.0 / bpm, duration));
+            }
+        }
+        Ok((self.beat(start)?, self.duration(s, start)?))
+    }
+
+    /// 音符或 Slide 本體後面的修飾語。
+    fn modifiers(&mut self, m: &mut Modifiers, slide_body: bool) {
+        loop {
+            match self.peek() {
+                Some('b') => {
+                    if slide_body {
+                        m.break_slide = true;
+                    } else {
+                        m.break_note = true;
+                    }
+                }
+                Some('x') => {
+                    if slide_body {
+                        m.ex_slide = true;
+                    } else {
+                        m.ex = true;
+                    }
+                }
+                Some('f') => m.fireworks = true,
+                Some('$') => {
+                    if m.star {
+                        m.spin_star = true;
+                    }
+                    m.star = true;
+                }
+                _ => return,
+            }
+            self.at += 1;
+        }
+    }
+
+    fn push(&mut self, note: Note, start: usize) -> Result<(), Diagnostic> {
         self.chart.duration_seconds = self.chart.duration_seconds.max(note.end_seconds);
         self.chart.notes.push(note);
-        if self.chart.notes.len() > 500 {
+        if self.chart.notes.len() > MAX_NOTES {
             return Err(self.error("invalid", "Demo 每次最多分析 500 個音符，請縮短片段", start));
         }
         Ok(())
     }
+
+    fn blank(&self, kind: &str, button: u8, position: crate::Point, time: f64) -> Note {
+        Note {
+            id: format!("n{}", self.chart.notes.len()),
+            kind: kind.into(),
+            button,
+            touch_area: None,
+            time_seconds: time,
+            end_seconds: time,
+            position,
+            path_id: None,
+            motion_start: None,
+            motion_end: None,
+            has_head: true,
+            modifiers: Modifiers::default(),
+            source_span: self.span(self.at),
+        }
+    }
+
+    /// Touch：`A1`–`E8`、`C`、`C1`、`C2`，以及 Touch Hold `Ch[4:1]`。
+    fn touch_note(&mut self, start: usize) -> Result<(), Diagnostic> {
+        let area = self.peek().unwrap();
+        self.at += 1;
+        let index = if area == 'C' {
+            if matches!(self.peek(), Some('1') | Some('2')) {
+                self.at += 1;
+            }
+            0
+        } else {
+            self.digit(start, "Touch 區域需要 1–8 的編號")?
+        };
+        let time = self.now(start)?;
+        let mut note = self.blank("touch", index, geometry::touch(area, index), time);
+        note.touch_area = Some(area.to_string());
+        self.modifiers(&mut note.modifiers, false);
+        if self.eat('h') {
+            self.modifiers(&mut note.modifiers, false);
+            let spec = self.enclosed('[', ']')?;
+            note.kind = "touchHold".into();
+            note.end_seconds = time + self.duration(&spec, start)?;
+            self.modifiers(&mut note.modifiers, false);
+        }
+        note.source_span = self.span(start);
+        self.push(note, start)
+    }
+
+    /// 形狀符號與終點鍵；`V` 另外讀轉折鍵。
+    fn shape(&mut self, start: usize) -> Result<(Shape, u8), Diagnostic> {
+        let c = self
+            .peek()
+            .ok_or_else(|| self.error("invalid", "Slide 缺少形狀", start))?;
+        self.at += 1;
+        let shape = match c {
+            '-' => Shape::Line,
+            '^' | '<' | '>' => Shape::Arc(c),
+            'v' => Shape::Center,
+            'V' => {
+                let turn = self.digit(start, "V 形 Slide 需要轉折鍵 1–8")?;
+                Shape::Grand(turn)
+            }
+            'p' | 'q' => {
+                let wide = self.eat(c);
+                Shape::Loop {
+                    ccw: c == 'p',
+                    wide,
+                }
+            }
+            's' => Shape::S,
+            'z' => Shape::Z,
+            'w' => Shape::Wifi,
+            _ => return Err(self.error("invalid", "不認得的 Slide 形狀", start)),
+        };
+        let end = self.digit(start, "Slide 缺少 1–8 終點")?;
+        Ok((shape, end))
+    }
+
+    fn slide(
+        &mut self,
+        head: u8,
+        head_modifiers: Modifiers,
+        start: usize,
+    ) -> Result<(), Diagnostic> {
+        let no_head = self.eat('?') || self.eat('!');
+        let head_time = self.now(start)?;
+        let mut bodies: Vec<Body> = vec![];
+        let mut cursor = head;
+        let mut chained_from: Option<f64> = None;
+        loop {
+            let mut segments = vec![];
+            loop {
+                let (shape, end) = self.shape(start)?;
+                segments.push(Segment {
+                    start: cursor,
+                    end,
+                    shape,
+                });
+                cursor = end;
+                if self.peek() == Some('[') {
+                    break;
+                }
+                if !self.peek().is_some_and(is_shape_start) {
+                    return Err(self.error("invalid", "Slide 缺少長度，例如 [4:1]", start));
+                }
+            }
+            let spec = self.enclosed('[', ']')?;
+            let (wait, duration) = self.slide_time(&spec, start)?;
+            let mut modifiers = Modifiers::default();
+            self.modifiers(&mut modifiers, true);
+            let motion_start = chained_from.unwrap_or(head_time + wait);
+            bodies.push(Body {
+                segments,
+                motion_start,
+                motion_end: motion_start + duration,
+                modifiers,
+            });
+            if self.eat('*') {
+                // 同一個起點同時發出的第二條以上 Slide。
+                cursor = head;
+                chained_from = None;
+                continue;
+            }
+            if self.peek().is_some_and(is_shape_start) {
+                chained_from = Some(bodies[bodies.len() - 1].motion_end);
+                continue;
+            }
+            break;
+        }
+        let end_at = self.at;
+        for (index, body) in bodies.into_iter().enumerate() {
+            let path_id = format!("p{}", self.chart.paths.len());
+            let path = geometry::build_path(path_id.clone(), &body.segments)
+                .map_err(|m| self.error("invalid", &m, start))?;
+            self.chart.paths.push(path);
+            let has_head = index == 0 && !no_head;
+            let time = if has_head {
+                head_time
+            } else {
+                body.motion_start
+            };
+            let mut note = self.blank("slide", head, geometry::button(head), time);
+            note.path_id = Some(path_id);
+            note.motion_start = Some(body.motion_start);
+            note.motion_end = Some(body.motion_end);
+            note.end_seconds = body.motion_end;
+            note.has_head = has_head;
+            note.modifiers = Modifiers {
+                break_slide: body.modifiers.break_slide,
+                ex_slide: body.modifiers.ex_slide,
+                ..head_modifiers
+            };
+            note.source_span = self.span_between(start, end_at);
+            self.push(note, start)?;
+        }
+        Ok(())
+    }
+
+    fn note(&mut self) -> Result<(), Diagnostic> {
+        let start = self.at;
+        let c = self
+            .peek()
+            .ok_or_else(|| self.error("invalid", "缺少音符", start))?;
+        if matches!(c, 'A' | 'B' | 'C' | 'D' | 'E') {
+            return self.touch_note(start);
+        }
+        if !('1'..='8').contains(&c) {
+            self.at += 1;
+            return Err(self.error("invalid", "音符必須是 1–8 或 Touch 區 A–E", start));
+        }
+        let button = c as u8 - b'0';
+        self.at += 1;
+        let mut modifiers = Modifiers::default();
+        self.modifiers(&mut modifiers, false);
+        if self.eat('h') {
+            self.modifiers(&mut modifiers, false);
+            let spec = self.enclosed('[', ']')?;
+            let time = self.now(start)?;
+            let mut note = self.blank("hold", button, geometry::button(button), time);
+            note.end_seconds = time + self.duration(&spec, start)?;
+            self.modifiers(&mut modifiers, false);
+            note.modifiers = modifiers;
+            note.source_span = self.span(start);
+            return self.push(note, start);
+        }
+        if self
+            .peek()
+            .is_some_and(|c| is_shape_start(c) || c == '?' || c == '!')
+        {
+            return self.slide(button, modifiers, start);
+        }
+        let time = self.now(start)?;
+        let mut note = self.blank("tap", button, geometry::button(button), time);
+        note.modifiers = modifiers;
+        note.source_span = self.span(start);
+        self.push(note, start)
+    }
 }
 
-pub fn parse_chart(source: &str, first_seconds: f64) -> Result<Chart, Diagnostic> {
-    if source.len() > 100_000
+/// maidata.txt 的 `&key=value` 區塊，value 以 byte 範圍表示。
+fn maidata_fields(source: &str) -> Vec<(String, usize, usize)> {
+    let mut fields: Vec<(String, usize, usize)> = vec![];
+    let mut offset = 0usize;
+    for line in source.split_inclusive('\n') {
+        if let Some(rest) = line.strip_prefix('&') {
+            if let Some(eq) = rest.find('=') {
+                let key = rest[..eq].trim().to_ascii_lowercase();
+                let start = offset + 1 + eq + 1;
+                fields.push((key, start, start));
+            }
+        }
+        if let Some(last) = fields.last_mut() {
+            last.2 = offset + line.len();
+        }
+        offset += line.len();
+    }
+    fields
+}
+
+/// 若原文是完整的 maidata.txt，挑出難度編號最大的非空 `&inote_n` 當作譜面本文。
+/// 回傳該區塊的 byte 範圍與說明訊息；一般片段回傳整段原文。
+fn select_body(source: &str) -> (usize, usize, Vec<Diagnostic>) {
+    let fields = maidata_fields(source);
+    if fields.is_empty() {
+        return (0, source.len(), vec![]);
+    }
+    let mut notices = vec![];
+    let mut charts: Vec<(u32, usize, usize)> = fields
+        .iter()
+        .filter_map(|(key, start, end)| {
+            let level = key.strip_prefix("inote_")?.parse::<u32>().ok()?;
+            if source[*start..*end].trim().is_empty() {
+                None
+            } else {
+                Some((level, *start, *end))
+            }
+        })
+        .collect();
+    charts.sort_by_key(|c| c.0);
+    if let Some((_, start, end)) = fields.iter().find(|(k, ..)| k == "first") {
+        let value = source[*start..*end].trim();
+        if !value.is_empty() {
+            notices.push(Diagnostic::info(
+                "maidata_first",
+                format!("檔案的 &first= 為 {value} 秒；本 Demo 的起始秒數請在「參數」分頁設定。"),
+            ));
+        }
+    }
+    match charts.last() {
+        Some((level, start, end)) => {
+            notices.push(Diagnostic::info(
+                "maidata_chart",
+                format!(
+                    "讀到 maidata 檔案，已使用 &inote_{level}（共 {} 個難度）。",
+                    charts.len()
+                ),
+            ));
+            (*start, *end, notices)
+        }
+        None => (0, source.len(), notices),
+    }
+}
+
+/// 去掉空白與 `||` 行註解，保留原文位移供錯誤定位。
+fn scan(source: &str) -> Vec<(usize, char)> {
+    let mut out = vec![];
+    let mut iter = source.char_indices().peekable();
+    while let Some((i, c)) = iter.next() {
+        if c == '|' && iter.peek().is_some_and(|(_, n)| *n == '|') {
+            for (_, c) in iter.by_ref() {
+                if c == '\n' {
+                    break;
+                }
+            }
+            continue;
+        }
+        if !c.is_whitespace() {
+            out.push((i, c));
+        }
+    }
+    out
+}
+
+/// 解析結果：譜面與非錯誤說明（例如從 maidata 選了哪個難度）。
+#[derive(Clone, Debug)]
+pub struct ParseOutput {
+    pub chart: Chart,
+    pub notices: Vec<Diagnostic>,
+}
+
+pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diagnostic> {
+    if source.len() > 4_000_000
         || !first_seconds.is_finite()
         || !(0.0..=120.0).contains(&first_seconds)
     {
         return Err(Diagnostic::plain(
             "invalid",
-            "輸入最多 100 KB；firstSeconds 須為 0–120 秒".into(),
+            "輸入最多 4 MB；firstSeconds 須為 0–120 秒".into(),
         ));
     }
+    let (body_start, body_end, notices) = select_body(source);
     let mut p = Parser {
         source,
-        chars: source
-            .char_indices()
-            .filter(|(_, c)| !c.is_whitespace())
+        chars: scan(&source[body_start..body_end])
+            .into_iter()
+            .map(|(i, c)| (i + body_start, c))
             .collect(),
         at: 0,
         bpm: None,
         division: None,
         fixed_step: None,
         time: first_seconds,
+        pseudo: 0,
         chart: Chart {
             duration_seconds: first_seconds,
             notes: vec![],
@@ -206,20 +545,18 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<Chart, Diagnostic
     let mut ended = false;
     let mut had_note = false;
     let mut slash = false;
-    let mut previous_tap = false;
     while let Some(c) = p.peek() {
         let start = p.at;
         match c {
-            '(' if !had_note && !slash => {
+            '(' => {
                 let s = p.enclosed('(', ')')?;
                 p.bpm = Some(p.positive(&s, start)?);
             }
-            '{' if !had_note && !slash => {
+            '{' => {
                 let s = p.enclosed('{', '}')?;
                 if let Some(s) = s.strip_prefix('#') {
                     p.fixed_step = Some(p.positive(s, start)?);
                 } else {
-                    p.bpm(start)?;
                     p.division = Some(p.positive(&s, start)?);
                     p.fixed_step = None;
                 }
@@ -241,11 +578,12 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<Chart, Diagnostic
                 p.time += step;
                 p.chart.duration_seconds = p.chart.duration_seconds.max(p.time);
                 p.at += 1;
-                if p.time > 600.0 {
-                    return Err(p.error("invalid", "Demo 時間軸上限為 600 秒", start));
+                if p.time > MAX_SECONDS {
+                    return Err(p.error("invalid", "時間軸上限為 3600 秒", start));
                 }
                 had_note = false;
-                previous_tap = false;
+                slash = false;
+                p.pseudo = 0;
             }
             '/' => {
                 if !had_note || slash {
@@ -254,33 +592,33 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<Chart, Diagnostic
                 p.at += 1;
                 slash = true;
             }
-            'E' => {
+            '`' => {
+                if !had_note {
+                    return Err(p.error("invalid", "` 必須放在兩個音符之間", start));
+                }
                 p.at += 1;
-                if slash || had_note {
-                    return Err(p.error("invalid", "E 前需要逗號且不能有未完成的 EACH", start));
+                p.pseudo += 1;
+                slash = false;
+            }
+            'E' if !p.peek_at(1).is_some_and(|c| ('1'..='8').contains(&c)) => {
+                p.at += 1;
+                if slash {
+                    return Err(p.error("invalid", "E 前有未完成的 EACH", start));
                 }
                 if p.peek().is_some() {
-                    return Err(p.error("invalid", "E 後還有內容；TOUCH E 區目前未支援", start));
+                    return Err(p.error("invalid", "E 之後不可再有內容", start));
                 }
                 ended = true;
                 break;
             }
-            _ => {
-                if had_note && !slash && !previous_tap {
-                    return Err(p.error(
-                        "unsupported",
-                        "複合音符需用 /；連結與修飾語法尚未支援",
-                        start,
-                    ));
-                }
+            _ if is_note_start(c) => {
                 p.note()?;
-                let is_tap = p.chart.notes.last().unwrap().kind == "tap";
-                if had_note && !slash && !is_tap {
-                    return Err(p.error("invalid", "只有純 Tap 可省略 EACH 的 /", start));
-                }
-                previous_tap = is_tap;
                 had_note = true;
                 slash = false;
+            }
+            _ => {
+                p.at += 1;
+                return Err(p.error("invalid", "不認得的 simai 符號", start));
             }
         }
     }
@@ -290,8 +628,11 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<Chart, Diagnostic
     if p.chart.notes.is_empty() {
         return Err(p.error("invalid", "譜面沒有音符", 0));
     }
-    if p.chart.duration_seconds > 600.0 {
-        return Err(p.error("invalid", "Demo 時間軸上限為 600 秒", 0));
+    if p.chart.duration_seconds > MAX_SECONDS {
+        return Err(p.error("invalid", "時間軸上限為 3600 秒", 0));
     }
-    Ok(p.chart)
+    Ok(ParseOutput {
+        chart: p.chart,
+        notices,
+    })
 }

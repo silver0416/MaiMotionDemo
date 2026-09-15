@@ -1,6 +1,6 @@
 <script lang="ts">
   import NumberField from './NumberField.svelte';
-  import { DEFAULT_CALIBRATION, IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
+  import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
   import { view } from '../state/view.svelte';
 
   function setCalibration(key: 'centerX' | 'centerY' | 'radius', value: number) {
@@ -31,12 +31,15 @@
         <span>顯示右手 R（虛線・方形）</span>
       </label>
       <label class="check">
-        <input type="checkbox" bind:checked={view.showFullTrack} />
-        <span>顯示整段軌跡</span>
-      </label>
-      <label class="check">
         <input type="checkbox" bind:checked={view.showRecentTrail} />
         <span>顯示最近軌跡</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" bind:checked={view.showFullTrack} />
+        <span>
+          顯示整段軌跡
+          <span class="field-hint">長譜面會在盤面留下大量細線。</span>
+        </span>
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={view.showAssignmentTags} />
@@ -55,7 +58,7 @@
     <div style="margin-top: var(--space-4)">
       <NumberField
         label="最近軌跡長度"
-        hint="顯示目前時間往前多少秒的移動。"
+        hint="往前顯示多少秒的移動。"
         value={view.trailSeconds}
         min={0.2}
         max={4}
@@ -86,9 +89,7 @@
       <input type="checkbox" bind:checked={view.approach} disabled={view.noteMode !== 'window'} />
       <span>
         音符由中心飛向鍵位
-        <span class="field-hint">
-          純視覺效果，不改變判定時間；分析與軌跡一律使用 Rust 回傳的秒數。
-        </span>
+        <span class="field-hint">純視覺效果，不改變判定時間。</span>
       </span>
     </label>
     {#if view.noteMode === 'window' && view.approach}
@@ -110,9 +111,7 @@
   <section class="section">
     <div class="section-title"><span>盤面校準與縮放</span></div>
     <p class="field-hint" style="margin-bottom: var(--space-3)">
-      音符與手的位置一律由 Rust 的盤面座標換算（中心 0,0、半徑 1）。
-      這裡只是把背景圖片對齊到同一個圓，不會改變任何座標或搜尋結果。
-      預設值由 resource/maimai.png 的外圈以最小平方圓擬合得到。
+      只調整背景圖對齊，不影響座標與搜尋結果。
     </p>
 
     <label class="check" style="margin-bottom: var(--space-3)">
@@ -141,7 +140,7 @@
       />
       <NumberField
         label="盤面半徑"
-        hint="佔圖片寬度比例，對應盤面座標的 1.0。"
+        hint="佔圖片寬度比例。"
         value={view.calibration.radius}
         min={0.3}
         max={0.6}
@@ -150,7 +149,7 @@
       />
       <NumberField
         label="檢視縮放"
-        hint="只放大畫面，不影響座標。"
+        hint="只放大畫面。"
         value={view.zoom}
         min={0.6}
         max={2}
@@ -163,9 +162,6 @@
     <p class="xsmall muted mono" style="margin-top: var(--space-3)">
       圓心 {pixels.x.toFixed(1)}, {pixels.y.toFixed(1)} px・半徑 {pixels.r.toFixed(1)} px
       （圖片 {IMAGE_WIDTH}×{IMAGE_HEIGHT}）
-    </p>
-    <p class="xsmall muted">
-      預設：{DEFAULT_CALIBRATION.centerX} / {DEFAULT_CALIBRATION.centerY} / {DEFAULT_CALIBRATION.radius}
     </p>
     <button class="btn" style="margin-top: var(--space-3)" onclick={() => view.resetCalibration()}>
       還原校準與縮放
@@ -186,6 +182,5 @@
       <dt>L</dt>
       <dd>切換循環片段</dd>
     </dl>
-    <p class="field-hint" style="margin-top: var(--space-2)">在輸入框中打字時不會觸發這些快捷鍵。</p>
   </section>
 </div>
