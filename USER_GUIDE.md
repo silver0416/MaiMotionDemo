@@ -4,13 +4,11 @@
 
 把 simai 譜面本文轉成左右手的觸碰與滑行動畫。每個候選方案都包含成本、手的移動軌跡與 Slide 中途交接。你可以慢放、拖曳時間、比較不同方案，再調整模型偏好。
 
-所有分析都在本機 Rust 核心執行，不需要 AI API。前端由 Svelte 呈現，Tauri 提供 Windows 桌面容器。
-
 ## 2. 啟動
 
 ### 已建置的執行檔
 
-從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.0/MaiMotionDemo-v0.1.0-windows-x64.exe) 下載 `MaiMotionDemo-v0.1.0-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。此專案目前未產生安裝程式，也沒有自動更新。
+從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.0/MaiMotionDemo-v0.1.0-windows-x64.exe) 下載 `MaiMotionDemo-v0.1.0-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。
 
 ### 從原始碼執行
 
