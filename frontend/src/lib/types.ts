@@ -322,3 +322,45 @@ export interface MajdataChartSummary {
   tags: string[];
   publicTags: string[];
 }
+
+/** simai Wiki 的譜面種類；顯示為 Standard／DX。 */
+export type WikiChartType = 'standard' | 'deluxe';
+
+/** Wiki 索引裡單一難度的提示；availabilityHint 只是索引頁的推測，實際以 wiki_fetch_chart 為準。 */
+export interface WikiDifficultyInfo {
+  level: string | null;
+  availabilityHint: boolean;
+  anchorUrl: string | null;
+}
+
+/** simai Wiki 索引的一首歌（Rust wiki_refresh_index／wiki_search_songs，camelCase）。Standard 與 DX 是兩筆。 */
+export interface WikiSong {
+  pageId: number;
+  title: string;
+  chartType: WikiChartType;
+  pageUrl: string;
+  /** key 為 easy／basic／advanced／expert／master／reMaster；DX 沒有 easy。 */
+  difficulties: Record<string, WikiDifficultyInfo>;
+  section: string | null;
+}
+
+export interface WikiIndexPayload {
+  songs: WikiSong[];
+  /** unix 秒 */
+  fetchedAt: number;
+  fromCache: boolean;
+  /** Wiki 抓取失敗，回傳的是舊快取。 */
+  stale: boolean;
+}
+
+/** wiki_fetch_chart 的結果；chartText 已通過核心 parser，可直接送 analyze_chart。 */
+export interface WikiChartPayload {
+  chartText: string;
+  title: string;
+  artist: string | null;
+  bpm: number | null;
+  level: string | null;
+  pageUrl: string;
+  difficulty: string;
+  chartType: string;
+}

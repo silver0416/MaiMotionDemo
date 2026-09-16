@@ -17,6 +17,37 @@ export interface MajdataOrigin {
   levels: (string | null)[];
 }
 
+/** simai Wiki 的難度 key，依顯示順序排列；索引與 &inote_1… 對齊（DX 沒有 easy）。 */
+export const WIKI_DIFFICULTIES = [
+  { key: 'easy', label: 'EASY' },
+  { key: 'basic', label: 'BASIC' },
+  { key: 'advanced', label: 'ADVANCED' },
+  { key: 'expert', label: 'EXPERT' },
+  { key: 'master', label: 'MASTER' },
+  { key: 'reMaster', label: 'Re:MASTER' },
+] as const;
+
+export type WikiDifficultyKey = (typeof WIKI_DIFFICULTIES)[number]['key'];
+
+export const WIKI_TYPE_LABEL: Record<'standard' | 'deluxe', string> = {
+  standard: 'Standard',
+  deluxe: 'DX',
+};
+
+/** 從 simai Wiki 匯入時記下的來源；同 pageId＋chartType＋difficulty 視為同一張。 */
+export interface WikiOrigin {
+  pageId: number;
+  chartType: 'standard' | 'deluxe';
+  difficulty: WikiDifficultyKey;
+  title: string;
+  level: string | null;
+  pageUrl: string;
+}
+
+export function wikiDifficultyLabel(key: string): string {
+  return WIKI_DIFFICULTIES.find((item) => item.key === key)?.label ?? key;
+}
+
 export interface ChartRecord {
   id: string;
   /** 新增時間（epoch 毫秒），顯示為副標。 */
@@ -27,6 +58,8 @@ export interface ChartRecord {
   /** 原文 SHA-256，用來判斷兩筆是否為同一份譜面、清除分析快取。 */
   sourceHash?: string;
   majdata?: MajdataOrigin;
+  /** 舊紀錄沒有這個欄位。 */
+  wiki?: WikiOrigin;
 }
 
 const LEGACY_STORAGE_KEY = 'maimotion.records.v1';
@@ -71,10 +104,16 @@ export function sourceHeading(source: string): string {
   return line?.trim() ?? '（空白）';
 }
 
-/** 主標：自訂名稱，沒有就用譜面開頭。 */
+/** Wiki 匯入的原文只有譜面本文，標題改用來源資訊，並註明種類與難度區分同曲的多筆。 */
+export function wikiHeading(wiki: WikiOrigin): string {
+  return `${wiki.title}（${WIKI_TYPE_LABEL[wiki.chartType] ?? wiki.chartType} ${wikiDifficultyLabel(wiki.difficulty)}）`;
+}
+
+/** 主標：自訂名稱，沒有就用 Wiki 來源或譜面開頭。 */
 export function recordTitle(record: ChartRecord): string {
   const name = record.name?.trim();
-  return name ? name : sourceHeading(record.source);
+  if (name) return name;
+  return record.wiki ? wikiHeading(record.wiki) : sourceHeading(record.source);
 }
 
 /** 副標：新增時間。 */
@@ -89,6 +128,10 @@ export function recordDate(record: ChartRecord): string {
 /** 依 &inote_1… 排列的難度；Majdata 匯入以來源資料為準，否則讀 &lv_N。 */
 export function recordLevels(record: ChartRecord): (string | null)[] {
   if (record.majdata) return record.majdata.levels;
+  if (record.wiki) {
+    const { difficulty, level } = record.wiki;
+    return WIKI_DIFFICULTIES.map((item) => (item.key === difficulty ? level?.trim() || '?' : null));
+  }
   return Array.from({ length: 7 }, (_, index) => {
     const hasChart = new RegExp(`^&inote_${index + 1}=`, 'm').test(record.source);
     const level = maidataField(record.source, `lv_${index + 1}`);
@@ -107,7 +150,8 @@ export function recordSearchText(record: ChartRecord): string {
     record.majdata?.artist ?? '',
     record.majdata?.designer ?? '',
     record.majdata?.uploader ?? '',
-    record.name || maidataField(record.source, 'title') ? '' : sourceHeading(record.source),
+    record.wiki ? wikiHeading(record.wiki) : '',
+    record.name || maidataField(record.source, 'title') || record.wiki ? '' : sourceHeading(record.source),
   ]
     .join('\n')
     .toLowerCase();
@@ -116,6 +160,7 @@ export function recordSearchText(record: ChartRecord): string {
 export interface AddOptions {
   name?: string;
   majdata?: MajdataOrigin;
+  wiki?: WikiOrigin;
 }
 
 /**
@@ -180,6 +225,17 @@ export class Records {
     return this.items.find((item) => item.majdata?.id === songId) ?? null;
   }
 
+  findByWiki(pageId: number, chartType: string, difficulty: string): ChartRecord | null {
+    return (
+      this.items.find(
+        (item) =>
+          item.wiki?.pageId === pageId &&
+          item.wiki.chartType === chartType &&
+          item.wiki.difficulty === difficulty,
+      ) ?? null
+    );
+  }
+
   findByHash(sourceHash: string): ChartRecord | null {
     return this.items.find((item) => item.sourceHash === sourceHash) ?? null;
   }
@@ -193,6 +249,7 @@ export class Records {
       sourceHash: await hashText(source),
       ...(name ? { name } : {}),
       ...(options.majdata ? { majdata: options.majdata } : {}),
+      ...(options.wiki ? { wiki: options.wiki } : {}),
     };
     this.items = [record, ...this.items];
     this.activeId = record.id;
@@ -205,6 +262,15 @@ export class Records {
     const index = this.items.findIndex((item) => item.id === id);
     if (index < 0) return;
     const next = { ...this.items[index], majdata };
+    this.items[index] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
+  }
+
+  /** 既有紀錄補上 Wiki 來源（原文完全相同的舊紀錄）。已有 Wiki 來源的不覆蓋。 */
+  attachWiki(id: string, wiki: WikiOrigin): void {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0 || this.items[index].wiki) return;
+    const next = { ...this.items[index], wiki };
     this.items[index] = next;
     void dbPut(STORE_RECORDS, $state.snapshot(next));
   }

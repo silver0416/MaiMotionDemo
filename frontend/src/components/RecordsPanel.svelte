@@ -50,7 +50,7 @@
       <span class="lead lead--disc"><Icon name="plus" size={14} /></span>新增
     </button>
     <button class="btn btn--ghost btn--wide" onclick={onSearch}>
-      <span class="lead lead--disc"><Icon name="search" size={14} /></span>搜尋
+      <span class="lead lead--disc"><Icon name="search" size={14} /></span>搜尋譜面
     </button>
   </div>
 
@@ -70,7 +70,7 @@
     {#if !records.loaded && records.items.length === 0}
       <p class="empty small muted">讀取紀錄中…</p>
     {:else if records.items.length === 0}
-      <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt，或按「搜尋」從 Majdata 匯入。</p>
+      <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt，或從 Majdata、simai Wiki 搜尋匯入。</p>
     {:else}
       <ul class="list" bind:this={listEl}>
         {#each records.items as record (record.id)}

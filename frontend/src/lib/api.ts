@@ -1,4 +1,12 @@
-import type { AnalyzeRequest, AnalyzeResponse, MajdataChartSummary } from './types';
+import type {
+  AnalyzeRequest,
+  AnalyzeResponse,
+  MajdataChartSummary,
+  WikiChartPayload,
+  WikiChartType,
+  WikiIndexPayload,
+  WikiSong,
+} from './types';
 
 /**
  * 真正的 Tauri adapter：只有桌面殼層可用。
@@ -25,6 +33,31 @@ export async function searchMajdataCharts(query: string): Promise<MajdataChartSu
 export async function fetchMajdataChart(songId: string): Promise<string> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<string>('fetch_majdata_chart', { songId });
+}
+
+/** 經由 Rust 載入 simai Wiki 索引；force=false 時優先用記憶體或 24 小時快取。 */
+export async function refreshWikiIndex(force: boolean): Promise<WikiIndexPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<WikiIndexPayload>('wiki_refresh_index', { force });
+}
+
+/** 在 Rust 已載入的 Wiki 索引中搜尋（本地，不連 Wiki）；索引未載入時 reject。 */
+export async function searchWikiSongs(
+  query: string,
+  chartType: 'all' | WikiChartType = 'all',
+): Promise<WikiSong[]> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<WikiSong[]>('wiki_search_songs', { query, chartType });
+}
+
+/** 經由 Rust 取得 Wiki 某首歌某個難度的 simai 文字譜。 */
+export async function fetchWikiChart(
+  pageId: number,
+  chartType: WikiChartType,
+  difficulty: string,
+): Promise<WikiChartPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<WikiChartPayload>('wiki_fetch_chart', { pageId, chartType, difficulty });
 }
 
 let versionPromise: Promise<string> | null = null;

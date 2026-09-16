@@ -6,7 +6,6 @@
   import { STATUS_HINT, STATUS_LABEL } from '../lib/contract';
   import { fetchMajdataChart, searchMajdataCharts } from '../lib/api';
   import { hashText } from '../lib/db';
-  import { reducedMotion } from '../lib/press';
   import {
     maidataField,
     recordDate,
@@ -22,10 +21,21 @@
   import type { AnalyzeResponse, AnalyzeStatus, MajdataChartSummary } from '../lib/types';
 
   interface Props {
-    open: boolean;
+    /** 對話框開著且目前切到這個分頁。 */
+    active: boolean;
+    /** 與 Wiki 分頁共用的關鍵字。 */
+    query: string;
+    /** 匯入進行中；外層據此鎖住關閉與切換。 */
+    locked: boolean;
+    onClose: () => void;
   }
 
-  let { open = $bindable() }: Props = $props();
+  let {
+    active,
+    query = $bindable(),
+    locked = $bindable(false),
+    onClose,
+  }: Props = $props();
 
   /** Majdata 的 levels 依 &inote_1… 排列。 */
   const LEVEL_NAMES = ['Easy', 'Basic', 'Advanced', 'Expert', 'Master', 'Re:Master', 'Original'];
@@ -44,11 +54,10 @@
     | { kind: 'analysis'; chart: MajdataChartSummary; message: string; source: string }
     | { kind: 'rejected'; chart: MajdataChartSummary; response: AnalyzeResponse; source: string };
 
-  let dialog: HTMLDialogElement | null = $state(null);
+  let root: HTMLElement | null = $state(null);
   let input: HTMLInputElement | null = $state(null);
   let feedback: HTMLElement | null = $state(null);
 
-  let query = $state('');
   let search = $state<SearchState>({ kind: 'idle' });
   /** 最後一次送出的關鍵字；本地紀錄即時依這個字篩選，刪改紀錄也會跟著更新。 */
   let submitted = $state('');
@@ -75,59 +84,20 @@
     failure?.kind === 'rejected' ? (failure.response.status as AnalyzeStatus) : null,
   );
 
-  /** 關閉動畫播放中；播完才真正呼叫 dialog.close()。 */
-  let closing = $state(false);
-  /** 按下滑鼠時就在框外，才算「點外面」；在框內開始選字、拖到框外放開不會誤關。 */
-  let pressedOutside = false;
-
-  const CLOSE_MS = 140;
-  let closeTimer: ReturnType<typeof setTimeout> | undefined;
-
   $effect(() => {
-    if (!dialog) return;
-    if (open) {
-      clearTimeout(closeTimer);
-      closing = false;
-      if (!dialog.open) {
-        dialog.showModal();
-        input?.focus();
-      }
-    } else if (dialog.open && !closing) {
-      if (reducedMotion()) {
-        dialog.close();
-        return;
-      }
-      closing = true;
-      // 不等 animationend：視窗被遮住時動畫事件可能不觸發，隱形的 modal 會擋住整個頁面。
-      closeTimer = setTimeout(finishClose, CLOSE_MS);
-    }
+    locked = importing !== null;
   });
 
-  function finishClose() {
-    closing = false;
-    if (!open) dialog?.close();
+  /** 對話框打開或切到這個分頁時呼叫：聚焦輸入框；關鍵字在別的分頁改過就用新字重搜。 */
+  export function activate() {
+    input?.focus();
+    const text = query.trim();
+    if (text.length > 0 && text !== submitted && canSearch) void runSearch();
   }
 
-  /** 匯入沒有取消機制：進行中時忽略所有關閉入口，避免對話框消失後結果才在背景套用。 */
-  function requestClose() {
-    if (importing !== null) return;
-    open = false;
-  }
-
-  function onDialogClosed() {
-    open = false;
+  /** 對話框完全關閉時呼叫；下次打開一律重新下載。 */
+  export function reset() {
     if (importing === null) downloaded.clear();
-  }
-
-  function isOutside(event: MouseEvent): boolean {
-    if (!dialog || event.target !== dialog) return false;
-    const rect = dialog.getBoundingClientRect();
-    return (
-      event.clientX < rect.left ||
-      event.clientX > rect.right ||
-      event.clientY < rect.top ||
-      event.clientY > rect.bottom
-    );
   }
 
   function usable(response: AnalyzeResponse): boolean {
@@ -143,7 +113,7 @@
   /** 按鈕在工作中會停用，焦點若因此掉出對話框就拉回來。 */
   async function keepFocus(target: () => HTMLElement | null) {
     await tick();
-    if (open && dialog && !dialog.contains(document.activeElement)) target()?.focus();
+    if (active && root && !root.contains(document.activeElement)) target()?.focus();
   }
 
   /** 錯誤區塊在 failure 設值後才掛載，必須等 tick 之後再取元素。 */
@@ -210,7 +180,7 @@
   async function openLocal(record: ChartRecord, reason?: string) {
     if (analyzing || importing !== null) return;
     failure = null;
-    open = false;
+    onClose();
     records.activeId = record.id;
     if (reason) {
       toasts.show({ id: 'majdata-local', tone: 'info', title: '已在本地', body: reason });
@@ -268,7 +238,7 @@
     }
     await records.add(source, { majdata: originOf(chart) });
     failure = null;
-    open = false;
+    onClose();
   }
 
   function levelsOf(source: (string | null)[]): { index: number; value: string }[] {
@@ -294,13 +264,6 @@
     return value.trim().length > 0 ? value : '—';
   }
 
-  function onDialogKeydown(event: KeyboardEvent) {
-    // 不依賴瀏覽器原生的 cancel 行為（WebView 之間不一致），Esc 直接關閉（匯入中忽略）。
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      requestClose();
-    }
-  }
 </script>
 
 {#snippet levelList(levels: { index: number; value: string }[])}
@@ -318,37 +281,7 @@
   </ul>
 {/snippet}
 
-<dialog
-  bind:this={dialog}
-  class="dialog"
-  class:is-closing={closing}
-  aria-labelledby="majdata-title"
-  aria-busy={busy}
-  onclose={onDialogClosed}
-  oncancel={(event) => {
-    event.preventDefault();
-    requestClose();
-  }}
-  onkeydown={onDialogKeydown}
-  onpointerdown={(event) => (pressedOutside = isOutside(event))}
-  onclick={(event) => {
-    if (pressedOutside && isOutside(event)) requestClose();
-    pressedOutside = false;
-  }}
->
-  <header class="dialog-head">
-    <h2 id="majdata-title">搜尋譜面</h2>
-    <span class="spacer"></span>
-    <button
-      class="btn btn--icon"
-      onclick={requestClose}
-      disabled={importing !== null}
-      aria-label="關閉"
-    >
-      <Icon name="x" />
-    </button>
-  </header>
-
+<div bind:this={root} class="panel" aria-busy={busy}>
   <form class="search-bar" role="search" onsubmit={runSearch}>
     <label class="sr-only" for="majdata-query">搜尋歌曲名稱、作者、譜師或紀錄名稱</label>
     <input
@@ -599,79 +532,14 @@
       {/if}
     {/if}
   </div>
-
-  <footer class="dialog-foot">
-    <span class="muted xsmall">Enter 搜尋・Esc 關閉</span>
-    <span class="spacer"></span>
-    <button class="btn" onclick={requestClose} disabled={importing !== null}>
-      <Icon name="x" />關閉
-    </button>
-  </footer>
-</dialog>
+</div>
 
 <style>
-  .dialog {
-    width: min(760px, calc(100vw - 32px));
-    height: min(680px, calc(100vh - 32px));
-    max-height: calc(100vh - 32px);
-    padding: 0;
-    color: var(--c-text);
-    background: var(--c-panel);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 24px 64px #000000;
-  }
-
-  .dialog[open] {
+  .panel {
     display: flex;
     flex-direction: column;
-    animation: dialog-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
-  }
-
-  .dialog[open].is-closing {
-    animation: dialog-out 140ms ease-in forwards;
-  }
-
-  @keyframes dialog-in {
-    from {
-      opacity: 0;
-      transform: translateY(12px) scale(0.96);
-    }
-  }
-
-  @keyframes dialog-out {
-    to {
-      opacity: 0;
-      transform: translateY(8px) scale(0.97);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .dialog[open],
-    .dialog[open].is-closing {
-      animation: none;
-    }
-  }
-
-  /* 規範不用半透明遮罩：背景維持原樣，靠邊框與陰影把對話框和盤面分開。 */
-  .dialog::backdrop {
-    background: none;
-  }
-
-  .dialog-head,
-  .dialog-foot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .dialog-head {
-    border-bottom: 1px solid var(--c-border);
-  }
-
-  .dialog-foot {
-    border-top: 1px solid var(--c-border);
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .search-bar {

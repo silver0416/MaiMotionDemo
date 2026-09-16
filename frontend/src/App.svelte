@@ -9,7 +9,7 @@
   import ViewPanel from './components/ViewPanel.svelte';
   import RecordsPanel from './components/RecordsPanel.svelte';
   import NewChartDialog from './components/NewChartDialog.svelte';
-  import MajdataSearchDialog from './components/MajdataSearchDialog.svelte';
+  import SearchDialog from './components/SearchDialog.svelte';
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
@@ -207,7 +207,7 @@
             class="capsule-btn"
             onclick={() => (searchOpen = true)}
             aria-label="搜尋譜面"
-            title="搜尋譜面"
+            title="搜尋譜面（Majdata／simai Wiki）"
           >
             <Icon name="search" size={16} />
           </button>
@@ -290,7 +290,7 @@
   </main>
 
   <NewChartDialog bind:open={dialogOpen} />
-  <MajdataSearchDialog bind:open={searchOpen} />
+  <SearchDialog bind:open={searchOpen} />
   <Toaster />
 </div>
 
