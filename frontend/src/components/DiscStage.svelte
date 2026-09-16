@@ -13,7 +13,14 @@
     toStage,
     toStageLength,
   } from '../lib/disc';
-  import { approachScale, noteVisual, pathLength, scalePoint, type NoteVisual } from '../lib/notes';
+  import {
+    approachScale,
+    noteVisual,
+    pathLength,
+    scalePoint,
+    touchGather,
+    type NoteVisual,
+  } from '../lib/notes';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
   import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
   import {
@@ -25,15 +32,21 @@
   } from '../lib/palm';
   import {
     TOUCH_AREA_PLACE,
+    TOUCH_ICON_ANGLE,
     fireworkBursts,
     fireworkShape,
     isTouchNote,
     radialAngle,
     sensorKey,
     sparkAngles,
+    touchHoldFrame,
+    touchHoldRingRadius,
     touchName,
+    touchOuterRadius,
+    touchPetals,
     touchPolygon,
     touchRadius,
+    touchSparkRadius,
   } from '../lib/touch';
   import { formatClock } from '../lib/format';
   import { session } from '../state/session.svelte';
@@ -92,14 +105,14 @@
   });
 
   /**
-   * 已經有音符停在上面的落點不再重畫參考標記，
-   * 避免同一個位置出現兩層字。飛入中的音符還不在落點上，標記仍然保留。
+   * 已經有音符停在上面的落點不再重畫參考標記，避免同一個位置出現兩層字。
+   * Touch 現在原地收攏，一出現就壓在落點上，所以未到的音符也要蓋掉標記。
    */
   const coveredSensorKeys = $derived.by(() => {
     const keys = new Set<string>();
     if (!showSensors) return keys;
     for (const visual of visuals) {
-      if (!visual.visible || visual.phase === 'upcoming') continue;
+      if (!visual.visible) continue;
       if (!isTouchNote(visual.note)) continue;
       keys.add(sensorKey(visual.note.touchArea, visual.note.button));
     }
@@ -252,6 +265,11 @@
     return `${polylinePath(touchPolygon(area, atPoint, radius, angle), calibration)}Z`;
   }
 
+  /** 盤面座標的封閉多邊形 → 畫面路徑，Touch 的三角形與方框共用。 */
+  function closedPath(points: Point[]): string {
+    return `${polylinePath(points, calibration)}Z`;
+  }
+
   /** 音符的簡短說明，例如「Tap 3」「Touch B5」「Slide 直線 1→5」。 */
   function noteCaption(note: Note): string {
     const kind = KIND_LABEL[note.kind] ?? note.kind;
@@ -293,13 +311,61 @@
     return polylinePath(points, calibration);
   }
 
-  function holdEnds(note: Note, visual: NoteVisual): { head: Point; tail: Point } {
+  /**
+   * Hold 長條的半寬。取 Tap 空心圓的半徑，筆觸與 Tap 完全對齊，
+   * 長條與 Tap 一眼看得出是同一家族。
+   */
+  const HOLD_HALF_WIDTH = 0.085;
+
+  /** 兩端矮三角形的高度。矮，所以只取半寬的一半。 */
+  const HOLD_TIP = HOLD_HALF_WIDTH * 0.5;
+
+  /**
+   * Hold 長條的輪廓：兩條長邊，兩端各收成一個矮三角形。
+   * 三角形的底不畫，所以整條是一圈連續的六邊形空心外框，中間完全挖空。
+   * 頭在判定位置，尾往盤面中心延伸，長度代表時值；
+   * 判定開始後尾端往頭收，剩下的長度就是剩餘時間。
+   */
+  function holdOutline(note: Note, visual: NoteVisual): Point[] {
     const factor = approachScale(visual);
-    const head = scalePoint(note.position, factor);
     const duration = Math.max(note.endSeconds - note.timeSeconds, 0);
-    const length = Math.min(0.62, Math.max(0.14, duration * 0.42));
-    const tail = scalePoint(note.position, Math.max(factor - length, 0.08));
-    return { head, tail };
+    const full = Math.min(0.62, Math.max(0.14, duration * 0.42));
+    const length = visual.phase === 'upcoming' ? full : full * (1 - visual.progress);
+    const head = scalePoint(note.position, factor);
+    const tail = scalePoint(note.position, Math.max(factor - length, 0.06));
+    // 由盤面中心指向鍵位的單位向量；長邊沿它、肩寬沿它的垂直方向。
+    const base = Math.hypot(note.position.x, note.position.y) || 1;
+    const ux = note.position.x / base;
+    const uy = note.position.y / base;
+    const w = HOLD_HALF_WIDTH;
+    const tip = HOLD_TIP;
+    return [
+      { x: head.x + ux * tip, y: head.y + uy * tip },
+      { x: head.x - uy * w, y: head.y + ux * w },
+      { x: tail.x - uy * w, y: tail.y + ux * w },
+      { x: tail.x - ux * tip, y: tail.y - uy * tip },
+      { x: tail.x + uy * w, y: tail.y - ux * w },
+      { x: head.x + uy * w, y: head.y - ux * w },
+    ];
+  }
+
+  /**
+   * 指派標籤的位置。
+   * Tap／Hold／Slide 沿半徑往內退一點，跟著飛入一起移動。
+   * Touch 原地收攏、外形大小固定，標籤改成貼在外形之外：
+   * 內圈（B／E／C）往外放、外圈（A／D）往內放，避開鍵位標記與相鄰落點。
+   */
+  function tagAnchor(note: Note, factor: number): Point {
+    if (note.kind !== 'touch' && note.kind !== 'touchHold') {
+      return scalePoint(note.position, Math.max(factor - 0.17, 0.1));
+    }
+    const gap = touchOuterRadius(touchRadius(note.touchArea), note.kind === 'touchHold') + 0.075;
+    const angle = radialAngle(note.position);
+    const away = Math.hypot(note.position.x, note.position.y) < 0.6 ? 1 : -1;
+    return {
+      x: note.position.x + Math.cos(angle) * gap * away,
+      y: note.position.y + Math.sin(angle) * gap * away,
+    };
   }
 
   function noteLabel(note: Note, visual: NoteVisual): string {
@@ -497,27 +563,43 @@
                 onkeydown={(event) => onNoteKey(event, note.id)}
               >
                 {#if note.kind === 'touch' || note.kind === 'touchHold'}
-                  {@const at = scalePoint(note.position, factor)}
+                  <!-- Touch 一律停在 Rust 給的落點上，按壓提示是四片三角形由外往內收攏；
+                       收到位的瞬間就是判定時間，不從盤面中心飛出去。 -->
+                  {@const at = note.position}
                   {@const mark = px(at)}
-                  {@const angle = radialAngle(note.position)}
                   {@const r = touchRadius(note.touchArea)}
+                  {@const isHold = note.kind === 'touchHold'}
                   {#if note.modifiers.fireworks}
                     <!-- 判定前就預告會放煙火，不必等到效果出現 -->
-                    <path class="touch-spark-mark" d={shapePath(note.touchArea, at, r * 1.26, angle)} />
-                  {/if}
-                  <path class="touch-ring" d={shapePath(note.touchArea, at, r, angle)} />
-                  {#if note.kind === 'touchHold'}
-                    <!-- 第二層輪廓：不靠顏色就能和單點 Touch 分開 -->
-                    <path class="touch-hold-ring" d={shapePath(note.touchArea, at, r * 0.76, angle)} />
-                  {/if}
-                  <path class="touch-core" d={shapePath(note.touchArea, at, r * 0.5, angle)} />
-                  {#if note.kind === 'touchHold' && visual.phase === 'active'}
-                    <!-- 剩餘時間：亮輪廓由外往內縮到核心 -->
-                    <path
-                      class="touch-progress"
-                      d={shapePath(note.touchArea, at, r * (0.5 + 0.5 * (1 - visual.progress)), angle)}
+                    <circle
+                      class="touch-spark-mark"
+                      cx={mark.x}
+                      cy={mark.y}
+                      r={len(touchSparkRadius(r, isHold))}
                     />
                   {/if}
+                  {#if isHold}
+                    {@const ring = len(touchHoldRingRadius(r))}
+                    <!-- 剩餘時間：方框外面一整圈，從正上方順時針消耗，長度只由播放時間換算 -->
+                    <circle class="touch-hold-track" cx={mark.x} cy={mark.y} r={ring} />
+                    <circle
+                      class="touch-hold-remain"
+                      cx={mark.x}
+                      cy={mark.y}
+                      r={ring}
+                      stroke-dasharray={2 * Math.PI * ring}
+                      stroke-dashoffset={2 * Math.PI * ring * visual.progress}
+                      transform={`rotate(-90 ${mark.x} ${mark.y})`}
+                    />
+                    <!-- 目標方框固定在落點，斜向的三角形往它收 -->
+                    <path
+                      class="touch-hold-frame"
+                      d={closedPath(touchHoldFrame(at, r, TOUCH_ICON_ANGLE))}
+                    />
+                  {/if}
+                  {#each touchPetals(at, r, TOUCH_ICON_ANGLE, touchGather(visual), isHold) as petal, index (index)}
+                    <path class="touch-petal" d={closedPath(petal)} />
+                  {/each}
                   <text
                     class="touch-label"
                     class:is-center={note.touchArea === 'C'}
@@ -529,39 +611,8 @@
                     {touchName(note.touchArea, note.button)}
                   </text>
                 {:else if note.kind === 'hold'}
-                  {@const ends = holdEnds(note, visual)}
-                  {@const head = px(ends.head)}
-                  {@const tail = px(ends.tail)}
-                  <line
-                    class="hold-bar"
-                    x1={head.x}
-                    y1={head.y}
-                    x2={tail.x}
-                    y2={tail.y}
-                    stroke-width={len(0.105)}
-                    stroke-linecap="round"
-                  />
-                  <line
-                    class="hold-core"
-                    x1={head.x}
-                    y1={head.y}
-                    x2={tail.x}
-                    y2={tail.y}
-                    stroke-width={len(0.05)}
-                    stroke-linecap="round"
-                  />
-                  {#if visual.phase === 'active'}
-                    <line
-                      class="hold-progress"
-                      x1={head.x}
-                      y1={head.y}
-                      x2={head.x + (tail.x - head.x) * (1 - visual.progress)}
-                      y2={head.y + (tail.y - head.y) * (1 - visual.progress)}
-                      stroke-width={len(0.05)}
-                      stroke-linecap="round"
-                    />
-                  {/if}
-                  <circle class="note-ring" cx={head.x} cy={head.y} r={len(0.085)} />
+                  <!-- 空心長條：兩條長邊＋兩端矮三角形，中間挖空，不畫三角形的底。 -->
+                  <path class="hold-bar" d={closedPath(holdOutline(note, visual))} />
                 {:else if note.kind === 'slide'}
                   {#if note.hasHead}
                     <path class="note-star" d={starPath(scalePoint(note.position, factor), 0.1, 0.045)} />
@@ -581,7 +632,7 @@
                 {/if}
 
                 {#if tag}
-                  {@const anchor = px(scalePoint(note.position, Math.max(factor - 0.17, 0.1)))}
+                  {@const anchor = px(tagAnchor(note, factor))}
                   <text
                     class="note-tag"
                     class:is-left={tag.hand === 'L'}
@@ -842,16 +893,12 @@
     stroke-width: 3;
   }
 
+  /* 空心長條：中間完全挖空，線寬與 Tap 空心圓一致。 */
   .hold-bar {
-    stroke: #6f7a8a;
-  }
-
-  .hold-core {
-    stroke: #171b21;
-  }
-
-  .hold-progress {
+    fill: none;
     stroke: #eef2f8;
+    stroke-width: 7;
+    stroke-linejoin: round;
   }
 
   /* Touch 落點參考標記。沿用鍵位標記的中性色，不新增色相。 */
@@ -882,17 +929,19 @@
     fill: #c8d1de;
   }
 
-  .touch-ring {
+  /* Touch 按壓提示：四片空心三角形，尖端朝落點。 */
+  .touch-petal {
     fill: none;
     stroke: #eef2f8;
-    stroke-width: 6;
+    stroke-width: 5;
     stroke-linejoin: round;
   }
 
-  .touch-hold-ring {
+  /* Touch Hold 的目標方框，配斜向三角形。 */
+  .touch-hold-frame {
     fill: none;
     stroke: #eef2f8;
-    stroke-width: 3;
+    stroke-width: 5;
     stroke-linejoin: round;
   }
 
@@ -904,24 +953,25 @@
     stroke-linejoin: round;
   }
 
-  .touch-core {
+  /* Touch Hold 剩餘時間環：底環固定一整圈，亮環順時針消耗。 */
+  .touch-hold-track {
     fill: none;
-    stroke: #8e9aab;
+    stroke: #3d4551;
     stroke-width: 4;
-    stroke-linejoin: round;
   }
 
-  .touch-progress {
+  .touch-hold-remain {
     fill: none;
     stroke: #eef2f8;
-    stroke-width: 4;
-    stroke-linejoin: round;
+    stroke-width: 8;
+    stroke-linecap: butt;
   }
 
+  /* 落點編號放在三角形圍出來的中心，黑色描邊保證壓在任何筆觸上都讀得到。 */
   .touch-label {
     fill: #eef2f8;
     font-family: var(--font-mono);
-    font-size: 26px;
+    font-size: 22px;
     font-weight: 700;
     paint-order: stroke;
     stroke: #000;
@@ -930,7 +980,7 @@
 
   /* C 的外形較大，字也放大一級，中央不會看起來空掉。 */
   .touch-label.is-center {
-    font-size: 30px;
+    font-size: 26px;
   }
 
   /* 煙火筆觸。stroke-opacity 只是短暫的筆觸淡出，不是半透明底色。 */
@@ -955,31 +1005,39 @@
   /* Break 與 EX 只換筆觸顏色，形狀維持一致，不單靠顏色傳達種類。 */
   .note.is-break .note-ring,
   .note.is-break .note-star,
-  .note.is-break .touch-ring,
-  .note.is-break .touch-hold-ring,
+  .note.is-break .touch-petal,
+  .note.is-break .touch-hold-frame,
+  .note.is-break .touch-hold-remain,
   .note.is-break .hold-bar {
     stroke: #f0913a;
   }
 
-  .note.is-ex .note-core,
-  .note.is-ex .touch-core {
+  .note.is-ex .note-core {
     stroke: var(--c-focus);
     stroke-width: 6;
   }
 
-  .note.is-active .note-ring {
+  .note.is-ex .touch-petal {
+    stroke: var(--c-focus);
+    stroke-width: 7;
+  }
+
+  .note.is-active .note-ring,
+  .note.is-active .hold-bar {
     stroke-width: 9;
   }
 
-  .note.is-active .touch-ring {
-    stroke-width: 8;
+  .note.is-active .touch-petal,
+  .note.is-active .touch-hold-frame {
+    stroke-width: 7;
   }
 
   .note.is-selected .note-ring,
   .note.is-selected .note-star,
-  .note.is-selected .touch-ring {
+  .note.is-selected .touch-petal,
+  .note.is-selected .touch-hold-frame {
     stroke: var(--c-accent);
-    stroke-width: 10;
+    stroke-width: 9;
   }
 
   .note:focus-visible {
@@ -988,7 +1046,8 @@
 
   .note:focus-visible .note-ring,
   .note:focus-visible .note-star,
-  .note:focus-visible .touch-ring,
+  .note:focus-visible .touch-petal,
+  .note:focus-visible .touch-hold-frame,
   .note:focus-visible .hold-bar {
     stroke: var(--c-focus);
   }

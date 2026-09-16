@@ -91,10 +91,23 @@ export function noteVisual(
   };
 }
 
-/** 飛入動畫時的半徑倍率；判定時間之後固定為 1（Rust 座標原位）。 */
+/**
+ * 飛入動畫時的半徑倍率；判定時間之後固定為 1（Rust 座標原位）。
+ * Touch 家族固定 1：它們不從盤面中心飛出，而是原地由外往內收攏，見 touchGather。
+ */
 export function approachScale(visual: NoteVisual): number {
+  if (visual.note.kind === 'touch' || visual.note.kind === 'touchHold') return 1;
   if (visual.phase !== 'upcoming') return 1;
   return 0.2 + 0.8 * visual.travel;
+}
+
+/**
+ * Touch 的收攏進度：0 = 剛出現時的最大擴散，1 = 收攏到落點。
+ * 與 travel 同樣線性，收攏速度固定，剛好在判定時間貼合，看得出節奏。
+ */
+export function touchGather(visual: NoteVisual): number {
+  if (visual.phase !== 'upcoming') return 1;
+  return Math.min(1, Math.max(0, visual.travel));
 }
 
 export function scalePoint(point: Point, factor: number): Point {

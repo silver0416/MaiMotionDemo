@@ -2,7 +2,13 @@
   import NumberField from './NumberField.svelte';
   import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
   import { PALM_APPROX_HINT } from '../lib/palm';
-  import { TOUCH_AREA_PLACE, touchPolygon } from '../lib/touch';
+  import {
+    TOUCH_AREA_PLACE,
+    touchHoldFrame,
+    touchHoldRingRadius,
+    touchPetals,
+    touchPolygon,
+  } from '../lib/touch';
   import { view } from '../state/view.svelte';
   import type { SensorDisplayMode } from '../state/view.svelte';
 
@@ -17,6 +23,8 @@
     area: string;
     name: string;
     hint: string;
+    /** true = 畫音符外形，false = 畫落點參考的多邊形 */
+    note?: boolean;
     hold?: boolean;
     spark?: boolean;
   }
@@ -28,10 +36,18 @@
     { key: 'D', area: 'D', name: 'D1–D8', hint: TOUCH_AREA_PLACE.D },
     { key: 'E', area: 'E', name: 'E1–E8', hint: TOUCH_AREA_PLACE.E },
     {
+      key: 'touch',
+      area: 'A',
+      name: 'Touch',
+      hint: '四片三角形由外往落點收攏，收到位就是判定時間',
+      note: true,
+    },
+    {
       key: 'hold',
       area: 'A',
       name: 'Touch Hold',
-      hint: '兩層輪廓；亮線由外往內縮表示剩餘時間',
+      hint: '方框＋斜向三角形；外面一整圈亮環順時針消耗，代表剩餘時間',
+      note: true,
       hold: true,
     },
     {
@@ -39,13 +55,22 @@
       area: 'A',
       name: '煙火 f',
       hint: '虛線外框預告，判定時間在落點擴散一次',
+      note: true,
       spark: true,
     },
   ];
 
+  const LEGEND_ORIGIN = { x: 0, y: 0 };
+  /** 圖例的落點外形半徑（viewBox 單位），對應盤面的 touchRadius。 */
+  const LEGEND_RADIUS = 11;
+
   /** 圖例外形與盤面共用 touchPolygon；這裡把「朝外」畫成朝上。 */
   function legendPath(area: string, radius: number): string {
-    const points = touchPolygon(area, { x: 0, y: 0 }, radius, -Math.PI / 2);
+    return legendPoly(touchPolygon(area, LEGEND_ORIGIN, radius, -Math.PI / 2));
+  }
+
+  /** 把圖例用的局部座標搬到 40×40 viewBox 的中心。 */
+  function legendPoly(points: { x: number; y: number }[]): string {
     return `${points
       .map((p, i) => `${i === 0 ? 'M' : 'L'}${(20 + p.x).toFixed(2)} ${(20 + p.y).toFixed(2)}`)
       .join('')}Z`;
@@ -166,14 +191,29 @@
     <div class="legend">
       {#each LEGEND as item (item.key)}
         <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
-          {#if item.spark}
-            <path class="mark-spark" d={legendPath(item.area, 15)} />
+          {#if item.note}
+            {#if item.spark}
+              <path class="mark-spark" d={legendPath(item.area, LEGEND_RADIUS * 1.18)} />
+            {/if}
+            {#if item.hold}
+              <circle
+                class="mark-hold-ring"
+                cx="20"
+                cy="20"
+                r={touchHoldRingRadius(LEGEND_RADIUS)}
+              />
+              <path
+                class="mark-hold-frame"
+                d={legendPoly(touchHoldFrame(LEGEND_ORIGIN, LEGEND_RADIUS, -Math.PI / 2))}
+              />
+            {/if}
+            {#each touchPetals(LEGEND_ORIGIN, LEGEND_RADIUS, -Math.PI / 2, 1, !!item.hold) as petal, index (index)}
+              <path class="mark-petal" d={legendPoly(petal)} />
+            {/each}
+          {:else}
+            <path class="mark-ring" d={legendPath(item.area, LEGEND_RADIUS)} />
+            <path class="mark-core" d={legendPath(item.area, 5.5)} />
           {/if}
-          <path class="mark-ring" d={legendPath(item.area, 11)} />
-          {#if item.hold}
-            <path class="mark-hold" d={legendPath(item.area, 8.4)} />
-          {/if}
-          <path class="mark-core" d={legendPath(item.area, 5.5)} />
         </svg>
         <div class="legend-text">
           <span class="legend-name mono">{item.name}</span>
@@ -228,8 +268,10 @@
     <label class="check" style="margin-top: var(--space-3)">
       <input type="checkbox" bind:checked={view.approach} disabled={view.noteMode !== 'window'} />
       <span>
-        音符由中心飛向鍵位
-        <span class="field-hint">純視覺效果，不改變判定時間。</span>
+        音符飛入動畫
+        <span class="field-hint">
+          Tap／Hold／Slide 由中心飛向鍵位，Touch 原地由外往落點收攏。純視覺效果，不改變判定時間。
+        </span>
       </span>
     </label>
     {#if view.noteMode === 'window' && view.approach}
@@ -358,11 +400,18 @@
     stroke-linejoin: round;
   }
 
-  .mark-hold {
+  .mark-petal,
+  .mark-hold-frame {
     fill: none;
     stroke: var(--c-text);
-    stroke-width: 1.4;
+    stroke-width: 1.6;
     stroke-linejoin: round;
+  }
+
+  .mark-hold-ring {
+    fill: none;
+    stroke: var(--c-text-dim);
+    stroke-width: 2.4;
   }
 
   .mark-core {
