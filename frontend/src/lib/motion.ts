@@ -9,7 +9,8 @@ export interface HandState {
   clamped: boolean;
 }
 
-const CONTACT_MODES = new Set<string>(['tap', 'hold', 'slide', 'handover', 'glide']);
+// palm 也算接觸：手掌覆蓋期間該手一直貼在盤面上，接觸圈要和 hold 一樣亮著。
+const CONTACT_MODES = new Set<string>(['tap', 'hold', 'slide', 'handover', 'glide', 'palm']);
 
 export function isContactMode(mode: string): boolean {
   return CONTACT_MODES.has(mode);

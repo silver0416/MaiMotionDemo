@@ -108,6 +108,15 @@ pub struct Note {
     pub source_span: SourceSpan,
 }
 
+/// simai 可指名的 Touch 落點。C1/C2 在本 Demo 共用中央 C 落點。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TouchSensor {
+    pub area: String,
+    pub index: u8,
+    pub position: Point,
+}
+
 /// simai 修飾語。這些只影響判定與外觀，不改變本 Demo 的手部動作模型。
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -132,6 +141,8 @@ pub struct Chart {
     pub duration_seconds: f64,
     pub notes: Vec<Note>,
     pub paths: Vec<SlidePath>,
+    /// 盤面上可標示的 Touch 落點，與音符的 position 共用 Rust 幾何。
+    pub touch_sensors: Vec<TouchSensor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -149,6 +160,8 @@ pub struct SolverConfig {
     /// 同一隻手連續兩次接觸相距在此以內時，視為不抬手的連續滑移：
     /// 手從前一顆的判定時間等速滑到下一顆，不停留、不算重新擊打。0 表示關閉。
     pub glide_distance: f64,
+    /// 手掌圓形近似的半徑，盤面半徑為 1；0 表示關閉同時 Touch 覆蓋。
+    pub palm_radius: f64,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -171,6 +184,7 @@ impl Default for SolverConfig {
             handover_cooldown: 0.2,
             slide_pickup_seconds: 0.12,
             glide_distance: 0.8,
+            palm_radius: 0.5,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -201,6 +215,9 @@ impl SolverConfig {
         }
         if !self.glide_distance.is_finite() || !(0.0..=2.0).contains(&self.glide_distance) {
             return Err("滑移距離必須為 0–2".into());
+        }
+        if !self.palm_radius.is_finite() || !(0.0..=1.0).contains(&self.palm_radius) {
+            return Err("手掌半徑必須為 0–1；0 表示關閉".into());
         }
         if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
             return Err("時間與速度參數必須為有限正數".into());
@@ -330,6 +347,16 @@ pub struct Handover {
     /// 兩手在同一點碰頭並互換目的地。這種交接沒有重疊時間，兩條 Slide 會同時出現一筆。
     pub swap: bool,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PalmPlacement {
+    pub hand: Hand,
+    pub center: Point,
+    pub radius: f64,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub covered_note_ids: Vec<String>,
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CostBreakdown {
@@ -353,6 +380,7 @@ pub struct Solution {
     pub cost_breakdown: CostBreakdown,
     pub assignments: Vec<Assignment>,
     pub handovers: Vec<Handover>,
+    pub palm_placements: Vec<PalmPlacement>,
     pub left_segments: Vec<MotionSegment>,
     pub right_segments: Vec<MotionSegment>,
     pub config_snapshot: SolverConfig,

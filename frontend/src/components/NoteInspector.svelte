@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
+  import { HAND_LABEL, KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
   import { noteBadges, noteTarget } from '../lib/notes';
+  import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
+  import { TOUCH_AREA_PLACE } from '../lib/touch';
   import { formatClock, formatDelta, formatNumber } from '../lib/format';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
@@ -34,9 +36,26 @@
     if (target && target.motionStart !== null) playback.seek(target.motionStart);
   }
 
+  function holdSeconds(target: Note): number {
+    return Math.max(target.endSeconds - target.timeSeconds, 0);
+  }
+
+  /** 清單第二行只講長度與煙火，其他修飾留在明細，短音符仍保持一行。 */
+  function rowFlags(item: Note): string[] {
+    const out: string[] = [];
+    if (item.kind === 'hold' || item.kind === 'touchHold') {
+      out.push(`持續 ${formatNumber(holdSeconds(item), 2)} 秒`);
+    }
+    if (item.modifiers.fireworks) out.push('煙火');
+    if (session.palmByNoteId.has(item.id)) out.push('一掌覆蓋');
+    return out;
+  }
+
   const badges = $derived(note ? noteBadges(note) : []);
   const assignments = $derived(note ? (session.assignmentsByNote.get(note.id) ?? []) : []);
   const handovers = $derived(note ? (session.handoversByNote.get(note.id) ?? []) : []);
+  /** 覆蓋這顆音符的手掌動作，直接取核心結果，不在前端重算覆蓋組。 */
+  const palm = $derived(note ? (session.palmByNoteId.get(note.id) ?? null) : null);
 </script>
 
 <div class="stack">
@@ -53,18 +72,22 @@
     {:else}
       <div class="note-list scroll">
         {#each session.notes as item (item.id)}
+          {@const flags = rowFlags(item)}
           <button
             class="note-row"
             class:is-selected={session.selectedNoteId === item.id}
             onclick={() => pick(item.id, true)}
           >
-            <span class="mono">{item.id}</span>
-            <span>{KIND_LABEL[item.kind] ?? item.kind}</span>
-            <span class="mono">{noteTarget(item)}</span>
-            <span class="mono">{formatClock(item.timeSeconds)}</span>
-            <span class="mono hand-cell">
+            <span class="cell-id mono">{item.id}</span>
+            <span class="cell-target mono">{noteTarget(item)}</span>
+            <span class="cell-kind">{KIND_LABEL[item.kind] ?? item.kind}</span>
+            <span class="cell-time mono">{formatClock(item.timeSeconds)}</span>
+            <span class="cell-hand mono">
               {session.solution ? handsOf(session.solution, item.id) : '—'}
             </span>
+            {#if flags.length > 0}
+              <span class="cell-flags">{flags.join('・')}</span>
+            {/if}
           </button>
         {/each}
       </div>
@@ -79,6 +102,10 @@
         <dd>{KIND_LABEL[note.kind] ?? note.kind}</dd>
         <dt>落點</dt>
         <dd>{noteTarget(note)}</dd>
+        {#if note.touchArea}
+          <dt>感應區</dt>
+          <dd>{TOUCH_AREA_PLACE[note.touchArea] ?? note.touchArea}</dd>
+        {/if}
         {#if note.pathId}
           {@const path = session.pathById.get(note.pathId)}
           {#if path}
@@ -94,6 +121,14 @@
         <dd>{formatClock(note.timeSeconds)}</dd>
         <dt>結束時間</dt>
         <dd>{formatClock(note.endSeconds)}</dd>
+        {#if note.kind === 'hold' || note.kind === 'touchHold'}
+          <dt>持續時間</dt>
+          <dd>{formatNumber(holdSeconds(note), 2)} 秒</dd>
+        {/if}
+        {#if note.modifiers.fireworks}
+          <dt>煙火</dt>
+          <dd>判定時間在落點擴散一次</dd>
+        {/if}
         {#if note.motionStart !== null}
           <dt>移動開始</dt>
           <dd>{formatClock(note.motionStart)}</dd>
@@ -107,6 +142,11 @@
         <dt>原文位置</dt>
         <dd>第 {note.sourceSpan.line} 行 第 {note.sourceSpan.column} 欄</dd>
       </dl>
+      {#if note.touchArea === 'C'}
+        <p class="small muted" style="margin-top: var(--space-2)">
+          simai 的 C、C1、C2 在核心合併為同一個 C，共用中央這一個落點。
+        </p>
+      {/if}
       <div class="row row-wrap" style="margin-top: var(--space-3)">
         <button class="btn btn--icon" onclick={() => seekNoteTime(note)}>跳到判定時間</button>
         {#if note.motionStart !== null}
@@ -163,6 +203,46 @@
       {/if}
     </section>
 
+    {#if palm}
+      <section class="section">
+        <div class="section-title"><span>一掌覆蓋</span></div>
+        <dl class="kv">
+          <dt>手</dt>
+          <dd>
+            <span
+              class="badge"
+              class:badge--left={palm.hand === 'L'}
+              class:badge--right={palm.hand === 'R'}>{palm.hand}</span
+            >
+            {HAND_LABEL[palm.hand]}
+          </dd>
+          <dt>覆蓋落點</dt>
+          <dd>{coveredTargets(palm, session.noteById).join('・')}</dd>
+          <dt>覆蓋音符</dt>
+          <dd>{palm.coveredNoteIds.join('、')}</dd>
+          <dt>覆蓋區間</dt>
+          <dd>{formatClock(palm.startSeconds)} – {formatClock(palm.endSeconds)}</dd>
+          <dt>時長</dt>
+          <dd>{formatNumber(palmSeconds(palm), 2)} 秒</dd>
+          <dt>掌心</dt>
+          <dd>{formatNumber(palm.center.x, 3)}, {formatNumber(palm.center.y, 3)}</dd>
+          <dt>半徑</dt>
+          <dd>{formatNumber(palm.radius, 2)}</dd>
+        </dl>
+        <p class="small muted" style="margin-top: var(--space-2)">
+          這一掌佔用到其中最晚釋放的時刻，期間該手不接別處。{PALM_APPROX_HINT}
+        </p>
+        <div class="row row-wrap" style="margin-top: var(--space-3)">
+          <button class="btn btn--icon" onclick={() => playback.seek(palm.startSeconds)}>
+            跳到覆蓋開始
+          </button>
+          <button class="btn btn--icon" onclick={() => playback.seek(palm.endSeconds)}>
+            跳到覆蓋結束
+          </button>
+        </div>
+      </section>
+    {/if}
+
     {#if session.solutions.length > 1}
       <section class="section">
         <div class="section-title"><span>候選之間的差異</span></div>
@@ -213,9 +293,9 @@
 
   .note-row {
     display: grid;
-    grid-template-columns: 46px 52px 54px 1fr 54px;
+    grid-template-columns: 38px 46px minmax(0, 1fr) auto 44px;
     align-items: center;
-    gap: var(--space-2);
+    gap: 1px var(--space-1);
     padding: var(--space-1) var(--space-2);
     font-size: var(--fs-sm);
     text-align: left;
@@ -223,6 +303,34 @@
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
     cursor: pointer;
+  }
+
+  .cell-id {
+    font-size: var(--fs-xs);
+    color: var(--c-text-dim);
+  }
+
+  .cell-target {
+    font-weight: 700;
+  }
+
+  .cell-kind,
+  .cell-time {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .cell-kind {
+    color: var(--c-text-dim);
+  }
+
+  /* 只有 Hold／Touch Hold、煙火與一掌覆蓋會多出這一行，一般音符仍是單行。 */
+  .cell-flags {
+    grid-column: 2 / -1;
+    font-size: var(--fs-xs);
+    color: var(--c-text-dim);
+    line-height: var(--lh-tight);
   }
 
   .note-row:hover {
@@ -234,7 +342,7 @@
     background: var(--c-control);
   }
 
-  .hand-cell {
+  .cell-hand {
     text-align: right;
     font-weight: 700;
   }

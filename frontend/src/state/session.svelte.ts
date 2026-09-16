@@ -2,6 +2,8 @@ import { analyzeChart, isDesktop, nextRequestId } from '../lib/api';
 import { DEFAULT_CONFIG, cloneConfig, configEquals, validateConfig } from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
 import type { Sample } from '../lib/samples';
+import { palmByNote } from '../lib/palm';
+import { isFireworkTouch, isTouchNote, sensorKey } from '../lib/touch';
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
@@ -9,9 +11,11 @@ import type {
   Chart,
   Handover,
   Note,
+  PalmPlacement,
   SlidePath,
   Solution,
   SolverConfig,
+  TouchSensor,
 } from '../lib/types';
 import { playback } from './playback.svelte';
 
@@ -80,6 +84,23 @@ export class Session {
     return map;
   });
 
+  /** Rust 輸出的 33 個 simai 可指名落點；舊格式沒有這個欄位時當成沒有資料。 */
+  touchSensors = $derived<TouchSensor[]>(this.chart?.touchSensors ?? []);
+
+  touchNotes = $derived<Note[]>(this.notes.filter(isTouchNote));
+
+  hasTouchNotes = $derived(this.touchNotes.length > 0);
+
+  /** 這份譜面實際用到的落點，用來加重盤面上對應的參考標記。 */
+  usedSensorKeys = $derived.by(() => {
+    const keys = new Set<string>();
+    for (const note of this.touchNotes) keys.add(sensorKey(note.touchArea, note.button));
+    return keys;
+  });
+
+  /** 先篩出有煙火的音符，播放時每幀只需檢查這一小組。 */
+  fireworkNotes = $derived<Note[]>(this.notes.filter(isFireworkTouch));
+
   pathById = $derived.by(() => {
     const map = new Map<string, SlidePath>();
     for (const path of this.chart?.paths ?? []) map.set(path.id, path);
@@ -105,6 +126,14 @@ export class Session {
     }
     return map;
   });
+
+  /** Rust 的手掌覆蓋結果；舊版核心沒有這個欄位時當成沒有手掌動作。 */
+  palmPlacements = $derived<PalmPlacement[]>(this.solution?.palmPlacements ?? []);
+
+  hasPalms = $derived(this.palmPlacements.length > 0);
+
+  /** noteId → 覆蓋它的手掌；音符明細與清單用來標示「一掌覆蓋」。 */
+  palmByNoteId = $derived.by(() => palmByNote(this.palmPlacements));
 
   leftTrack = $derived<Track | null>(this.solution ? buildTrack(this.solution.leftSegments) : null);
   rightTrack = $derived<Track | null>(this.solution ? buildTrack(this.solution.rightSegments) : null);

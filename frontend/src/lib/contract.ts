@@ -27,6 +27,7 @@ export const DEFAULT_CONFIG: SolverConfig = {
   crossWeight: 1,
   repetitionWeight: 1,
   handoverWeight: 1,
+  palmRadius: 0.5,
 };
 
 export const WEIGHT_KEYS = [
@@ -78,6 +79,7 @@ export const MODE_LABEL: Record<MotionMode, string> = {
   hold: '按住',
   slide: '滑行',
   handover: '交接中',
+  palm: '手掌覆蓋',
   idle: '待命',
 };
 
@@ -197,6 +199,9 @@ export function validateConfig(config: SolverConfig, firstSeconds: number): Conf
     config.glideDistance > 2
   ) {
     issues.push({ field: 'glideDistance', message: '滑移距離必須是 0–2' });
+  }
+  if (!Number.isFinite(config.palmRadius) || config.palmRadius < 0 || config.palmRadius > 1) {
+    issues.push({ field: 'palmRadius', message: '手掌半徑必須是 0–1；0 表示關閉手掌覆蓋' });
   }
   if (config.preparationSeconds > 10) {
     issues.push({ field: 'preparationSeconds', message: '預備時間最多 10 秒' });

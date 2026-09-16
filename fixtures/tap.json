@@ -13,6 +13,7 @@
       "handoverCooldown": 0.2,
       "handoverSeconds": 0.04,
       "handoverWeight": 1.0,
+      "palmRadius": 0.5,
       "preparationSeconds": 1.0,
       "repetitionSeconds": 0.15,
       "repetitionWeight": 1.0,
@@ -277,7 +278,273 @@
           "touchArea": null
         }
       ],
-      "paths": []
+      "paths": [],
+      "touchSensors": [
+        {
+          "area": "A",
+          "index": 1,
+          "position": {
+            "x": 0.3444150891285809,
+            "y": -0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 2,
+          "position": {
+            "x": 0.831491579260158,
+            "y": -0.3444150891285808
+          }
+        },
+        {
+          "area": "A",
+          "index": 3,
+          "position": {
+            "x": 0.831491579260158,
+            "y": 0.3444150891285808
+          }
+        },
+        {
+          "area": "A",
+          "index": 4,
+          "position": {
+            "x": 0.3444150891285809,
+            "y": 0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 5,
+          "position": {
+            "x": -0.34441508912858076,
+            "y": 0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 6,
+          "position": {
+            "x": -0.831491579260158,
+            "y": 0.34441508912858093
+          }
+        },
+        {
+          "area": "A",
+          "index": 7,
+          "position": {
+            "x": -0.8314915792601582,
+            "y": -0.3444150891285807
+          }
+        },
+        {
+          "area": "A",
+          "index": 8,
+          "position": {
+            "x": -0.3444150891285813,
+            "y": -0.8314915792601579
+          }
+        },
+        {
+          "area": "B",
+          "index": 1,
+          "position": {
+            "x": 0.16072704159333773,
+            "y": -0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 2,
+          "position": {
+            "x": 0.3880294036547404,
+            "y": -0.1607270415933377
+          }
+        },
+        {
+          "area": "B",
+          "index": 3,
+          "position": {
+            "x": 0.3880294036547404,
+            "y": 0.1607270415933377
+          }
+        },
+        {
+          "area": "B",
+          "index": 4,
+          "position": {
+            "x": 0.16072704159333773,
+            "y": 0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 5,
+          "position": {
+            "x": -0.16072704159333767,
+            "y": 0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 6,
+          "position": {
+            "x": -0.3880294036547404,
+            "y": 0.16072704159333775
+          }
+        },
+        {
+          "area": "B",
+          "index": 7,
+          "position": {
+            "x": -0.3880294036547405,
+            "y": -0.16072704159333764
+          }
+        },
+        {
+          "area": "B",
+          "index": 8,
+          "position": {
+            "x": -0.16072704159333795,
+            "y": -0.3880294036547403
+          }
+        },
+        {
+          "area": "D",
+          "index": 1,
+          "position": {
+            "x": 5.5109105961630896e-17,
+            "y": -0.9
+          }
+        },
+        {
+          "area": "D",
+          "index": 2,
+          "position": {
+            "x": 0.6363961030678928,
+            "y": -0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 3,
+          "position": {
+            "x": 0.9,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "D",
+          "index": 4,
+          "position": {
+            "x": 0.6363961030678928,
+            "y": 0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 5,
+          "position": {
+            "x": 5.5109105961630896e-17,
+            "y": 0.9
+          }
+        },
+        {
+          "area": "D",
+          "index": 6,
+          "position": {
+            "x": -0.6363961030678927,
+            "y": 0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 7,
+          "position": {
+            "x": -0.9,
+            "y": 1.1021821192326179e-16
+          }
+        },
+        {
+          "area": "D",
+          "index": 8,
+          "position": {
+            "x": -0.6363961030678932,
+            "y": -0.6363961030678924
+          }
+        },
+        {
+          "area": "E",
+          "index": 1,
+          "position": {
+            "x": 2.5717582782094416e-17,
+            "y": -0.42
+          }
+        },
+        {
+          "area": "E",
+          "index": 2,
+          "position": {
+            "x": 0.29698484809834996,
+            "y": -0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 3,
+          "position": {
+            "x": 0.42,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "E",
+          "index": 4,
+          "position": {
+            "x": 0.29698484809834996,
+            "y": 0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 5,
+          "position": {
+            "x": 2.5717582782094416e-17,
+            "y": 0.42
+          }
+        },
+        {
+          "area": "E",
+          "index": 6,
+          "position": {
+            "x": -0.2969848480983499,
+            "y": 0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 7,
+          "position": {
+            "x": -0.42,
+            "y": 5.143516556418883e-17
+          }
+        },
+        {
+          "area": "E",
+          "index": 8,
+          "position": {
+            "x": -0.29698484809835013,
+            "y": -0.2969848480983498
+          }
+        },
+        {
+          "area": "C",
+          "index": 0,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          }
+        }
+      ]
     },
     "diagnostics": [],
     "requestId": "tap",
@@ -353,6 +620,7 @@
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
+          "palmRadius": 0.5,
           "preparationSeconds": 1.0,
           "repetitionSeconds": 0.15,
           "repetitionWeight": 1.0,
@@ -500,6 +768,7 @@
             "startSeconds": 3.53
           }
         ],
+        "palmPlacements": [],
         "rightSegments": [
           {
             "endSeconds": 0.0,
@@ -702,7 +971,7 @@
         ],
         "totalCost": 6.941575463608185,
         "warnings": [
-          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
         ]
       },
@@ -776,6 +1045,7 @@
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
+          "palmRadius": 0.5,
           "preparationSeconds": 1.0,
           "repetitionSeconds": 0.15,
           "repetitionWeight": 1.0,
@@ -959,6 +1229,7 @@
             "startSeconds": 3.53
           }
         ],
+        "palmPlacements": [],
         "rightSegments": [
           {
             "endSeconds": 0.0,
@@ -1125,7 +1396,7 @@
         ],
         "totalCost": 7.317442730481612,
         "warnings": [
-          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
         ]
       },
@@ -1199,6 +1470,7 @@
           "handoverCooldown": 0.2,
           "handoverSeconds": 0.04,
           "handoverWeight": 1.0,
+          "palmRadius": 0.5,
           "preparationSeconds": 1.0,
           "repetitionSeconds": 0.15,
           "repetitionWeight": 1.0,
@@ -1274,6 +1546,7 @@
             "startSeconds": 3.03
           }
         ],
+        "palmPlacements": [],
         "rightSegments": [
           {
             "endSeconds": 0.0,
@@ -1548,7 +1821,7 @@
         ],
         "totalCost": 7.325050209728139,
         "warnings": [
-          "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。",
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
         ]
       }

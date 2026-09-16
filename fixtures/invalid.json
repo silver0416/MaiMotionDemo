@@ -13,6 +13,7 @@
       "handoverCooldown": 0.2,
       "handoverSeconds": 0.04,
       "handoverWeight": 1.0,
+      "palmRadius": 0.5,
       "preparationSeconds": 1.0,
       "repetitionSeconds": 0.15,
       "repetitionWeight": 1.0,

@@ -16,11 +16,30 @@
   import { approachScale, noteVisual, pathLength, scalePoint, type NoteVisual } from '../lib/notes';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
   import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
+  import {
+    activePalms,
+    coveredTargets,
+    palmCovers,
+    palmLabelAnchor,
+    palmLabelUpward,
+  } from '../lib/palm';
+  import {
+    TOUCH_AREA_PLACE,
+    fireworkBursts,
+    fireworkShape,
+    isTouchNote,
+    radialAngle,
+    sensorKey,
+    sparkAngles,
+    touchName,
+    touchPolygon,
+    touchRadius,
+  } from '../lib/touch';
   import { formatClock } from '../lib/format';
   import { session } from '../state/session.svelte';
   import { playback } from '../state/playback.svelte';
   import { view } from '../state/view.svelte';
-  import type { Hand, Note, PathSample, Point } from '../lib/types';
+  import type { Hand, Note, PalmPlacement, PathSample, Point } from '../lib/types';
 
   const time = $derived(playback.time);
   const calibration = $derived(view.calibration);
@@ -36,6 +55,102 @@
       noteVisual(note, time, view.noteMode, view.approach, view.approachSeconds),
     ),
   );
+
+  // Touch 落點參考標記：座標一律取 chart.touchSensors，前端只決定外形大小。
+  const showSensors = $derived(
+    view.sensorMode === 'all' || (view.sensorMode === 'auto' && session.hasTouchNotes),
+  );
+
+  interface SensorMark {
+    key: string;
+    label: string;
+    used: boolean;
+    outline: string;
+    at: Point;
+  }
+
+  /** 參考標記畫得比音符小一級，音符落下時仍是畫面上最亮的一層。 */
+  function sensorRadius(area: string): number {
+    if (area === 'C') return 0.085;
+    if (area === 'B' || area === 'E') return 0.068;
+    return 0.075;
+  }
+
+  const sensorMarks = $derived.by<SensorMark[]>(() => {
+    if (!showSensors) return [];
+    return session.touchSensors.map((sensor) => {
+      const area = String(sensor.area);
+      const key = sensorKey(area, sensor.index);
+      return {
+        key,
+        label: touchName(area, sensor.index),
+        used: session.usedSensorKeys.has(key),
+        outline: shapePath(area, sensor.position, sensorRadius(area), radialAngle(sensor.position)),
+        at: px(sensor.position),
+      };
+    });
+  });
+
+  /**
+   * 已經有音符停在上面的落點不再重畫參考標記，
+   * 避免同一個位置出現兩層字。飛入中的音符還不在落點上，標記仍然保留。
+   */
+  const coveredSensorKeys = $derived.by(() => {
+    const keys = new Set<string>();
+    if (!showSensors) return keys;
+    for (const visual of visuals) {
+      if (!visual.visible || visual.phase === 'upcoming') continue;
+      if (!isTouchNote(visual.note)) continue;
+      keys.add(sensorKey(visual.note.touchArea, visual.note.button));
+    }
+    return keys;
+  });
+
+  const SPARK_ANGLES = sparkAngles();
+
+  /**
+   * 目前要畫的煙火。
+   * 進度只由 (播放時間 − 判定時間) 換算，沒有自己的計時器：
+   * 拖曳 seek 到同一時間得到同一畫面，慢放與循環也自動正確。
+   */
+  const bursts = $derived.by(() =>
+    view.showFireworks && view.showNotes ? fireworkBursts(session.fireworkNotes, time) : [],
+  );
+
+  /**
+   * 目前要畫的手掌覆蓋區。
+   * 掌心、半徑、覆蓋名單與起止時間全部取自 Rust 的 palmPlacements，
+   * 前端只挑出播放時間落在區間內的那幾筆，不自行判斷哪些 Touch 能被一掌蓋住。
+   */
+  const palms = $derived.by(() =>
+    view.showPalms ? activePalms(session.palmPlacements, time) : [],
+  );
+
+  const PALM_TITLE_SIZE = 27;
+  const PALM_LIST_SIZE = 23;
+
+  /**
+   * 手掌標籤的兩行基線位置。
+   * 方向由掌心決定（palm.ts），這裡再夾回 viewBox 之內，
+   * 半徑設得很大、掌心貼著盤面邊緣時文字才不會被裁掉。標籤只是說明，不影響任何判定。
+   */
+  function palmLabel(placement: PalmPlacement): { x: number; title: number; list: number } {
+    const anchor = px(palmLabelAnchor(placement));
+    const gap = PALM_TITLE_SIZE + 4;
+    let title = palmLabelUpward(placement) ? anchor.y - gap : anchor.y + gap * 0.7;
+    let list = title + PALM_LIST_SIZE + 10;
+    const top = -MARGIN_TOP + PALM_TITLE_SIZE + 6;
+    const bottom = IMAGE_HEIGHT + MARGIN_BOTTOM - 6;
+    const down = Math.max(0, top - title);
+    title += down;
+    list += down;
+    const up = Math.max(0, list - bottom);
+    title -= up;
+    list -= up;
+    // 文字置中，兩側各留一個標籤寬度的餘裕。
+    const x = Math.min(Math.max(anchor.x, -MARGIN_X + 110), IMAGE_WIDTH + MARGIN_X - 110);
+    return { x, title, list };
+  }
 
   const leftState = $derived.by<HandState | null>(() => {
     const solution = session.solution;
@@ -127,17 +242,21 @@
     return toStageLength(calibration, value);
   }
 
-  function diamondPath(atPoint: Point, radius: number): string {
-    const p = px(atPoint);
-    const r = len(radius);
-    return `M${p.x} ${p.y - r}L${p.x + r} ${p.y}L${p.x} ${p.y + r}L${p.x - r} ${p.y}Z`;
+  /** Touch 外形：A／D 四邊、B／E 三角、C 八邊，朝向以落點的半徑方向為基準。 */
+  function shapePath(
+    area: string | null,
+    atPoint: Point,
+    radius: number,
+    angle: number,
+  ): string {
+    return `${polylinePath(touchPolygon(area, atPoint, radius, angle), calibration)}Z`;
   }
 
   /** 音符的簡短說明，例如「Tap 3」「Touch B5」「Slide 直線 1→5」。 */
   function noteCaption(note: Note): string {
     const kind = KIND_LABEL[note.kind] ?? note.kind;
     if (note.touchArea) {
-      return `${kind} ${note.touchArea}${note.button > 0 ? note.button : ''}`;
+      return `${kind} ${touchName(note.touchArea, note.button)}`;
     }
     if (note.kind === 'slide' && note.pathId) {
       const path = session.pathById.get(note.pathId);
@@ -186,7 +305,11 @@
   function noteLabel(note: Note, visual: NoteVisual): string {
     const tag = tagFor(note.id);
     const hand = tag ? `，指派 ${tag.text}` : '，此候選沒有指派資料';
-    return `${noteCaption(note)}，音符 ${note.id}，時間 ${formatClock(note.timeSeconds)}${hand}。目前狀態 ${
+    const place = note.touchArea ? `，${TOUCH_AREA_PLACE[note.touchArea] ?? ''}` : '';
+    const fireworks = note.modifiers.fireworks ? '，判定時間有煙火' : '';
+    return `${noteCaption(note)}${place}，音符 ${note.id}，時間 ${formatClock(
+      note.timeSeconds,
+    )}${fireworks}${hand}。目前狀態 ${
       visual.phase === 'upcoming' ? '未到' : visual.phase === 'active' ? '進行中' : '已過'
     }`;
   }
@@ -238,6 +361,66 @@
           <line x1={center.x - discRadius} y1={center.y} x2={center.x + discRadius} y2={center.y} />
           <line x1={center.x} y1={center.y - discRadius} x2={center.x} y2={center.y + discRadius} />
           <circle cx={center.x} cy={center.y} r={len(0.02)} />
+        </g>
+      {/if}
+
+      {#if showSensors}
+        <!-- Touch 落點參考：33 個 simai 可指名落點，座標取自 chart.touchSensors。
+             這是 Demo 的落點標記，不是實機感應區的精確輪廓。 -->
+        <g class="sensors" aria-hidden="true">
+          {#each sensorMarks as mark (mark.key)}
+            {#if !coveredSensorKeys.has(mark.key)}
+              <g class="sensor" class:is-used={mark.used}>
+                <path class="sensor-outline" d={mark.outline} />
+                {#if view.showSensorLabels}
+                  <text
+                    class="sensor-label"
+                    x={mark.at.x}
+                    y={mark.at.y}
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                  >
+                    {mark.label}
+                  </text>
+                {/if}
+              </g>
+            {/if}
+          {/each}
+        </g>
+      {/if}
+
+      {#if palms.length > 0}
+        <!-- 手掌覆蓋區：掌心、半徑、覆蓋名單與起止時間全部取自 Rust 的 palmPlacements。
+             畫在音符、軌跡與手標記下層，只有虛線圓與細框，不填色，不遮住音符。
+             大圓＋左右手顏色，與灰色小多邊形的 33 個落點參考標記明顯不同。 -->
+        <g class="palms" aria-hidden="true">
+          {#each palms as palm (`${palm.hand}-${palm.startSeconds}-${palm.coveredNoteIds[0] ?? ''}`)}
+            {@const at = px(palm.center)}
+            {@const edge = len(palm.radius)}
+            {@const tickIn = len(0.13)}
+            {@const tickOut = len(0.21)}
+            {@const label = palmLabel(palm)}
+            {@const targets = coveredTargets(palm, session.noteById)}
+            <g class="palm" class:is-left={palm.hand === 'L'} class:is-right={palm.hand === 'R'}>
+              <circle class="palm-edge" cx={at.x} cy={at.y} r={edge} />
+              <!-- 掌心十字：中間留空，手標記蓋上去之後四個端點仍看得見。 -->
+              <path
+                class="palm-center"
+                d={`M${at.x + tickIn} ${at.y} H${at.x + tickOut} M${at.x - tickIn} ${at.y} H${at.x - tickOut} M${at.x} ${at.y + tickIn} V${at.y + tickOut} M${at.x} ${at.y - tickIn} V${at.y - tickOut}`}
+              />
+              <!-- 被這一掌蓋住的 Touch：在落點外圍加一圈同色虛線，音符本身仍畫在上層。 -->
+              {#each palmCovers(palm, session.noteById) as cover (cover.noteId)}
+                {@const spot = px(cover.at)}
+                <circle class="palm-cover" cx={spot.x} cy={spot.y} r={len(0.165)} />
+              {/each}
+              <text class="palm-title" x={label.x} y={label.title} text-anchor="middle">
+                {palm.hand} 手掌・一次覆蓋 {targets.length} 個 Touch
+              </text>
+              <text class="palm-list" x={label.x} y={label.list} text-anchor="middle">
+                {targets.join('・')}
+              </text>
+            </g>
+          {/each}
         </g>
       {/if}
 
@@ -316,19 +499,34 @@
                 {#if note.kind === 'touch' || note.kind === 'touchHold'}
                   {@const at = scalePoint(note.position, factor)}
                   {@const mark = px(at)}
-                  <path class="touch-ring" d={diamondPath(at, 0.105)} />
-                  <path class="touch-core" d={diamondPath(at, 0.055)} />
+                  {@const angle = radialAngle(note.position)}
+                  {@const r = touchRadius(note.touchArea)}
+                  {#if note.modifiers.fireworks}
+                    <!-- 判定前就預告會放煙火，不必等到效果出現 -->
+                    <path class="touch-spark-mark" d={shapePath(note.touchArea, at, r * 1.26, angle)} />
+                  {/if}
+                  <path class="touch-ring" d={shapePath(note.touchArea, at, r, angle)} />
+                  {#if note.kind === 'touchHold'}
+                    <!-- 第二層輪廓：不靠顏色就能和單點 Touch 分開 -->
+                    <path class="touch-hold-ring" d={shapePath(note.touchArea, at, r * 0.76, angle)} />
+                  {/if}
+                  <path class="touch-core" d={shapePath(note.touchArea, at, r * 0.5, angle)} />
                   {#if note.kind === 'touchHold' && visual.phase === 'active'}
-                    <path class="touch-progress" d={diamondPath(at, 0.055 + 0.05 * (1 - visual.progress))} />
+                    <!-- 剩餘時間：亮輪廓由外往內縮到核心 -->
+                    <path
+                      class="touch-progress"
+                      d={shapePath(note.touchArea, at, r * (0.5 + 0.5 * (1 - visual.progress)), angle)}
+                    />
                   {/if}
                   <text
                     class="touch-label"
+                    class:is-center={note.touchArea === 'C'}
                     x={mark.x}
                     y={mark.y}
                     text-anchor="middle"
                     dominant-baseline="central"
                   >
-                    {note.touchArea}{note.button > 0 ? note.button : ''}
+                    {touchName(note.touchArea, note.button)}
                   </text>
                 {:else if note.kind === 'hold'}
                   {@const ends = holdEnds(note, visual)}
@@ -401,6 +599,40 @@
             {/if}
           {/each}
         </g>
+
+        {#if bursts.length > 0}
+          <!-- 煙火：在 Rust 落點擴散，進度完全由絕對播放時間決定，
+               只在起始判定觸發，Touch Hold 結束不重播。 -->
+          <g class="fireworks" aria-hidden="true">
+            {#each bursts as burst (burst.note.id)}
+              {@const shape = fireworkShape(burst.progress)}
+              {@const at = px(burst.note.position)}
+              <g class="firework">
+                <circle
+                  class="firework-ring"
+                  cx={at.x}
+                  cy={at.y}
+                  r={len(shape.ringRadius)}
+                  stroke-width={shape.ringWidth}
+                  stroke-opacity={shape.fade}
+                />
+                {#each SPARK_ANGLES as angle, index (index)}
+                  <line
+                    class="firework-spark"
+                    x1={at.x + Math.cos(angle) * len(shape.sparkInner)}
+                    y1={at.y + Math.sin(angle) * len(shape.sparkInner)}
+                    x2={at.x + Math.cos(angle) * len(shape.sparkOuter)}
+                    y2={at.y + Math.sin(angle) * len(shape.sparkOuter)}
+                    stroke-opacity={shape.fade}
+                  />
+                {/each}
+                {#if shape.coreRadius > 0}
+                  <circle class="firework-core" cx={at.x} cy={at.y} r={len(shape.coreRadius)} />
+                {/if}
+              </g>
+            {/each}
+          </g>
+        {/if}
       {/if}
 
       {#if session.hasHands}
@@ -422,22 +654,24 @@
         {#if view.showHandovers}
           <g class="handovers">
             {#each handoverMarkers as marker (marker.key)}
-              {@const point = px(marker.point)}
-              <g class="handover" class:is-active={marker.active}>
-                <path
-                  class="handover-diamond"
-                  d={`M0 ${-len(0.06)} L${len(0.06)} 0 L0 ${len(0.06)} L${-len(0.06)} 0 Z`}
-                  transform={`translate(${point.x} ${point.y})`}
-                />
-                <text
-                  class="handover-label"
-                  x={point.x}
-                  y={point.y - len(0.11)}
-                  text-anchor="middle"
-                >
-                  {marker.label === '互換' ? '兩手互換' : `換手 ${marker.label}`}
-                </text>
-              </g>
+              {#if marker.active}
+                {@const point = px(marker.point)}
+                <g class="handover is-active">
+                  <path
+                    class="handover-diamond"
+                    d={`M0 ${-len(0.06)} L${len(0.06)} 0 L0 ${len(0.06)} L${-len(0.06)} 0 Z`}
+                    transform={`translate(${point.x} ${point.y})`}
+                  />
+                  <text
+                    class="handover-label"
+                    x={point.x}
+                    y={point.y - len(0.11)}
+                    text-anchor="middle"
+                  >
+                    {marker.label === '互換' ? '兩手互換' : `換手 ${marker.label}`}
+                  </text>
+                </g>
+              {/if}
             {/each}
           </g>
         {/if}
@@ -620,10 +854,53 @@
     stroke: #eef2f8;
   }
 
+  /* Touch 落點參考標記。沿用鍵位標記的中性色，不新增色相。 */
+  .sensor-outline {
+    fill: none;
+    stroke: #4d5765;
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+
+  .sensor-label {
+    fill: #7b8595;
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 700;
+    paint-order: stroke;
+    stroke: #000;
+    stroke-width: 4px;
+  }
+
+  /* 這份譜面真的用到的落點加重一級，密集譜面裡先看到相關的區。 */
+  .sensor.is-used .sensor-outline {
+    stroke: #8d97a6;
+    stroke-width: 3;
+  }
+
+  .sensor.is-used .sensor-label {
+    fill: #c8d1de;
+  }
+
   .touch-ring {
     fill: none;
     stroke: #eef2f8;
     stroke-width: 6;
+    stroke-linejoin: round;
+  }
+
+  .touch-hold-ring {
+    fill: none;
+    stroke: #eef2f8;
+    stroke-width: 3;
+    stroke-linejoin: round;
+  }
+
+  .touch-spark-mark {
+    fill: none;
+    stroke: var(--c-accent);
+    stroke-width: 3;
+    stroke-dasharray: 7 10;
     stroke-linejoin: round;
   }
 
@@ -642,7 +919,7 @@
   }
 
   .touch-label {
-    fill: #c8d1de;
+    fill: #eef2f8;
     font-family: var(--font-mono);
     font-size: 26px;
     font-weight: 700;
@@ -651,10 +928,35 @@
     stroke-width: 5px;
   }
 
+  /* C 的外形較大，字也放大一級，中央不會看起來空掉。 */
+  .touch-label.is-center {
+    font-size: 30px;
+  }
+
+  /* 煙火筆觸。stroke-opacity 只是短暫的筆觸淡出，不是半透明底色。 */
+  .firework-ring {
+    fill: none;
+    stroke: var(--c-accent);
+    stroke-linejoin: round;
+  }
+
+  .firework-spark {
+    stroke: var(--c-accent);
+    stroke-width: 5;
+    stroke-linecap: round;
+  }
+
+  .firework-core {
+    fill: var(--c-text-strong);
+    stroke: var(--c-accent);
+    stroke-width: 3;
+  }
+
   /* Break 與 EX 只換筆觸顏色，形狀維持一致，不單靠顏色傳達種類。 */
   .note.is-break .note-ring,
   .note.is-break .note-star,
   .note.is-break .touch-ring,
+  .note.is-break .touch-hold-ring,
   .note.is-break .hold-bar {
     stroke: #f0913a;
   }
@@ -669,8 +971,13 @@
     stroke-width: 9;
   }
 
+  .note.is-active .touch-ring {
+    stroke-width: 8;
+  }
+
   .note.is-selected .note-ring,
-  .note.is-selected .note-star {
+  .note.is-selected .note-star,
+  .note.is-selected .touch-ring {
     stroke: var(--c-accent);
     stroke-width: 10;
   }
@@ -681,6 +988,7 @@
 
   .note:focus-visible .note-ring,
   .note:focus-visible .note-star,
+  .note:focus-visible .touch-ring,
   .note:focus-visible .hold-bar {
     stroke: var(--c-focus);
   }
@@ -755,6 +1063,65 @@
     paint-order: stroke;
     stroke: #000;
     stroke-width: 6px;
+  }
+
+  /* 手掌覆蓋區。只用左右手既有色相的虛線筆觸，不填色、不新增色相，
+     和灰色小多邊形的落點參考標記在大小、形狀與顏色上都不同。 */
+  .palm-edge {
+    fill: none;
+    stroke-width: 4;
+    stroke-dasharray: 24 14;
+  }
+
+  .palm-center {
+    fill: none;
+    stroke-width: 4;
+    stroke-linecap: round;
+  }
+
+  .palm-cover {
+    fill: none;
+    stroke-width: 3;
+    stroke-dasharray: 10 8;
+  }
+
+  .palm-title,
+  .palm-list {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    paint-order: stroke;
+    stroke: #000;
+    stroke-width: 6px;
+  }
+
+  .palm-title {
+    font-size: 27px;
+  }
+
+  .palm-list {
+    font-size: 23px;
+  }
+
+  .palm.is-left .palm-edge,
+  .palm.is-left .palm-center,
+  .palm.is-left .palm-cover {
+    stroke: var(--c-left);
+  }
+
+  .palm.is-left .palm-title,
+  .palm.is-left .palm-list {
+    fill: var(--c-left);
+  }
+
+  .palm.is-right .palm-edge,
+  .palm.is-right .palm-center,
+  .palm.is-right .palm-cover {
+    stroke: var(--c-right);
+  }
+
+  .palm.is-right .palm-title,
+  .palm.is-right .palm-list {
+    fill: var(--c-right);
   }
 
   .hand circle,

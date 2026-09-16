@@ -1,5 +1,7 @@
 <script lang="ts">
   import NumberField from './NumberField.svelte';
+  import { DEFAULT_CONFIG } from '../lib/contract';
+  import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
   import type { SolverConfig } from '../lib/types';
 
@@ -14,6 +16,19 @@
   }
 
   const config = $derived(session.config);
+
+  // 關閉手掌覆蓋就是半徑 0。記住上一次的半徑，重新打開時不必再輸入一次。
+  let lastPalmRadius = $state(DEFAULT_CONFIG.palmRadius);
+  const palmEnabled = $derived(config.palmRadius > 0);
+
+  function setPalmEnabled(enabled: boolean) {
+    if (!enabled) {
+      if (config.palmRadius > 0) lastPalmRadius = config.palmRadius;
+      set('palmRadius', 0);
+      return;
+    }
+    set('palmRadius', lastPalmRadius > 0 ? lastPalmRadius : DEFAULT_CONFIG.palmRadius);
+  }
 </script>
 
 <div class="stack">
@@ -176,6 +191,46 @@
         onValue={(value) => set('repetitionSeconds', value)}
       />
     </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title">
+      <span>手掌覆蓋 Touch</span>
+      <span class="muted xsmall">{palmEnabled ? '啟用中' : '已關閉'}</span>
+    </div>
+
+    <label class="check">
+      <input
+        type="checkbox"
+        checked={palmEnabled}
+        onchange={(event) => setPalmEnabled(event.currentTarget.checked)}
+      />
+      <span>
+        允許一隻手掌同時覆蓋多個 Touch
+        <span class="field-hint">
+          關閉等同把半徑設為 0：每個 Touch 都要各自接觸，同時多顆可能因此變成無方案。
+        </span>
+      </span>
+    </label>
+
+    <div style="margin-top: var(--space-3)">
+      <NumberField
+        label="手掌半徑"
+        hint="盤面半徑為 1 的圓形近似範圍（0–1）；直接填 0 也等於關閉。"
+        value={config.palmRadius}
+        min={0}
+        max={1}
+        step={0.05}
+        error={errorOf('palmRadius')}
+        onValue={(value) => set('palmRadius', value)}
+      />
+    </div>
+
+    <p class="field-hint" style="margin-top: var(--space-3)">{PALM_APPROX_HINT}</p>
+    <p class="field-hint" style="margin-top: var(--space-2)">
+      只有同一判定時間的 Touch／Touch Hold 會被併成一掌，Tap 與 Slide 不會；
+      覆蓋期間該手不能接別處。實際是否成立由核心判定，改動後要重新生成。
+    </p>
   </section>
 
   <section class="section">

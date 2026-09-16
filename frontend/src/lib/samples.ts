@@ -3,6 +3,7 @@ import holdFixture from '../../../fixtures/hold.json';
 import slideFixture from '../../../fixtures/slide.json';
 import handoverFixture from '../../../fixtures/handover.json';
 import touchFixture from '../../../fixtures/touch.json';
+import palmFixture from '../../../fixtures/palm.json';
 import shapesFixture from '../../../fixtures/shapes.json';
 import noSolutionFixture from '../../../fixtures/no-solution.json';
 import invalidFixture from '../../../fixtures/invalid.json';
@@ -61,6 +62,12 @@ export const SAMPLES: Sample[] = [
   build('slide', 'Slide 不交接', '直線 Slide 由單手完成。', slideFixture),
   build('handover', '可行交接', '慢速長圓弧，中途換手比較划算。', handoverFixture),
   build('touch', 'Touch 區', 'A／B／C／D／E 五種感應區與 Touch Hold。', touchFixture),
+  build(
+    'palm',
+    '手掌覆蓋 Touch',
+    '一隻手掌同時覆蓋 C／B1／E1，另一手按鍵位 7。',
+    palmFixture,
+  ),
   build('shapes', 'Slide 形狀', '直線、圓弧、V、繞圈、S、Wifi、大 V。', shapesFixture),
   build('no-solution', '無方案', '三顆同時 Tap 超出雙手容量。', noSolutionFixture),
   build('invalid', '語法錯誤', '相鄰鍵位不能用直線 Slide，核心回報位置。', invalidFixture),

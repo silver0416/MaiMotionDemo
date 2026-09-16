@@ -1,7 +1,55 @@
 <script lang="ts">
   import NumberField from './NumberField.svelte';
   import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
+  import { PALM_APPROX_HINT } from '../lib/palm';
+  import { TOUCH_AREA_PLACE, touchPolygon } from '../lib/touch';
   import { view } from '../state/view.svelte';
+  import type { SensorDisplayMode } from '../state/view.svelte';
+
+  const SENSOR_MODES: { id: SensorDisplayMode; label: string }[] = [
+    { id: 'auto', label: '有 Touch 時顯示' },
+    { id: 'all', label: '一律顯示' },
+    { id: 'off', label: '關閉' },
+  ];
+
+  interface LegendItem {
+    key: string;
+    area: string;
+    name: string;
+    hint: string;
+    hold?: boolean;
+    spark?: boolean;
+  }
+
+  const LEGEND: LegendItem[] = [
+    { key: 'A', area: 'A', name: 'A1–A8', hint: TOUCH_AREA_PLACE.A },
+    { key: 'B', area: 'B', name: 'B1–B8', hint: TOUCH_AREA_PLACE.B },
+    { key: 'C', area: 'C', name: 'C', hint: '中央；C1／C2 在核心合併為同一個 C' },
+    { key: 'D', area: 'D', name: 'D1–D8', hint: TOUCH_AREA_PLACE.D },
+    { key: 'E', area: 'E', name: 'E1–E8', hint: TOUCH_AREA_PLACE.E },
+    {
+      key: 'hold',
+      area: 'A',
+      name: 'Touch Hold',
+      hint: '兩層輪廓；亮線由外往內縮表示剩餘時間',
+      hold: true,
+    },
+    {
+      key: 'fireworks',
+      area: 'A',
+      name: '煙火 f',
+      hint: '虛線外框預告，判定時間在落點擴散一次',
+      spark: true,
+    },
+  ];
+
+  /** 圖例外形與盤面共用 touchPolygon；這裡把「朝外」畫成朝上。 */
+  function legendPath(area: string, radius: number): string {
+    const points = touchPolygon(area, { x: 0, y: 0 }, radius, -Math.PI / 2);
+    return `${points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${(20 + p.x).toFixed(2)} ${(20 + p.y).toFixed(2)}`)
+      .join('')}Z`;
+  }
 
   function setCalibration(key: 'centerX' | 'centerY' | 'radius', value: number) {
     view.calibration = { ...view.calibration, [key]: value };
@@ -50,8 +98,49 @@
         <span>顯示換手標記</span>
       </label>
       <label class="check">
+        <input type="checkbox" bind:checked={view.showPalms} />
+        <span>
+          顯示手掌覆蓋區
+          <span class="field-hint">
+            核心判定為一掌覆蓋時才會出現；畫在音符與手軌跡下層，覺得擋到就關掉。
+          </span>
+        </span>
+      </label>
+      <label class="check">
         <input type="checkbox" bind:checked={view.showButtons} />
         <span>顯示 1–8 鍵位編號</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" bind:checked={view.showFireworks} />
+        <span>
+          顯示煙火效果
+          <span class="field-hint">時間完全跟著播放時鐘，拖曳到同一時間畫面相同。</span>
+        </span>
+      </label>
+    </div>
+
+    <div style="margin-top: var(--space-4)">
+      <div class="field-label" id="sensor-mode-label">Touch 落點標記</div>
+      <p class="field-hint" style="margin: 2px 0 var(--space-2)">
+        核心輸出的 33 個 simai 可指名落點；一般 Tap 譜面預設不顯示。
+      </p>
+      <div class="row row-wrap" role="group" aria-labelledby="sensor-mode-label">
+        {#each SENSOR_MODES as item (item.id)}
+          <button
+            class="btn"
+            class:is-active={view.sensorMode === item.id}
+            aria-pressed={view.sensorMode === item.id}
+            onclick={() => (view.sensorMode = item.id)}>{item.label}</button
+          >
+        {/each}
+      </div>
+      <label class="check" style="margin-top: var(--space-3)">
+        <input
+          type="checkbox"
+          bind:checked={view.showSensorLabels}
+          disabled={view.sensorMode === 'off'}
+        />
+        <span>標記上顯示區域編號</span>
       </label>
     </div>
 
@@ -67,6 +156,57 @@
         onValue={(value) => (view.trailSeconds = value)}
       />
     </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span>Touch 區圖例</span></div>
+    <p class="field-hint" style="margin-bottom: var(--space-3)">
+      位置與編號都取自核心輸出的落點座標。這是 Demo 的可辨識落點，不是實機感應區的精確輪廓。
+    </p>
+    <div class="legend">
+      {#each LEGEND as item (item.key)}
+        <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
+          {#if item.spark}
+            <path class="mark-spark" d={legendPath(item.area, 15)} />
+          {/if}
+          <path class="mark-ring" d={legendPath(item.area, 11)} />
+          {#if item.hold}
+            <path class="mark-hold" d={legendPath(item.area, 8.4)} />
+          {/if}
+          <path class="mark-core" d={legendPath(item.area, 5.5)} />
+        </svg>
+        <div class="legend-text">
+          <span class="legend-name mono">{item.name}</span>
+          <span class="field-hint">{item.hint}</span>
+        </div>
+      {/each}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-title"><span>手掌覆蓋圖例</span></div>
+    <div class="legend">
+      <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <circle class="mark-palm" cx="20" cy="20" r="15" />
+        <path class="mark-palm-center" d="M20 14 V17 M20 23 V26 M14 20 H17 M23 20 H26" />
+      </svg>
+      <div class="legend-text">
+        <span class="legend-name mono">手掌覆蓋區</span>
+        <span class="field-hint">
+          大圓虛線＋掌心十字，用該手顏色（左手粉紅、右手藍）；覆蓋到的 Touch 外圍再加一圈同色虛線。
+        </span>
+      </div>
+      <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <path class="mark-sensor" d={legendPath('A', 9)} />
+      </svg>
+      <div class="legend-text">
+        <span class="legend-name mono">Touch 落點參考</span>
+        <span class="field-hint">小型多邊形、灰色細線，只用來辨識 33 個落點，與覆蓋範圍無關。</span>
+      </div>
+    </div>
+    <p class="field-hint" style="margin-top: var(--space-3)">
+      覆蓋範圍、掌心與時間都取自核心輸出，畫面只負責畫出來。{PALM_APPROX_HINT}
+    </p>
   </section>
 
   <section class="section">
@@ -184,3 +324,81 @@
     </dl>
   </section>
 </div>
+
+<style>
+  .legend {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .legend-mark {
+    width: 34px;
+    height: 34px;
+    display: block;
+  }
+
+  .legend-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .legend-name {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+  }
+
+  /* 與盤面同一組筆觸，避免圖例和實際畫面長得不一樣。 */
+  .mark-ring {
+    fill: none;
+    stroke: var(--c-text);
+    stroke-width: 2.4;
+    stroke-linejoin: round;
+  }
+
+  .mark-hold {
+    fill: none;
+    stroke: var(--c-text);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+  }
+
+  .mark-core {
+    fill: none;
+    stroke: var(--c-text-dim);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+  }
+
+  .mark-palm {
+    fill: none;
+    stroke: var(--c-right);
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+  }
+
+  .mark-palm-center {
+    fill: none;
+    stroke: var(--c-right);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  /* 落點參考標記的圖例：與盤面同一組灰色細線。 */
+  .mark-sensor {
+    fill: none;
+    stroke: #8d97a6;
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+  }
+
+  .mark-spark {
+    fill: none;
+    stroke: var(--c-accent);
+    stroke-width: 1.6;
+    stroke-dasharray: 3 4;
+    stroke-linejoin: round;
+  }
+</style>

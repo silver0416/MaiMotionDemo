@@ -78,10 +78,23 @@ export interface Note {
   sourceSpan: SourceSpan;
 }
 
+/**
+ * simai 可指名的 Touch 落點，由 Rust 的盤面幾何輸出。
+ * A／B／D／E 各 1–8，C 的 index 為 0，共 33 個；C1／C2 在核心合併為同一個 C。
+ * 這是 Demo 的可辨識落點座標，不是實機感應區輪廓。
+ */
+export interface TouchSensor {
+  area: TouchArea | string;
+  /** 1–8；C 區為 0 */
+  index: number;
+  position: Point;
+}
+
 export interface Chart {
   durationSeconds: number;
   notes: Note[];
   paths: SlidePath[];
+  touchSensors: TouchSensor[];
 }
 
 export interface SolverConfig {
@@ -103,6 +116,12 @@ export interface SolverConfig {
   crossWeight: number;
   repetitionWeight: number;
   handoverWeight: number;
+  /**
+   * 一隻手掌同時覆蓋多個 Touch 的圓形近似半徑（盤面半徑為 1）。
+   * 0–1，預設 0.5；0 表示關閉手掌覆蓋，每個 Touch 都要各自接觸。
+   * 覆蓋是否成立一律由 Rust 判定，前端不自行計算覆蓋組合。
+   */
+  palmRadius: number;
 }
 
 export interface AnalyzeRequest {
@@ -122,7 +141,16 @@ export interface MotionSample {
   y: number;
 }
 
-export type MotionMode = 'travel' | 'glide' | 'tap' | 'hold' | 'slide' | 'handover' | 'idle';
+export type MotionMode =
+  | 'travel'
+  | 'glide'
+  | 'tap'
+  | 'hold'
+  | 'slide'
+  | 'handover'
+  /** 一隻手掌同時覆蓋多個 Touch；這一段的 samples 是掌心 */
+  | 'palm'
+  | 'idle';
 
 export interface MotionSegment {
   mode: MotionMode | string;
@@ -152,6 +180,23 @@ export interface Handover {
   swap: boolean;
 }
 
+/**
+ * 一次手掌覆蓋動作，是手掌覆蓋的權威資料。
+ * 只覆蓋同一判定時間的 Touch／Touch Hold；中心與半徑都是盤面座標，時間為秒。
+ * 對應該手 mode=`palm` 的動作段，期間該手不得接別處。
+ */
+export interface PalmPlacement {
+  hand: Hand;
+  /** 掌心盤面座標，由 Rust 求解產生 */
+  center: Point;
+  /** 覆蓋半徑（盤面座標），等於這次求解使用的 palmRadius */
+  radius: number;
+  startSeconds: number;
+  /** 其中最晚釋放的時刻（Touch Hold 會延長） */
+  endSeconds: number;
+  coveredNoteIds: string[];
+}
+
 export interface CostBreakdown {
   distance: number;
   speed: number;
@@ -167,6 +212,7 @@ export interface Solution {
   costBreakdown: CostBreakdown;
   assignments: Assignment[];
   handovers: Handover[];
+  palmPlacements: PalmPlacement[];
   leftSegments: MotionSegment[];
   rightSegments: MotionSegment[];
   configSnapshot: SolverConfig;

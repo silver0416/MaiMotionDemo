@@ -3,6 +3,8 @@ use crate::{Chart, Diagnostic, Modifiers, Note, SourceSpan};
 
 /// 疑似 EACH（`` ` ``）的位移：一小節的 1/384，也就是 1/96 拍。
 const PSEUDO_EACH_BEATS: f64 = 1.0 / 96.0;
+/// MajdataEdit 的反引號間隔為 128 分音（四分音符的 1/32）。
+const MAJDATA_PSEUDO_EACH_BEATS: f64 = 1.0 / 32.0;
 
 const MAX_NOTES: usize = 10_000;
 const MAX_SECONDS: f64 = 3600.0;
@@ -37,6 +39,7 @@ struct Parser<'a> {
     time: f64,
     /// 疑似 EACH 在本組內累積的位移數。
     pseudo: u32,
+    pseudo_each_beats: f64,
     chart: Chart,
 }
 
@@ -115,7 +118,7 @@ impl<'a> Parser<'a> {
         if self.pseudo == 0 {
             return Ok(self.time);
         }
-        Ok(self.time + self.pseudo as f64 * self.beat(start)? * PSEUDO_EACH_BEATS)
+        Ok(self.time + self.pseudo as f64 * self.beat(start)? * self.pseudo_each_beats)
     }
     fn digit(&mut self, start: usize, what: &str) -> Result<u8, Diagnostic> {
         let c = self
@@ -326,16 +329,22 @@ impl<'a> Parser<'a> {
                     shape,
                 });
                 cursor = end;
-                if self.peek() == Some('[') {
+                if self.peek() == Some('[')
+                    || (self.peek() == Some('b') && self.peek_at(1) == Some('['))
+                {
                     break;
                 }
                 if !self.peek().is_some_and(is_shape_start) {
                     return Err(self.error("invalid", "Slide 缺少長度，例如 [4:1]", start));
                 }
             }
+            let mut modifiers = Modifiers::default();
+            // Majdata 譜例允許把 Break Slide 的 b 放在長度括號之前。
+            if self.eat('b') {
+                modifiers.break_slide = true;
+            }
             let spec = self.enclosed('[', ']')?;
             let (wait, duration) = self.slide_time(&spec, start)?;
-            let mut modifiers = Modifiers::default();
             self.modifiers(&mut modifiers, true);
             let motion_start = chained_from.unwrap_or(head_time + wait);
             bodies.push(Body {
@@ -527,28 +536,42 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
             "輸入最多 4 MB；firstSeconds 須為 0–120 秒".into(),
         ));
     }
-    let (body_start, body_end, notices) = select_body(source);
+    let (body_start, body_end, mut notices) = select_body(source);
+    let chars: Vec<(usize, char)> = scan(&source[body_start..body_end])
+        .into_iter()
+        .map(|(i, c)| (i + body_start, c))
+        .collect();
+    let majdata_mode = body_start != 0
+        || chars
+            .windows(4)
+            .any(|w| w.iter().map(|(_, c)| *c).eq(['<', 'H', 'S', '*']));
     let mut p = Parser {
         source,
-        chars: scan(&source[body_start..body_end])
-            .into_iter()
-            .map(|(i, c)| (i + body_start, c))
-            .collect(),
+        chars,
         at: 0,
         bpm: None,
         division: None,
         fixed_step: None,
         time: first_seconds,
         pseudo: 0,
+        pseudo_each_beats: if majdata_mode {
+            MAJDATA_PSEUDO_EACH_BEATS
+        } else {
+            PSEUDO_EACH_BEATS
+        },
         chart: Chart {
             duration_seconds: first_seconds,
             notes: vec![],
             paths: vec![],
+            touch_sensors: geometry::touch_sensors(),
         },
     };
     let mut ended = false;
     let mut had_note = false;
     let mut slash = false;
+    let mut pseudo_pending = false;
+    let mut hs_count = 0usize;
+    let mut pseudo_count = 0usize;
     while let Some(c) = p.peek() {
         let start = p.at;
         match c {
@@ -565,9 +588,40 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
                     p.fixed_step = None;
                 }
             }
+            '<' if p.peek_at(1) == Some('H') => {
+                p.at += 1;
+                if !(p.eat('H') && p.eat('S') && p.eat('*')) {
+                    return Err(p.error("invalid", "Majdata 速度指令須寫成 <HS*數字>", start));
+                }
+                // 已讀過 '*'；只收集直到 '>'，避免把 HS 當成譜面音符。
+                let mut value = String::new();
+                while let Some(c) = p.peek() {
+                    if c == '>' {
+                        break;
+                    }
+                    if c == ',' {
+                        return Err(p.error("invalid", "Majdata 速度指令缺少 >", start));
+                    }
+                    value.push(c);
+                    p.at += 1;
+                }
+                if !p.eat('>') {
+                    return Err(p.error("invalid", "Majdata 速度指令缺少 >", start));
+                }
+                let speed = value
+                    .parse::<f64>()
+                    .map_err(|_| p.error("invalid", "Majdata HS 速度需要數字", start))?;
+                if !speed.is_finite() || speed.abs() > 1_000_000.0 {
+                    return Err(p.error("invalid", "Majdata HS 速度超出範圍", start));
+                }
+                hs_count += 1;
+            }
             ',' => {
                 if slash {
                     return Err(p.error("invalid", "/ 後缺少音符", start));
+                }
+                if pseudo_pending {
+                    return Err(p.error("invalid", "反引號後缺少音符", start));
                 }
                 let step = match p.fixed_step {
                     Some(s) => s,
@@ -587,6 +641,7 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
                 }
                 had_note = false;
                 slash = false;
+                pseudo_pending = false;
                 p.pseudo = 0;
             }
             '/' => {
@@ -602,12 +657,17 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
                 }
                 p.at += 1;
                 p.pseudo += 1;
+                pseudo_count += 1;
                 slash = false;
+                pseudo_pending = true;
             }
             'E' if !p.peek_at(1).is_some_and(|c| ('1'..='8').contains(&c)) => {
                 p.at += 1;
                 if slash {
                     return Err(p.error("invalid", "E 前有未完成的 EACH", start));
+                }
+                if pseudo_pending {
+                    return Err(p.error("invalid", "反引號後缺少音符", start));
                 }
                 if p.peek().is_some() {
                     return Err(p.error("invalid", "E 之後不可再有內容", start));
@@ -619,6 +679,7 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
                 p.note()?;
                 had_note = true;
                 slash = false;
+                pseudo_pending = false;
             }
             _ => {
                 p.at += 1;
@@ -626,8 +687,32 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
             }
         }
     }
-    if !ended {
+    if !ended && !majdata_mode {
         return Err(p.error("invalid", "譜面缺少結束符號 E", p.at));
+    }
+    if slash {
+        return Err(p.error("invalid", "/ 後缺少音符", p.at));
+    }
+    if pseudo_pending {
+        return Err(p.error("invalid", "反引號後缺少音符", p.at));
+    }
+    if !ended {
+        notices.push(Diagnostic::info(
+            "majdata_end",
+            "Majdata 譜面未寫 E，已在檔案結尾完成解析。".into(),
+        ));
+    }
+    if hs_count > 0 {
+        notices.push(Diagnostic::info(
+            "majdata_hs",
+            format!("讀到 {hs_count} 個 Majdata HS 顯示速度指令；動作時間仍由 BPM 與分割決定。"),
+        ));
+    }
+    if majdata_mode && pseudo_count > 0 {
+        notices.push(Diagnostic::info(
+            "majdata_pseudo_each",
+            "Majdata 譜面中的反引號已按 128 分音間隔換算。".into(),
+        ));
     }
     if p.chart.notes.is_empty() {
         return Err(p.error("invalid", "譜面沒有音符", 0));

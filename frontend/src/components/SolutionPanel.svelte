@@ -1,9 +1,10 @@
 <script lang="ts">
   import { COST_HINT, COST_KEYS, COST_LABEL, STATUS_LABEL, WEIGHT_OF_COST, costSum } from '../lib/contract';
   import { formatClock, formatDelta, formatNumber } from '../lib/format';
+  import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import type { AnalyzeStatus, Hand, Solution } from '../lib/types';
+  import type { AnalyzeStatus, Hand, PalmPlacement, Solution } from '../lib/types';
 
   const solutions = $derived<Solution[]>(session.solutions);
   const solution = $derived<Solution | null>(session.solution);
@@ -11,8 +12,14 @@
   const best = $derived<number>(solutions.length > 0 ? solutions[0].totalCost : 0);
 
   interface SolutionStats {
-    /** 起始觸碰：Tap、Hold 與 Slide 起點（part = contact / head） */
-    touch: Record<Hand, number>;
+    /** 接觸音符：Tap、Hold、Touch、Touch Hold 與有起點的 Slide 起點（part = contact / head） */
+    contact: Record<Hand, number>;
+    /** 其中由一次手掌動作一起覆蓋的 Touch 顆數 */
+    palmNotes: Record<Hand, number>;
+    /** 手掌動作次數；一次動作可能覆蓋多顆 Touch */
+    palmMoves: Record<Hand, number>;
+    palmMoveTotal: number;
+    palmNoteTotal: number;
     /** Slide 軌道：實際跟著軌道移動的部分（part = slide）；中途換手時兩手各算一次 */
     slide: Record<Hand, number>;
     slideNotes: number;
@@ -20,12 +27,18 @@
   }
 
   /**
-   * 分開統計「起始觸碰」與「Slide 軌道」。
-   * 只算 head/contact 會讓「右手全程在滑軌道」被寫成「右手 0 顆」，容易誤導。
+   * 分開統計「接觸音符」「一掌覆蓋」與「Slide 軌道」。
+   * 只算 head/contact 會讓「右手全程在滑軌道」被寫成「右手 0 顆」，容易誤導；
+   * 手掌覆蓋的顆數另外標出，避免把一隻手掌蓋住的多顆 Touch 讀成多隻手分別觸碰。
+   * 覆蓋名單一律取自 Rust 的 palmPlacements，前端不重算覆蓋組。
    */
   function statsOf(item: Solution): SolutionStats {
     const stats: SolutionStats = {
-      touch: { L: 0, R: 0 },
+      contact: { L: 0, R: 0 },
+      palmNotes: { L: 0, R: 0 },
+      palmMoves: { L: 0, R: 0 },
+      palmMoveTotal: 0,
+      palmNoteTotal: 0,
       slide: { L: 0, R: 0 },
       slideNotes: 0,
       handovers: item.handovers.length,
@@ -34,16 +47,54 @@
     const slideNotes = new Set<string>();
     for (const assignment of item.assignments) {
       const isSlide = assignment.part === 'slide';
-      const key = `${isSlide ? 'slide' : 'touch'}:${assignment.noteId}:${assignment.hand}`;
+      const key = `${isSlide ? 'slide' : 'contact'}:${assignment.noteId}:${assignment.hand}`;
       if (isSlide) slideNotes.add(assignment.noteId);
       if (seen.has(key)) continue;
       seen.add(key);
       if (isSlide) stats.slide[assignment.hand] += 1;
-      else stats.touch[assignment.hand] += 1;
+      else stats.contact[assignment.hand] += 1;
     }
     stats.slideNotes = slideNotes.size;
+    const palmed = new Set<string>();
+    for (const placement of item.palmPlacements) {
+      stats.palmMoves[placement.hand] += 1;
+      stats.palmMoveTotal += 1;
+      for (const noteId of placement.coveredNoteIds) {
+        const key = `${placement.hand}:${noteId}`;
+        if (palmed.has(key)) continue;
+        palmed.add(key);
+        stats.palmNotes[placement.hand] += 1;
+        stats.palmNoteTotal += 1;
+      }
+    }
     return stats;
   }
+
+  /** 摘要用的一行文字，讓候選之間可以直接比較。 */
+  function summaryOf(item: SolutionStats): string {
+    const parts = [`接觸 L${item.contact.L}／R${item.contact.R}`];
+    if (item.palmMoveTotal > 0) {
+      parts.push(`手掌 ${item.palmMoveTotal} 次覆蓋 ${item.palmNoteTotal} 顆`);
+    }
+    if (item.slideNotes > 0) parts.push(`軌道 L${item.slide.L}／R${item.slide.R}`);
+    parts.push(`換手 ${item.handovers}`);
+    return parts.join('・');
+  }
+
+  /** 手掌明細的定位：暫停後跳到覆蓋開始，並選取第一顆被覆蓋的音符。 */
+  function seekPalm(placement: PalmPlacement): void {
+    playback.pause();
+    playback.seek(placement.startSeconds);
+    const first = placement.coveredNoteIds[0];
+    if (first) session.selectNote(first);
+  }
+
+  const palmRadiusText = $derived.by(() => {
+    if (!solution) return '—';
+    const radius = solution.configSnapshot.palmRadius;
+    if (!(radius > 0)) return '0（關閉手掌覆蓋）';
+    return `${formatNumber(radius, 2)}${radius === 0.5 ? '（四分之一盤面的圓形近似）' : ''}`;
+  });
 
   const maxCost = $derived.by(() => {
     if (!solution) return 1;
@@ -94,10 +145,7 @@
               <span class="mono cost">{formatNumber(item.totalCost)}</span>
             </span>
             <span class="xsmall muted">
-              {formatDelta(item.totalCost - best)}・觸碰 L{stats.touch.L}／R{stats.touch.R}{stats.slideNotes >
-              0
-                ? `・軌道 L${stats.slide.L}／R${stats.slide.R}`
-                : ''}・換手 {stats.handovers}
+              {formatDelta(item.totalCost - best)}・{summaryOf(stats)}
             </span>
           </button>
         {/each}
@@ -111,30 +159,50 @@
         <table class="table table--fixed">
           <thead>
             <tr>
-              <th style="width: 32%">分工</th>
-              <th>起始觸碰</th>
+              <th style="width: 30%">分工</th>
+              <th>接觸音符</th>
+              {#if stats.palmMoveTotal > 0}
+                <th>一掌覆蓋</th>
+              {/if}
               <th>Slide 軌道</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><span class="badge badge--left">L</span> 左手</td>
-              <td class="mono">{stats.touch.L} 顆</td>
+              <td class="mono">{stats.contact.L} 顆</td>
+              {#if stats.palmMoveTotal > 0}
+                <td class="mono">
+                  {stats.palmMoves.L > 0 ? `${stats.palmNotes.L} 顆／${stats.palmMoves.L} 次` : '—'}
+                </td>
+              {/if}
               <td class="mono">{stats.slideNotes > 0 ? `${stats.slide.L} 條` : '—'}</td>
             </tr>
             <tr>
               <td><span class="badge badge--right">R</span> 右手</td>
-              <td class="mono">{stats.touch.R} 顆</td>
+              <td class="mono">{stats.contact.R} 顆</td>
+              {#if stats.palmMoveTotal > 0}
+                <td class="mono">
+                  {stats.palmMoves.R > 0 ? `${stats.palmNotes.R} 顆／${stats.palmMoves.R} 次` : '—'}
+                </td>
+              {/if}
               <td class="mono">{stats.slideNotes > 0 ? `${stats.slide.R} 條` : '—'}</td>
             </tr>
           </tbody>
         </table>
         <p class="small" style="margin-top: var(--space-3)">
-          換手 {stats.handovers} 次・總成本 {formatNumber(solution.totalCost)}
+          換手 {stats.handovers} 次{stats.palmMoveTotal > 0
+            ? `・手掌覆蓋 ${stats.palmMoveTotal} 次`
+            : ''}・總成本 {formatNumber(solution.totalCost)}
         </p>
         <p class="field-hint" style="margin-top: var(--space-2)">
-          「起始觸碰」只算 Tap、Hold 與 Slide 起點；中途換手時兩手各算一次參與，兩欄不能相加。
-          成本是本 Demo 的啟發式偏好，不是官方判定或人體模型。
+          「接觸音符」計 Tap、Hold、Touch、Touch Hold 與 Slide 起點（無起點的 ? ! 不算）；
+          同一顆音符中途換手時兩手各算一次，各欄不能相加。
+          {#if stats.palmMoveTotal > 0}
+            「一掌覆蓋」是同一隻手掌一次蓋住的 Touch 顆數與動作次數，這幾顆已計入該手的接觸音符，
+            不是多隻手分別觸碰。
+          {/if}
+          成本與覆蓋都是本 Demo 的啟發式規則，不是官方判定或人體模型。
         </p>
       </section>
 
@@ -227,6 +295,69 @@
         {/if}
       </section>
 
+      {#if solution.palmPlacements.length > 0 || session.hasTouchNotes}
+        <section class="section">
+          <div class="section-title">
+            <span>手掌覆蓋</span>
+            {#if solution.palmPlacements.length > 0}
+              <span class="muted xsmall">{solution.palmPlacements.length} 次手掌動作</span>
+            {/if}
+          </div>
+          {#if solution.palmPlacements.length === 0}
+            <p class="small muted">
+              這個候選沒有一掌覆蓋多個 Touch，每顆 Touch 都各自接觸。{solution.configSnapshot
+                .palmRadius > 0
+                ? ''
+                : '這次分析的手掌半徑為 0，已關閉覆蓋。'}
+            </p>
+          {:else}
+            <table class="table">
+              <thead>
+                <tr>
+                  <th style="width: 14%">手</th>
+                  <th>覆蓋落點</th>
+                  <th>區間</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each solution.palmPlacements as placement, index (index)}
+                  <tr>
+                    <td>
+                      <span
+                        class="badge"
+                        class:badge--left={placement.hand === 'L'}
+                        class:badge--right={placement.hand === 'R'}>{placement.hand}</span
+                      >
+                    </td>
+                    <td>
+                      <div class="mono">{coveredTargets(placement, session.noteById).join('・')}</div>
+                      <div class="xsmall muted mono">
+                        {placement.coveredNoteIds.length} 顆・{placement.coveredNoteIds.join('、')}
+                      </div>
+                    </td>
+                    <td class="mono xsmall">
+                      <div>
+                        {formatClock(placement.startSeconds)} – {formatClock(placement.endSeconds)}
+                      </div>
+                      <div class="muted">{formatNumber(palmSeconds(placement), 2)} 秒</div>
+                    </td>
+                    <td>
+                      <button class="linkish xsmall" onclick={() => seekPalm(placement)}>定位</button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+            <p class="field-hint" style="margin-top: var(--space-3)">
+              一次手掌動作只覆蓋同一判定時間的 Touch／Touch Hold，佔用到其中最晚放開的時刻，
+              期間該手不接別處；Tap 與 Slide 不會被算進同一掌。
+              覆蓋名單、掌心與時間都由核心判定。{PALM_APPROX_HINT}
+            </p>
+          {/if}
+        </section>
+      {/if}
+
       {#if solution.warnings.length > 0}
         <section class="section">
           <div class="section-title"><span>核心提醒</span></div>
@@ -262,7 +393,12 @@
             <dd>{solution.configSnapshot.speedReference}</dd>
             <dt>連打間隔</dt>
             <dd>{solution.configSnapshot.repetitionSeconds}</dd>
+            <dt>手掌半徑</dt>
+            <dd>{palmRadiusText}</dd>
           </dl>
+          <p class="field-hint" style="margin-top: var(--space-3)">
+            手掌半徑 0 表示這次分析沒有啟用手掌覆蓋，每顆 Touch 都要各自接觸。{PALM_APPROX_HINT}
+          </p>
         </details>
       </section>
     {/if}

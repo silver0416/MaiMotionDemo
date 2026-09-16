@@ -15,6 +15,7 @@ const MAX_TASKS: usize = 50_000;
 /// 而不產生軌跡跳動；只是空間交叉、時間錯開的不算。
 const MEET_TOLERANCE: f64 = 1e-6;
 const MAX_EXPANSIONS: u64 = 120_000_000;
+const MAX_GROUP_STATES: usize = 500_000;
 const BUDGET: Duration = Duration::from_secs(20);
 
 /// 不可變的單向串列。Beam Search 每展開一步就要複製一份狀態；用結構共享把
@@ -112,6 +113,7 @@ struct State {
     cost: CostBreakdown,
     assignments: Chain<Assignment>,
     handovers: Chain<Handover>,
+    palms: Chain<PalmPlacement>,
     /// 只保留還在進行中的 Slide；結束的項目每個時間點清掉，複製成本才不會隨譜面長度成長。
     owners: BTreeMap<usize, Hand>,
     /// 每條進行中的 Slide 實際被接上的時間；手晚接上時，剩下的路徑就壓縮在剩餘時間內走完。
@@ -122,6 +124,92 @@ struct State {
     pending: f64,
     deposit: BTreeMap<usize, f64>,
     last_handover: BTreeMap<usize, f64>,
+}
+struct PalmCandidate {
+    covered: Vec<usize>,
+    centers: Vec<Point>,
+}
+
+fn circumcenter(a: Point, b: Point, c: Point) -> Option<Point> {
+    let d = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if d.abs() <= EPS {
+        return None;
+    }
+    let (aa, bb, cc) = (
+        a.x * a.x + a.y * a.y,
+        b.x * b.x + b.y * b.y,
+        c.x * c.x + c.y * c.y,
+    );
+    Some(Point {
+        x: (aa * (b.y - c.y) + bb * (c.y - a.y) + cc * (a.y - b.y)) / d,
+        y: (aa * (c.x - b.x) + bb * (a.x - c.x) + cc * (b.x - a.x)) / d,
+    })
+}
+
+/// 圓形手掌的候選掌心來自落點、兩點中點及三點外接圓心。
+/// 圓盤交集若非空，最小包圍圓必由其中 1–3 個落點決定，故能找到可行覆蓋組。
+fn palm_candidates(group: &[Task], chart: &Chart, radius: f64) -> Vec<PalmCandidate> {
+    if radius <= 0.0 {
+        return vec![];
+    }
+    let touch: Vec<(usize, Point)> = group
+        .iter()
+        .enumerate()
+        .filter(|(_, task)| matches!(chart.notes[task.note].kind.as_str(), "touch" | "touchHold"))
+        .map(|(i, task)| (i, chart.notes[task.note].position))
+        .collect();
+    if touch.len() < 2 {
+        return vec![];
+    }
+    let mut positions = Vec::<Point>::new();
+    for (_, p) in &touch {
+        if positions.iter().all(|q| p.distance(*q) > EPS) {
+            positions.push(*p);
+        }
+    }
+    let mut centers = vec![Point { x: 0.0, y: 0.0 }];
+    centers.extend(positions.iter().copied());
+    for (i, &a) in positions.iter().enumerate() {
+        for (j, &b) in positions.iter().enumerate().skip(i + 1) {
+            centers.push(a.lerp(b, 0.5));
+            for &p in positions.iter().skip(j + 1) {
+                if let Some(center) = circumcenter(a, b, p) {
+                    centers.push(center);
+                }
+            }
+        }
+    }
+    let mut by_coverage = BTreeMap::<Vec<usize>, Vec<Point>>::new();
+    for center in centers {
+        if center.x.hypot(center.y) > 1.0 + EPS {
+            continue;
+        }
+        let covered: Vec<usize> = touch
+            .iter()
+            .filter(|(_, p)| center.distance(*p) <= radius + EPS)
+            .map(|(i, _)| *i)
+            .collect();
+        if covered.len() < 2 {
+            continue;
+        }
+        if covered.iter().all(|i| {
+            chart.notes[group[*i].note]
+                .position
+                .distance(chart.notes[group[covered[0]].note].position)
+                <= EPS
+        }) {
+            // 完全同位置的 Touch 已由單點接觸合併，無須顯示手掌動作。
+            continue;
+        }
+        let variants = by_coverage.entry(covered).or_default();
+        if variants.len() < 16 && variants.iter().all(|p| p.distance(center) > EPS) {
+            variants.push(center);
+        }
+    }
+    by_coverage
+        .into_iter()
+        .map(|(covered, centers)| PalmCandidate { covered, centers })
+        .collect()
 }
 impl State {
     /// Beam 剪枝用的排序鍵：已付出的成本加上尚未付出的移動量。
@@ -663,6 +751,98 @@ fn assign(
     Some(next)
 }
 
+fn assign_palm(
+    state: &State,
+    candidate: &PalmCandidate,
+    group: &[Task],
+    hand: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Option<State> {
+    let start = group[*candidate.covered.first()?].start;
+    let idx = hand.index();
+    let arm = &state.arms[idx];
+    if arm.free > start + EPS {
+        return None;
+    }
+    // 同一覆蓋組保留多個可行掌心；選目前手最容易抵達的那個。
+    let center = *candidate
+        .centers
+        .iter()
+        .min_by(|a, b| arm.point.distance(**a).total_cmp(&arm.point.distance(**b)))?;
+    if start - arm.free <= EPS && arm.point.distance(center) > EPS {
+        return None;
+    }
+    let end = candidate
+        .covered
+        .iter()
+        .map(|i| group[*i].end)
+        .fold(start, f64::max);
+    let mut next = state.clone();
+    let a = &mut next.arms[idx];
+    if start > a.free + EPS {
+        let mode = if a.point.distance(center) < EPS {
+            "idle"
+        } else {
+            "travel"
+        };
+        add_segment(
+            a,
+            hand,
+            vec![
+                MotionSample::new(a.free, a.point),
+                MotionSample::new(start, center),
+            ],
+            mode,
+            None,
+            &mut next.cost,
+            c,
+        );
+    }
+    if let Some(last) = a.last_tap {
+        next.cost.repetition += c.repetition_weight
+            * (1.0 - (start - last) / c.repetition_seconds)
+                .max(0.0)
+                .powi(2);
+    }
+    a.last_tap = Some(start);
+    let note_ids: Vec<String> = candidate
+        .covered
+        .iter()
+        .map(|i| chart.notes[group[*i].note].id.clone())
+        .collect();
+    add_segment(
+        a,
+        hand,
+        vec![
+            MotionSample::new(start, center),
+            MotionSample::new(end, center),
+        ],
+        "palm",
+        note_ids.first().cloned(),
+        &mut next.cost,
+        c,
+    );
+    for (i, note_id) in candidate.covered.iter().zip(&note_ids) {
+        next.assignments = next.assignments.push(Assignment {
+            note_id: note_id.clone(),
+            part: "contact".into(),
+            hand,
+            start_seconds: start,
+            end_seconds: group[*i].end,
+        });
+    }
+    next.palms = next.palms.push(PalmPlacement {
+        hand,
+        center,
+        radius: c.palm_radius,
+        start_seconds: start,
+        end_seconds: end,
+        covered_note_ids: note_ids,
+    });
+    Some(next)
+}
+
 /// 把連續的動作段攤平成單調的取樣序列，供交叉成本以線性掃描計算。
 fn flatten(segments: &[MotionSegment]) -> Vec<MotionSample> {
     let mut out: Vec<MotionSample> = vec![];
@@ -794,6 +974,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         cost: CostBreakdown::default(),
         assignments: Chain::default(),
         handovers: Chain::default(),
+        palms: Chain::default(),
         owners: BTreeMap::new(),
         engaged: BTreeMap::new(),
         pending: 0.0,
@@ -803,12 +984,18 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
     let tasks = tasks(chart, c)?;
     let clock = Instant::now();
     let mut expansions: u64 = 0;
-    for task in &tasks {
+    let mut cursor = 0;
+    while cursor < tasks.len() {
+        let time = tasks[cursor].start;
+        let mut limit = cursor + 1;
+        while limit < tasks.len() && (tasks[limit].start - time).abs() < EPS {
+            limit += 1;
+        }
+        let group = &tasks[cursor..limit];
         // 已經結束的 Slide 不會再被查詢；清掉之後每個狀態要複製的資料量才是常數。
         for state in &mut beam {
-            let live = |note: &usize| {
-                chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= task.start - EPS
-            };
+            let live =
+                |note: &usize| chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= time - EPS;
             state.owners.retain(|note, _| live(note));
             state.engaged.retain(|note, _| live(note));
             state.last_handover.retain(|note, _| live(note));
@@ -820,63 +1007,103 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 keep
             });
         }
-        // 還沒接上的 Slide 可以先不接，讓手去處理起點與移動之間安排的其他音符；
-        // 最後一段不能再延後，否則這條 Slide 就沒人走了。
-        // 超過最晚接上時間之後就不必再產生「先不接」的分支，那些狀態走不下去。
-        let deferrable = task.mode == "slide"
-            && !task.last
-            && task.end
-                <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
         // 兩手若在這一刻碰頭，先把「互換目的地」的變化加進 beam，再一起展開這個任務。
         let swapped: Vec<State> = beam
             .iter()
-            .filter_map(|state| swap_at(state, task.start, chart, c))
+            .filter_map(|state| swap_at(state, time, chart, c))
             .collect();
         beam.extend(swapped);
-
-        // 延後接上這條 Slide，遲早還是要走完整條路徑：先把那段移動與速度負擔計入排序，
-        // 否則「先不接」永遠比已經付出成本的分支便宜，beam 會把準時的解全部剪掉。
-        let share = if deferrable {
-            let dt = task.end - task.start;
-            let span = task.span.max(EPS);
-            c.distance_weight * task.path_length * dt / span
-                + c.speed_weight * task.path_length.powi(2) * dt
-                    / span.powi(2)
-                    / c.speed_reference.powi(2)
-        } else {
-            0.0
-        };
+        let candidates = palm_candidates(group, chart, c.palm_radius);
         let mut next = vec![];
-        for state in &beam {
+        let mut pending: Vec<(State, Vec<bool>)> = beam
+            .into_iter()
+            .map(|state| (state, vec![true; group.len()]))
+            .collect();
+        while let Some((state, remaining)) = pending.pop() {
+            if expansions > MAX_EXPANSIONS
+                || clock.elapsed() > BUDGET
+                || pending.len() + next.len() > MAX_GROUP_STATES
+            {
+                return Err(Diagnostic::plain(
+                    "search_limit",
+                    "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                ));
+            }
+            let Some(i) = remaining.iter().position(|todo| *todo) else {
+                next.push(state);
+                continue;
+            };
+            let task = &group[i];
+            let mut after = remaining.clone();
+            after[i] = false;
             for hand in [Hand::L, Hand::R] {
                 expansions += 1;
-                if let Some(s) = assign(state, task, hand, chart, c) {
-                    next.push(s);
+                if let Some(s) = assign(&state, task, hand, chart, c) {
+                    pending.push((s, after.clone()));
                 }
             }
+            if matches!(chart.notes[task.note].kind.as_str(), "touch" | "touchHold") {
+                for candidate in &candidates {
+                    if !candidate.covered.contains(&i)
+                        || candidate.covered.iter().any(|j| !remaining[*j])
+                    {
+                        continue;
+                    }
+                    let mut after_palm = remaining.clone();
+                    for j in &candidate.covered {
+                        after_palm[*j] = false;
+                    }
+                    for hand in [Hand::L, Hand::R] {
+                        expansions += 1;
+                        if let Some(s) = assign_palm(&state, candidate, group, hand, chart, c) {
+                            pending.push((s, after_palm.clone()));
+                        }
+                    }
+                }
+            }
+            // 還沒接上的 Slide 可先不接；排序鍵預存其完整路徑的分攤成本。
+            let deferrable = task.mode == "slide"
+                && !task.last
+                && task.end
+                    <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
             if deferrable && !state.engaged.contains_key(&task.note) {
-                let mut deferred = state.clone();
+                let dt = task.end - task.start;
+                let span = task.span.max(EPS);
+                let share = c.distance_weight * task.path_length * dt / span
+                    + c.speed_weight * task.path_length.powi(2) * dt
+                        / span.powi(2)
+                        / c.speed_reference.powi(2);
+                let mut deferred = state;
                 deferred.pending += share;
                 *deferred.deposit.entry(task.note).or_default() += share;
-                next.push(deferred);
+                pending.push((deferred, after));
+            }
+            if expansions > MAX_EXPANSIONS
+                || clock.elapsed() > BUDGET
+                || pending.len() + next.len() > MAX_GROUP_STATES
+            {
+                return Err(Diagnostic::plain(
+                    "search_limit",
+                    "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                ));
             }
         }
         if next.is_empty() {
             let mut d=Diagnostic::plain("no_solution","本模型未找到可行方案：手被佔用或無法連續接觸。這不代表人類無法遊玩；可增加 beamWidth 或縮短片段。".into());
-            d.time_seconds = Some(task.start);
-            d.note_ids = vec![chart.notes[task.note].id.clone()];
-            d.source_span = Some(Box::new(chart.notes[task.note].source_span.clone()));
+            d.time_seconds = Some(time);
+            d.note_ids = group
+                .iter()
+                .map(|t| chart.notes[t.note].id.clone())
+                .collect();
+            d.note_ids.sort();
+            d.note_ids.dedup();
+            d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
             return Err(d);
         }
         next.sort_by(|a, b| a.rank().total_cmp(&b.rank()));
         next.truncate(c.beam_width);
         beam = next;
-        if expansions > MAX_EXPANSIONS || clock.elapsed() > BUDGET {
-            return Err(Diagnostic::plain(
-                "search_limit",
-                "分析已達計算預算，請縮短片段或降低 beamWidth".into(),
-            ));
-        }
+        cursor = limit;
     }
     let end = chart
         .duration_seconds
@@ -914,11 +1141,12 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             cost_breakdown: state.cost,
             assignments,
             handovers: state.handovers.to_vec(),
+            palm_placements: state.palms.to_vec(),
             left_segments: left.segments.to_vec(),
             right_segments: right.segments.to_vec(),
             config_snapshot: c.clone(),
             warnings: vec![
-                "單手單接觸點的幾何近似，未模擬實機感測器判定或手臂關節。".into(),
+                "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。".into(),
                 "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。".into(),
             ],
         });

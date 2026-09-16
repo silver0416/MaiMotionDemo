@@ -80,6 +80,135 @@ fn no_third_hand_is_invented() {
     assert_eq!(analyze("(120){4}1/4/7,E").status, "no_solution");
 }
 #[test]
+fn palm_covers_center_and_inner_touches_while_other_hand_taps() {
+    let r = analyze("(120){4}C/B1/E1/7,E");
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let s = &r.solutions[0];
+    let palm = s.palm_placements.first().unwrap();
+    near(palm.radius, 0.5);
+    assert_eq!(palm.covered_note_ids.len(), 3);
+    assert!(palm.covered_note_ids.iter().all(|id| {
+        r.chart
+            .as_ref()
+            .unwrap()
+            .notes
+            .iter()
+            .find(|n| &n.id == id)
+            .is_some_and(|n| {
+                matches!(n.kind.as_str(), "touch" | "touchHold")
+                    && n.position.distance(palm.center) <= palm.radius + 1e-8
+            })
+    }));
+    let tap = r
+        .chart
+        .as_ref()
+        .unwrap()
+        .notes
+        .iter()
+        .find(|n| n.kind == "tap")
+        .unwrap();
+    assert!(!palm.covered_note_ids.contains(&tap.id));
+    assert_ne!(
+        s.assignments
+            .iter()
+            .find(|a| a.note_id == tap.id)
+            .unwrap()
+            .hand,
+        palm.hand
+    );
+    let segments = if palm.hand == Hand::L {
+        &s.left_segments
+    } else {
+        &s.right_segments
+    };
+    assert!(segments.iter().any(|seg| seg.mode == "palm"
+        && seg
+            .samples
+            .iter()
+            .all(|p| p.point().distance(palm.center) < 1e-8)));
+    verify_segments(&s.left_segments);
+    verify_segments(&s.right_segments);
+    near(s.total_cost, s.cost_breakdown.total());
+}
+#[test]
+fn palm_radius_can_be_disabled_or_reduced() {
+    let source = "(120){4}C/B1/E1/7,E";
+    for radius in [0.0, 0.15] {
+        let r = analyze_chart(AnalyzeRequest {
+            request_id: "small-palm".into(),
+            source: source.into(),
+            first_seconds: 0.0,
+            solver_config: SolverConfig {
+                palm_radius: radius,
+                ..SolverConfig::default()
+            },
+        });
+        assert_eq!(r.status, "no_solution", "radius={radius}");
+    }
+    assert_eq!(analyze("(120){4}A1/A5/1,E").status, "no_solution");
+    assert_eq!(analyze("(120){4}1/2/3,E").status, "no_solution");
+    let separated = analyze("(120){4}A1/A5,E");
+    assert_eq!(separated.status, "ok");
+    assert!(separated.solutions[0].palm_placements.is_empty());
+    let wide = analyze_chart(AnalyzeRequest {
+        request_id: "wide-palm".into(),
+        source: "(120){4}A1/A5/1,E".into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig {
+            palm_radius: 1.0,
+            ..SolverConfig::default()
+        },
+    });
+    assert_eq!(wide.status, "ok", "{:?}", wide.diagnostics);
+    let invalid = analyze_chart(AnalyzeRequest {
+        request_id: "invalid-palm".into(),
+        source: "(120){4}C,E".into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig {
+            palm_radius: 1.1,
+            ..SolverConfig::default()
+        },
+    });
+    assert_eq!(invalid.status, "invalid");
+    assert_eq!(invalid.diagnostics[0].code, "invalid_config");
+    let same_point = analyze("(120){4}C/C1,E");
+    assert_eq!(same_point.status, "ok");
+    assert!(same_point.solutions[0].palm_placements.is_empty());
+}
+#[test]
+fn touch_hold_in_a_palm_reserves_the_hand_until_release() {
+    let feasible = analyze("(120){4}Ch[4:4]/B1/E1/7,8,E");
+    assert_eq!(feasible.status, "ok", "{:?}", feasible.diagnostics);
+    assert!(feasible.solutions[0]
+        .palm_placements
+        .iter()
+        .any(|p| { p.covered_note_ids.len() == 3 && p.end_seconds >= 2.0 - 1e-8 }));
+    let blocked = analyze("(120){4}Ch[4:4]/B1/E1/7,8/2,E");
+    assert_eq!(blocked.status, "no_solution");
+}
+#[test]
+fn both_hands_can_cover_separate_touch_clusters() {
+    let r = analyze("(120){4}A1/B1/A5/B5,E");
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let placements = &r.solutions[0].palm_placements;
+    assert_eq!(placements.len(), 2);
+    assert_ne!(placements[0].hand, placements[1].hand);
+    assert!(placements.iter().all(|p| p.covered_note_ids.len() == 2));
+}
+#[test]
+fn palm_search_is_deterministic_and_independent_of_simultaneous_order() {
+    let a = analyze("(120){4}C/B1/E1/7,E");
+    let b = analyze("(120){4}7/E1/B1/C,E");
+    assert_eq!(a.status, "ok");
+    assert_eq!(b.status, "ok");
+    near(a.solutions[0].total_cost, b.solutions[0].total_cost);
+    let again = analyze("(120){4}C/B1/E1/7,E");
+    assert_eq!(
+        serde_json::to_string(&a).unwrap(),
+        serde_json::to_string(&again).unwrap()
+    );
+}
+#[test]
 fn hold_reserves_hand() {
     let r = analyze("(120){4}8h[4:4]/1,2,3,E");
     assert_eq!(r.status, "ok");
@@ -236,6 +365,19 @@ fn checkpoint_refinement_does_not_scale_cost_with_count() {
 #[test]
 fn touch_areas_have_distinct_positions() {
     let c = chart("(120){4}A1/B1/C/D1/E1,Ch[4:1],E");
+    assert_eq!(c.touch_sensors.len(), 33);
+    for note in &c.notes {
+        let sensor = c
+            .touch_sensors
+            .iter()
+            .find(|sensor| {
+                Some(sensor.area.as_str()) == note.touch_area.as_deref()
+                    && sensor.index == note.button
+            })
+            .unwrap();
+        near(sensor.position.x, note.position.x);
+        near(sensor.position.y, note.position.y);
+    }
     let kinds: Vec<&str> = c.notes.iter().map(|n| n.kind.as_str()).collect();
     assert_eq!(
         kinds,
@@ -405,6 +547,51 @@ fn maidata_file_selects_the_hardest_chart() {
     let err = parse_chart(broken, 0.0).unwrap_err();
     let span = err.source_span.unwrap();
     assert_eq!(&broken[span.start..span.end], "1-2[4:1]");
+}
+
+#[test]
+fn majdata_chart_keeps_motion_timing_through_hs_and_pre_length_break() {
+    let source = "&title=demo\n&inote_5=(120){4}<HS*1.5>1`5,2>6qq4b[4:1],3";
+    let parsed = parse_chart(source, 0.0).unwrap();
+    assert_eq!(parsed.chart.notes.len(), 4);
+    near(parsed.chart.notes[1].time_seconds, 0.5 / 32.0);
+    near(parsed.chart.notes[2].time_seconds, 0.5);
+    assert!(parsed.chart.notes[2].modifiers.break_slide);
+    assert!(parsed.notices.iter().any(|d| d.code == "majdata_hs"));
+    assert!(parsed.notices.iter().any(|d| d.code == "majdata_end"));
+    assert!(parsed
+        .notices
+        .iter()
+        .any(|d| d.code == "majdata_pseudo_each"));
+    assert!(parsed.notices.iter().all(|d| d.severity == "info"));
+}
+
+#[test]
+fn majdata_diagnostics_reach_analyze_response() {
+    let response = analyze("&inote_5=(120){4}<HS*1.5>1,2");
+    assert_eq!(response.status, "ok");
+    assert_eq!(response.chart.unwrap().notes.len(), 2);
+    assert!(response.diagnostics.iter().any(|d| d.code == "majdata_hs"));
+    assert!(response.diagnostics.iter().any(|d| d.code == "majdata_end"));
+}
+
+#[test]
+fn majdata_hs_errors_keep_original_source_positions() {
+    let source = "&inote_5=(120){4}\n<HS*abc>1,E";
+    let err = parse_chart(source, 0.0).unwrap_err();
+    let span = err.source_span.unwrap();
+    assert_eq!(span.line, 2);
+    assert_eq!(&source[span.start..span.end], "<HS*abc>");
+    assert!(parse_chart("(120){4}<HS*0>1,E", 0.0).is_ok());
+    assert!(parse_chart("(120){4}<HS*1E3>1,E", 0.0).is_ok());
+    let source = "(120){4}<HS*1.5,1,E";
+    let err = parse_chart(source, 0.0).unwrap_err();
+    assert!(err.message.contains("缺少 >"));
+    assert_eq!(err.source_span.unwrap().column, 9);
+    assert!(parse_chart("(120){4}1,2", 0.0).is_err());
+    assert!(parse_chart("(120){4}1,||<HS*1>\n2", 0.0).is_err());
+    assert!(parse_chart("&inote_5=(120){4}1/", 0.0).is_err());
+    assert!(parse_chart("&inote_5=(120){4}1`", 0.0).is_err());
 }
 
 #[test]

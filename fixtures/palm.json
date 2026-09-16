@@ -1,7 +1,7 @@
 {
   "request": {
     "firstSeconds": 0.0,
-    "requestId": "hold",
+    "requestId": "palm",
     "solverConfig": {
       "allowHandover": true,
       "beamWidth": 128,
@@ -23,18 +23,142 @@
       "speedWeight": 1.0,
       "topK": 3
     },
-    "source": "(120){4}8h[4:4]/1,2,3,4,E"
+    "source": "(120){4}Chf[4:4]/B1/E1/7,8,E"
   },
   "response": {
     "chart": {
       "durationSeconds": 2.0,
       "notes": [
         {
-          "button": 8,
+          "button": 0,
           "endSeconds": 2.0,
           "hasHead": true,
           "id": "n0",
-          "kind": "hold",
+          "kind": "touchHold",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": true,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 16,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "C"
+        },
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n1",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.16072704159333773,
+            "y": -0.3880294036547404
+          },
+          "sourceSpan": {
+            "column": 18,
+            "end": 19,
+            "line": 1,
+            "start": 17
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "B"
+        },
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n2",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 2.5717582782094416e-17,
+            "y": -0.42
+          },
+          "sourceSpan": {
+            "column": 21,
+            "end": 22,
+            "line": 1,
+            "start": 20
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "E"
+        },
+        {
+          "button": 7,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n3",
+          "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.9238795325112868,
+            "y": -0.38268343236508967
+          },
+          "sourceSpan": {
+            "column": 24,
+            "end": 24,
+            "line": 1,
+            "start": 23
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        },
+        {
+          "button": 8,
+          "endSeconds": 0.5,
+          "hasHead": true,
+          "id": "n4",
+          "kind": "tap",
           "modifiers": {
             "breakNote": false,
             "breakSlide": false,
@@ -52,136 +176,12 @@
             "y": -0.9238795325112865
           },
           "sourceSpan": {
-            "column": 9,
-            "end": 15,
+            "column": 26,
+            "end": 26,
             "line": 1,
-            "start": 8
-          },
-          "timeSeconds": 0.0,
-          "touchArea": null
-        },
-        {
-          "button": 1,
-          "endSeconds": 0.0,
-          "hasHead": true,
-          "id": "n1",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.38268343236508984,
-            "y": -0.9238795325112867
-          },
-          "sourceSpan": {
-            "column": 17,
-            "end": 17,
-            "line": 1,
-            "start": 16
-          },
-          "timeSeconds": 0.0,
-          "touchArea": null
-        },
-        {
-          "button": 2,
-          "endSeconds": 0.5,
-          "hasHead": true,
-          "id": "n2",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.9238795325112867,
-            "y": -0.3826834323650898
-          },
-          "sourceSpan": {
-            "column": 19,
-            "end": 19,
-            "line": 1,
-            "start": 18
+            "start": 25
           },
           "timeSeconds": 0.5,
-          "touchArea": null
-        },
-        {
-          "button": 3,
-          "endSeconds": 1.0,
-          "hasHead": true,
-          "id": "n3",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.9238795325112867,
-            "y": 0.3826834323650898
-          },
-          "sourceSpan": {
-            "column": 21,
-            "end": 21,
-            "line": 1,
-            "start": 20
-          },
-          "timeSeconds": 1.0,
-          "touchArea": null
-        },
-        {
-          "button": 4,
-          "endSeconds": 1.5,
-          "hasHead": true,
-          "id": "n4",
-          "kind": "tap",
-          "modifiers": {
-            "breakNote": false,
-            "breakSlide": false,
-            "ex": false,
-            "exSlide": false,
-            "fireworks": false,
-            "spinStar": false,
-            "star": false
-          },
-          "motionEnd": null,
-          "motionStart": null,
-          "pathId": null,
-          "position": {
-            "x": 0.38268343236508984,
-            "y": 0.9238795325112867
-          },
-          "sourceSpan": {
-            "column": 23,
-            "end": 23,
-            "line": 1,
-            "start": 22
-          },
-          "timeSeconds": 1.5,
           "touchArea": null
         }
       ],
@@ -454,14 +454,14 @@
       ]
     },
     "diagnostics": [],
-    "requestId": "hold",
+    "requestId": "palm",
     "schemaVersion": 2,
     "solutions": [
       {
         "assignments": [
           {
             "endSeconds": 2.0,
-            "hand": "L",
+            "hand": "R",
             "noteId": "n0",
             "part": "contact",
             "startSeconds": 0.0
@@ -474,25 +474,25 @@
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 0.53,
+            "endSeconds": 0.03,
             "hand": "R",
             "noteId": "n2",
             "part": "contact",
-            "startSeconds": 0.5
+            "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.03,
-            "hand": "R",
+            "endSeconds": 0.03,
+            "hand": "L",
             "noteId": "n3",
             "part": "contact",
-            "startSeconds": 1.0
+            "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.53,
-            "hand": "R",
+            "endSeconds": 0.53,
+            "hand": "L",
             "noteId": "n4",
             "part": "contact",
-            "startSeconds": 1.5
+            "startSeconds": 0.5
           }
         ],
         "configSnapshot": {
@@ -518,18 +518,18 @@
         },
         "costBreakdown": {
           "cross": 0.0,
-          "distance": 3.826834323650897,
+          "distance": 1.5285380799914075,
           "handover": 0.0,
           "repetition": 0.0,
           "side": 0.0,
-          "speed": 0.30691470269281984
+          "speed": 0.11429902665085842
         },
         "handovers": [],
         "id": "solution-1",
         "leftSegments": [
           {
             "endSeconds": 0.0,
-            "mode": "travel",
+            "mode": "idle",
             "noteId": null,
             "samples": [
               {
@@ -539,19 +539,73 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 2.0,
-            "mode": "hold",
-            "noteId": "n0",
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n3",
             "samples": [
               {
                 "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n4",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
                 "x": -0.38268343236509034,
                 "y": -0.9238795325112865
               },
@@ -561,10 +615,26 @@
                 "y": -0.9238795325112865
               }
             ],
+            "startSeconds": 0.53
+          }
+        ],
+        "palmPlacements": [
+          {
+            "center": {
+              "x": 0.16072704159333773,
+              "y": -0.3880294036547404
+            },
+            "coveredNoteIds": [
+              "n0",
+              "n1",
+              "n2"
+            ],
+            "endSeconds": 2.0,
+            "hand": "R",
+            "radius": 0.5,
             "startSeconds": 0.0
           }
         ],
-        "palmPlacements": [],
         "rightSegments": [
           {
             "endSeconds": 0.0,
@@ -578,158 +648,32 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 0.16072704159333773,
+                "y": -0.3880294036547404
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 0.03,
-            "mode": "tap",
-            "noteId": "n1",
+            "endSeconds": 2.0,
+            "mode": "palm",
+            "noteId": "n0",
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.0
-          },
-          {
-            "endSeconds": 0.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.03
-          },
-          {
-            "endSeconds": 0.53,
-            "mode": "tap",
-            "noteId": "n2",
-            "samples": [
-              {
-                "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.53
-          },
-          {
-            "endSeconds": 1.03,
-            "mode": "tap",
-            "noteId": "n3",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 1.0
-          },
-          {
-            "endSeconds": 1.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.03
-          },
-          {
-            "endSeconds": 1.53,
-            "mode": "tap",
-            "noteId": "n4",
-            "samples": [
-              {
-                "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.5
-          },
-          {
-            "endSeconds": 2.0,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 0.16072704159333773,
+                "y": -0.3880294036547404
               },
               {
                 "timeSeconds": 2.0,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 0.16072704159333773,
+                "y": -0.3880294036547404
               }
             ],
-            "startSeconds": 1.53
+            "startSeconds": 0.0
           }
         ],
-        "totalCost": 4.133749026343716,
+        "totalCost": 1.6428371066422658,
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
@@ -739,7 +683,7 @@
         "assignments": [
           {
             "endSeconds": 2.0,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n0",
             "part": "contact",
             "startSeconds": 0.0
@@ -752,25 +696,25 @@
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 0.53,
+            "endSeconds": 0.03,
             "hand": "L",
             "noteId": "n2",
             "part": "contact",
-            "startSeconds": 0.5
+            "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.03,
-            "hand": "L",
+            "endSeconds": 0.03,
+            "hand": "R",
             "noteId": "n3",
             "part": "contact",
-            "startSeconds": 1.0
+            "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.53,
-            "hand": "L",
+            "endSeconds": 0.53,
+            "hand": "R",
             "noteId": "n4",
             "part": "contact",
-            "startSeconds": 1.5
+            "startSeconds": 0.5
           }
         ],
         "configSnapshot": {
@@ -795,12 +739,12 @@
           "topK": 3
         },
         "costBreakdown": {
-          "cross": 2.293692811011671,
-          "distance": 5.124527718936728,
+          "cross": 0.5399710587957385,
+          "distance": 3.5377587848976066,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 1.2740423948001236,
-          "speed": 0.4836913979894568
+          "side": 0.5971900722837384,
+          "speed": 0.3447196001123034
         },
         "handovers": [],
         "id": "solution-2",
@@ -817,158 +761,48 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "x": 2.5717582782094416e-17,
+                "y": -0.42
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 0.03,
-            "mode": "tap",
-            "noteId": "n1",
+            "endSeconds": 2.0,
+            "mode": "palm",
+            "noteId": "n0",
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.0
-          },
-          {
-            "endSeconds": 0.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.03,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.03
-          },
-          {
-            "endSeconds": 0.53,
-            "mode": "tap",
-            "noteId": "n2",
-            "samples": [
-              {
-                "timeSeconds": 0.5,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.53,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 0.53
-          },
-          {
-            "endSeconds": 1.03,
-            "mode": "tap",
-            "noteId": "n3",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              }
-            ],
-            "startSeconds": 1.0
-          },
-          {
-            "endSeconds": 1.5,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.03,
-                "x": 0.9238795325112867,
-                "y": 0.3826834323650898
-              },
-              {
-                "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.03
-          },
-          {
-            "endSeconds": 1.53,
-            "mode": "tap",
-            "noteId": "n4",
-            "samples": [
-              {
-                "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              },
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
-              }
-            ],
-            "startSeconds": 1.5
-          },
-          {
-            "endSeconds": 2.0,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 1.53,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 2.5717582782094416e-17,
+                "y": -0.42
               },
               {
                 "timeSeconds": 2.0,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": 2.5717582782094416e-17,
+                "y": -0.42
               }
             ],
-            "startSeconds": 1.53
+            "startSeconds": 0.0
           }
         ],
-        "palmPlacements": [],
+        "palmPlacements": [
+          {
+            "center": {
+              "x": 2.5717582782094416e-17,
+              "y": -0.42
+            },
+            "coveredNoteIds": [
+              "n0",
+              "n1",
+              "n2"
+            ],
+            "endSeconds": 2.0,
+            "hand": "L",
+            "radius": 0.5,
+            "startSeconds": 0.0
+          }
+        ],
         "rightSegments": [
           {
             "endSeconds": 0.0,
@@ -982,19 +816,73 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": -0.38268343236509034,
-                "y": -0.9238795325112865
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
               }
             ],
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 2.0,
-            "mode": "hold",
-            "noteId": "n0",
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n3",
             "samples": [
               {
                 "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.53,
+            "mode": "tap",
+            "noteId": "n4",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 0.53,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 2.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.53,
                 "x": -0.38268343236509034,
                 "y": -0.9238795325112865
               },
@@ -1004,10 +892,10 @@
                 "y": -0.9238795325112865
               }
             ],
-            "startSeconds": 0.0
+            "startSeconds": 0.53
           }
         ],
-        "totalCost": 9.17595432273798,
+        "totalCost": 5.019639516089387,
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"

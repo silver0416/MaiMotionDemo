@@ -42,6 +42,16 @@
     }),
   );
 
+  /** 手掌覆蓋區間：時間軸上緣一條該手顏色的細條，與音符標記分層不重疊。 */
+  const palmBands = $derived.by(() =>
+    session.palmPlacements.map((palm, index) => ({
+      id: `${palm.hand}-${index}`,
+      hand: palm.hand,
+      left: ratio(palm.startSeconds),
+      width: Math.max(0.6, ratio(palm.endSeconds) - ratio(palm.startSeconds)),
+    })),
+  );
+
   const handoverTicks = $derived.by(() =>
     (session.solution?.handovers ?? []).map((handover, index) => ({
       id: `${handover.noteId}-${index}`,
@@ -114,6 +124,13 @@
             style={`left:${tick.left}%`}
           ></div>
         {/each}
+        {#each palmBands as band (band.id)}
+          <div
+            class="palm-band"
+            class:palm-band--left={band.hand === 'L'}
+            style={`left:${band.left}%;width:${band.width}%`}
+          ></div>
+        {/each}
         {#each handoverTicks as handover (handover.id)}
           <div
             class="handover-band"
@@ -184,6 +201,9 @@
     <span><span class="swatch swatch--left"></span>左手 L・實線圓形</span>
     <span><span class="swatch swatch--right"></span>右手 R・虛線方形</span>
     <span><span class="swatch swatch--accent"></span>換手</span>
+    {#if session.hasPalms}
+      <span>時間軸上緣細條：該手的手掌覆蓋區間</span>
+    {/if}
   </div>
 </div>
 
@@ -268,6 +288,19 @@
 
   .tick--touch {
     top: 9px;
+  }
+
+  /* 手掌覆蓋區間貼在時間軸上緣；音符標記從 top:5px 起，兩者不會疊在一起。 */
+  .palm-band {
+    position: absolute;
+    top: 1px;
+    height: 3px;
+    min-width: 3px;
+    background: var(--c-right);
+  }
+
+  .palm-band--left {
+    background: var(--c-left);
   }
 
   .handover-band {

@@ -1,4 +1,4 @@
-use crate::{PathSample, Point, SlidePath};
+use crate::{PathSample, Point, SlidePath, TouchSensor};
 use std::f64::consts::{PI, TAU};
 
 /// 第 k 鍵的角度，定義見 docs/RULEBOOK.md §3。
@@ -30,6 +30,25 @@ pub fn touch(area: char, index: u8) -> Point {
         'E' => polar(angle(index) - PI / 8.0, TOUCH_INNER),
         _ => Point { x: 0.0, y: 0.0 },
     }
+}
+
+pub fn touch_sensors() -> Vec<TouchSensor> {
+    let mut sensors = Vec::with_capacity(33);
+    for area in ['A', 'B', 'D', 'E'] {
+        for index in 1..=8 {
+            sensors.push(TouchSensor {
+                area: area.to_string(),
+                index,
+                position: touch(area, index),
+            });
+        }
+    }
+    sensors.push(TouchSensor {
+        area: "C".into(),
+        index: 0,
+        position: touch('C', 0),
+    });
+    sensors
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
