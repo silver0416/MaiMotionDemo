@@ -1,5 +1,4 @@
 import type {
-  AnalyzeResponse,
   AnalyzeStatus,
   Hand,
   MotionMode,
@@ -229,21 +228,4 @@ export function cloneConfig(config: SolverConfig): SolverConfig {
 /** 成本拆解總和（乘權重後）應等於 totalCost，容許浮點誤差；用於面板上的自我檢查提示。 */
 export function costSum(solution: Solution): number {
   return COST_KEYS.reduce((sum, key) => sum + solution.costBreakdown[key], 0);
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-/** fixtures 以 unknown 匯入，使用前做最低限度的形狀檢查。 */
-export function asAnalyzeResponse(value: unknown, label: string): AnalyzeResponse {
-  if (
-    !isObject(value) ||
-    typeof value.status !== 'string' ||
-    !Array.isArray(value.diagnostics) ||
-    !Array.isArray(value.solutions)
-  ) {
-    throw new Error(`範例資料格式不符：${label}`);
-  }
-  return value as unknown as AnalyzeResponse;
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { MODE_LABEL } from '../lib/contract';
   import { formatClock } from '../lib/format';
   import { sampleWithStarts } from '../lib/motion';
@@ -65,20 +66,21 @@
 <div class="transport">
   <div class="row row-wrap">
     <button class="btn btn--primary" onclick={() => playback.toggle()} disabled={!session.result}>
+      <Icon name={playback.playing ? 'pause' : 'play'} />
       {playback.playing ? '暫停' : '播放'}
     </button>
-    <button class="btn" onclick={() => playback.reset()} disabled={!session.result}>重置</button>
+    <button class="btn" onclick={() => playback.reset()} disabled={!session.result}><Icon name="skip-back" />重置</button>
     <button
       class="btn btn--icon"
       onclick={() => playback.nudge(-0.1)}
       disabled={!session.result}
-      aria-label="後退 0.1 秒">−0.1s</button
+      aria-label="後退 0.1 秒"><Icon name="chevron-left" />0.1s</button
     >
     <button
       class="btn btn--icon"
       onclick={() => playback.nudge(0.1)}
       disabled={!session.result}
-      aria-label="前進 0.1 秒">+0.1s</button
+      aria-label="前進 0.1 秒">0.1s<Icon name="chevron-right" /></button
     >
 
     <span class="clock mono">{formatClock(time)}</span>
@@ -162,8 +164,8 @@
       />
       <span>循環片段</span>
     </label>
-    <button class="btn btn--icon" onclick={() => playback.setLoopStart(time)}>設為起點</button>
-    <button class="btn btn--icon" onclick={() => playback.setLoopEnd(time)}>設為終點</button>
+    <button class="btn btn--icon" onclick={() => playback.setLoopStart(time)}><Icon name="to-start" />設為起點</button>
+    <button class="btn btn--icon" onclick={() => playback.setLoopEnd(time)}><Icon name="to-end" />設為終點</button>
     <span class="muted mono xsmall">
       {formatClock(playback.loopStart)} – {formatClock(playback.loopEnd)}
     </span>
@@ -172,7 +174,7 @@
       onclick={() => {
         playback.setLoopStart(bounds.start);
         playback.setLoopEnd(bounds.end);
-      }}>整段</button
+      }}><Icon name="move-horizontal" />整段</button
     >
 
     <span class="spacer"></span>

@@ -1,11 +1,18 @@
 import { analyzeChart, isDesktop, nextRequestId } from '../lib/api';
-import { DEFAULT_CONFIG, cloneConfig, configEquals, validateConfig } from '../lib/contract';
+import {
+  DEFAULT_CONFIG,
+  STATUS_HINT,
+  STATUS_LABEL,
+  cloneConfig,
+  configEquals,
+  validateConfig,
+} from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
-import type { Sample } from '../lib/samples';
 import { palmByNote } from '../lib/palm';
 import { isFireworkTouch, isTouchNote, sensorKey } from '../lib/touch';
 import type {
   AnalyzeRequest,
+  AnalyzeStatus,
   AnalyzeResponse,
   Assignment,
   Chart,
@@ -18,18 +25,19 @@ import type {
   TouchSensor,
 } from '../lib/types';
 import { playback } from './playback.svelte';
+import { toasts } from './toasts.svelte';
 
 export type Phase = 'empty' | 'analyzing' | 'ready';
-export type Origin = 'live' | 'sample';
+
+/** 分析狀態通知共用同一個 id，新的狀態直接取代舊的。 */
+export const ANALYSIS_TOAST = 'analysis';
 
 export interface ResultBundle {
   response: AnalyzeResponse;
-  /** 產生這份結果的原文，與編輯區分開保存，重新生成不會覆寫編輯區。 */
+  /** 產生這份結果的原文；紀錄清單另外保存原文，重新生成不會覆寫紀錄。 */
   source: string;
   config: SolverConfig;
   firstSeconds: number;
-  origin: Origin;
-  sampleId: string | null;
   receivedAt: number;
 }
 
@@ -38,12 +46,11 @@ export interface Bounds {
   end: number;
 }
 
-const STARTER_SOURCE = '(120){4}1,2,3,4,5,6,7,8,E';
-
 export class Session {
   readonly desktop = isDesktop();
 
-  source = $state(STARTER_SOURCE);
+  /** 目前盤面對應的原文；由譜面紀錄或新增視窗寫入。 */
+  source = $state('');
   firstSeconds = $state(0);
   config = $state<SolverConfig>(cloneConfig(DEFAULT_CONFIG));
 
@@ -65,7 +72,7 @@ export class Session {
 
   configIssues = $derived(validateConfig(this.config, this.firstSeconds));
 
-  /** 編輯區內容或參數與結果不一致時，畫面必須標示結果不是目前原文的分析。 */
+  /** 參數與結果不一致時，畫面必須標示結果不是目前參數的分析。 */
   stale = $derived.by(() => {
     const result = this.result;
     if (!result) return false;
@@ -203,82 +210,104 @@ export class Session {
     playback.resetRange(bounds.start, bounds.end);
   }
 
-  /** 桌面版：呼叫 Rust 核心。瀏覽器不會走到這裡。 */
-  async analyze(): Promise<void> {
+  /**
+   * 桌面版：呼叫 Rust 核心分析 `source`。
+   * `accept` 回傳 false 時不套用結果（例如新增視窗裡語法錯誤，盤面保留原本的譜面），
+   * 只把核心回應交回呼叫端顯示診斷。瀏覽器預覽沒有核心，直接回傳 null。
+   */
+  async analyze(
+    source: string = this.source,
+    accept: (response: AnalyzeResponse) => boolean = () => true,
+  ): Promise<AnalyzeResponse | null> {
     if (!this.desktop) {
-      this.errorMessage =
-        '瀏覽器預覽沒有 Rust 核心，無法分析輸入的原文。請改用桌面版，或載入下方範例檢視預先產生的核心輸出。';
-      return;
+      this.#fail('瀏覽器預覽沒有 Rust 核心，無法分析譜面。請改用桌面版。');
+      return null;
     }
     if (this.configIssues.length > 0) {
-      this.errorMessage = '參數超出核心允許範圍，請先修正「參數」分頁的紅字項目。';
-      return;
+      this.#fail('參數超出核心允許範圍，請先修正「參數」分頁的紅字項目。');
+      return null;
     }
     const requestId = nextRequestId();
     const request: AnalyzeRequest = {
       requestId,
-      source: this.source,
+      source,
       firstSeconds: this.firstSeconds,
       solverConfig: cloneConfig(this.config),
     };
+    const previousPhase: Phase = this.result ? 'ready' : 'empty';
     this.#pendingRequestId = requestId;
     this.lastRequestId = requestId;
     this.phase = 'analyzing';
     this.errorMessage = null;
+    toasts.show({ id: ANALYSIS_TOAST, tone: 'busy', title: '分析中', sticky: true });
     try {
       const response = await analyzeChart(request);
       // 只採用最後一次送出的 requestId，其餘直接丟棄。
-      if (this.#pendingRequestId !== requestId) return;
+      if (this.#pendingRequestId !== requestId) return null;
+      this.#pendingRequestId = null;
       if (response.requestId !== requestId) {
-        this.errorMessage = `核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`;
-        this.phase = this.result ? 'ready' : 'empty';
-        this.#pendingRequestId = null;
-        return;
+        this.phase = previousPhase;
+        this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`);
+        return null;
       }
+      if (!accept(response)) {
+        this.phase = previousPhase;
+        toasts.dismiss(ANALYSIS_TOAST);
+        return response;
+      }
+      this.source = source;
       this.#applyResult({
         response,
-        source: request.source,
+        source,
         config: request.solverConfig,
         firstSeconds: request.firstSeconds,
-        origin: 'live',
-        sampleId: null,
         receivedAt: Date.now(),
       });
-      this.#pendingRequestId = null;
+      this.#announce(response);
+      return response;
     } catch (error) {
-      if (this.#pendingRequestId !== requestId) return;
+      if (this.#pendingRequestId !== requestId) return null;
       this.#pendingRequestId = null;
-      this.errorMessage = typeof error === 'string' ? error : String(error);
-      this.phase = this.result ? 'ready' : 'empty';
+      this.phase = previousPhase;
+      this.#fail(typeof error === 'string' ? error : String(error));
+      return null;
     }
   }
 
-  /**
-   * 載入範例：一律把原文與參數填回編輯區。
-   * 桌面版直接送交 Rust 重新分析；瀏覽器只顯示 fixtures 內附的核心輸出，並標示為範例模式。
-   */
-  async loadSample(sample: Sample): Promise<void> {
-    this.source = sample.source;
-    this.firstSeconds = sample.firstSeconds;
-    this.config = cloneConfig(sample.config);
-    this.errorMessage = null;
-    if (this.desktop) {
-      await this.analyze();
+  #fail(message: string): void {
+    this.errorMessage = message;
+    toasts.show({ id: ANALYSIS_TOAST, tone: 'error', title: '分析未完成', body: message, sticky: true });
+  }
+
+  #announce(response: AnalyzeResponse): void {
+    const status = response.status as AnalyzeStatus;
+    const label = STATUS_LABEL[status] ?? status;
+    if (status === 'ok') {
+      const notes = response.chart?.notes.length ?? 0;
+      const candidates = response.solutions.length;
+      toasts.show({
+        id: ANALYSIS_TOAST,
+        tone: 'ok',
+        title: label,
+        body: `${notes} 個音符・${candidates} 個候選方案`,
+      });
       return;
     }
-    this.#applyResult({
-      response: sample.response,
-      source: sample.source,
-      config: cloneConfig(sample.config),
-      firstSeconds: sample.firstSeconds,
-      origin: 'sample',
-      sampleId: sample.id,
-      receivedAt: Date.now(),
+    const errors = response.diagnostics.filter((item) => item.severity === 'error').length;
+    const hint = STATUS_HINT[status] ?? '';
+    toasts.show({
+      id: ANALYSIS_TOAST,
+      tone: 'warn',
+      title: label,
+      body: errors > 0 ? `${hint} 共 ${errors} 項診斷，詳見「方案」分頁。` : hint,
+      sticky: true,
     });
   }
 
   clearResult(): void {
     this.result = null;
+    this.source = '';
+    toasts.dismiss(ANALYSIS_TOAST);
     this.phase = 'empty';
     this.selectedNoteId = null;
     this.solutionIndex = 0;

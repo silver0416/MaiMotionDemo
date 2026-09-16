@@ -1,32 +1,103 @@
 <script lang="ts">
+  import { tick, untrack } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
   import DiscStage from './components/DiscStage.svelte';
   import Transport from './components/Transport.svelte';
-  import EditorPanel from './components/EditorPanel.svelte';
   import SolutionPanel from './components/SolutionPanel.svelte';
   import NoteInspector from './components/NoteInspector.svelte';
   import ConfigPanel from './components/ConfigPanel.svelte';
   import ViewPanel from './components/ViewPanel.svelte';
-  import { STATUS_LABEL } from './lib/contract';
-  import { findSample } from './lib/samples';
+  import RecordsPanel from './components/RecordsPanel.svelte';
+  import NewChartDialog from './components/NewChartDialog.svelte';
+  import ResizeHandle from './components/ResizeHandle.svelte';
+  import Toaster from './components/Toaster.svelte';
+  import Icon, { type IconName } from './components/Icon.svelte';
+  import { reducedMotion, squash } from './lib/press';
   import { playback } from './state/playback.svelte';
   import { session } from './state/session.svelte';
-  import type { AnalyzeStatus } from './lib/types';
+  import { toasts } from './state/toasts.svelte';
 
-  type Tab = 'edit' | 'solution' | 'note' | 'config' | 'view';
+  type Tab = 'solution' | 'note' | 'config' | 'view';
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'edit', label: '編輯' },
-    { id: 'solution', label: '方案' },
-    { id: 'note', label: '音符' },
-    { id: 'config', label: '參數' },
-    { id: 'view', label: '顯示' },
+  const TABS: { id: Tab; label: string; icon: IconName }[] = [
+    { id: 'solution', label: '方案', icon: 'compare' },
+    { id: 'note', label: '音符', icon: 'circle-dot' },
+    { id: 'config', label: '參數', icon: 'sliders' },
+    { id: 'view', label: '顯示', icon: 'eye' },
   ];
 
-  let tab = $state<Tab>('edit');
+  const LEFT_DEFAULT = 248;
+  const RIGHT_DEFAULT = 360;
+  const LEFT_MIN = 180;
+  const RIGHT_MIN = 280;
+  /** 盤面與播放列至少要留下的寬度。 */
+  const CENTER_MIN = 420;
+  /** 收合後左欄只留直立膠囊的寬度。 */
+  const CAPSULE_WIDTH = 40;
+  const PANE_ANIMATION_MS = 260;
+  const PANE_STORAGE_KEY = 'maimotion.panes.v1';
 
-  const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
-  const sample = $derived(findSample(session.result?.sampleId ?? null));
-  const isSample = $derived(session.result?.origin === 'sample');
+  function loadPanes(): { left: number; right: number; collapsed: boolean } {
+    try {
+      const raw = JSON.parse(localStorage.getItem(PANE_STORAGE_KEY) ?? 'null') as unknown;
+      if (raw && typeof raw === 'object') {
+        const { left, right, collapsed } = raw as Record<string, unknown>;
+        if (typeof left === 'number' && typeof right === 'number') {
+          return { left, right, collapsed: collapsed === true };
+        }
+      }
+    } catch {
+      // 讀不到就用預設寬度。
+    }
+    return { left: LEFT_DEFAULT, right: RIGHT_DEFAULT, collapsed: false };
+  }
+
+  const savedPanes = loadPanes();
+
+  let tab = $state<Tab>('solution');
+  let dialogOpen = $state(false);
+  let innerWidth = $state(1280);
+  let leftWidth = $state(savedPanes.left);
+  let rightWidth = $state(savedPanes.right);
+  let collapsed = $state(savedPanes.collapsed);
+  /** 只有收合／展開的那一小段時間讓欄寬轉場，拖曳調寬時不能有延遲。 */
+  let animatingPane = $state(false);
+  let animationTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // 視窗變窄時，欄寬上限跟著收，盤面永遠留得下來。
+  const leftMax = $derived(Math.max(LEFT_MIN, Math.min(480, innerWidth - rightWidth - CENTER_MIN)));
+  const rightMax = $derived(
+    Math.max(
+      RIGHT_MIN,
+      Math.min(640, innerWidth - (collapsed ? CAPSULE_WIDTH : leftWidth) - CENTER_MIN),
+    ),
+  );
+  const shownLeft = $derived(Math.min(leftWidth, leftMax));
+  const shownRight = $derived(Math.min(rightWidth, rightMax));
+  const columns = $derived(
+    `${collapsed ? CAPSULE_WIDTH : shownLeft}px minmax(0, 1fr) ${shownRight}px`,
+  );
+  const motion = (duration: number) => (reducedMotion() ? 0 : duration);
+
+  $effect(() => {
+    const panes = JSON.stringify({ left: leftWidth, right: rightWidth, collapsed });
+    try {
+      localStorage.setItem(PANE_STORAGE_KEY, panes);
+    } catch {
+      // 無法保存時只影響下次啟動的欄寬。
+    }
+  });
+
+  async function setCollapsed(next: boolean) {
+    if (collapsed === next) return;
+    clearTimeout(animationTimer);
+    animatingPane = !reducedMotion();
+    collapsed = next;
+    animationTimer = setTimeout(() => (animatingPane = false), PANE_ANIMATION_MS + 40);
+    // 按下的按鈕會被換掉，焦點移到另一個狀態的切換鈕，鍵盤使用者不會掉回頁首。
+    await tick();
+    document.getElementById(next ? 'records-expand' : 'records-collapse')?.focus();
+  }
 
   // 單一播放時鐘：整個應用只有這一個 requestAnimationFrame 迴圈。
   $effect(() => {
@@ -42,6 +113,25 @@
     if (session.selectedNoteId) tab = 'note';
   });
 
+  // 參數改過但還沒重新生成：右下角常駐提醒，直到重新生成或還原參數。
+  $effect(() => {
+    const show = session.stale && session.phase !== 'analyzing';
+    untrack(() => {
+      if (show) {
+        toasts.show({
+          id: 'stale',
+          tone: 'info',
+          title: '結果已過期',
+          body: '參數已變更，盤面仍是舊參數的分析結果。',
+          sticky: true,
+          action: { label: '重新生成', run: () => void session.analyze() },
+        });
+      } else {
+        toasts.dismiss('stale');
+      }
+    });
+  });
+
   function isTyping(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
     const name = target.tagName;
@@ -51,6 +141,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
+    if (dialogOpen) return;
     if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
     switch (event.key) {
       case ' ':
@@ -80,34 +171,64 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} bind:innerWidth />
 
 <div class="app">
-  <header class="app-bar">
-    <h1>MaiMotionDemo</h1>
-    <span class="spacer"></span>
-    <!-- 桌面版是常態，不需要標記；只有不能生成的瀏覽器預覽要講。 -->
-    {#if !session.desktop}
-      <span class="badge badge--sample">瀏覽器預覽</span>
-    {/if}
-    {#if isSample}
-      <span class="badge badge--sample">範例{sample ? `・${sample.title}` : ''}</span>
-    {/if}
-    {#if session.phase === 'analyzing'}
-      <span class="badge badge--quiet">分析中</span>
-    {:else if session.stale && session.result}
-      <span class="badge badge--quiet">結果已過期</span>
-    {/if}
-    {#if session.errorMessage}
-      <span class="badge badge--danger">未完成</span>
-    {:else if status}
-      <span class="badge" class:badge--danger={status !== 'ok'} class:badge--quiet={status === 'ok'}>
-        {STATUS_LABEL[status] ?? status}
-      </span>
-    {/if}
-  </header>
+  <main class="layout" class:is-animating={animatingPane} style={`grid-template-columns:${columns}`}>
+    <div class="column records-column" class:is-collapsed={collapsed}>
+      {#if collapsed}
+        <nav
+          class="capsule"
+          aria-label="譜面紀錄（已收合）"
+          in:fade={{ duration: motion(160), delay: motion(110) }}
+          out:fade={{ duration: motion(90) }}
+        >
+          <button
+            id="records-expand"
+            class="capsule-btn"
+            use:squash
+            onclick={() => setCollapsed(false)}
+            aria-label="展開譜面紀錄"
+            title="展開譜面紀錄"
+          >
+            <Icon name="chevron-right" size={16} />
+          </button>
+          <button
+            class="capsule-btn"
+            onclick={() => (dialogOpen = true)}
+            aria-label="新增譜面"
+            title="新增譜面"
+          >
+            <Icon name="plus" size={16} />
+          </button>
+        </nav>
+      {:else}
+        <div
+          class="records-slot"
+          style={`width:${shownLeft}px`}
+          in:fly={{ x: -20, duration: motion(220), delay: motion(60) }}
+          out:fly={{ x: -20, duration: motion(140) }}
+        >
+          <aside class="pane records-pane" aria-label="譜面紀錄">
+            <RecordsPanel
+              onCreate={() => (dialogOpen = true)}
+              onCollapse={() => setCollapsed(true)}
+            />
+          </aside>
+          <ResizeHandle
+            label="調整譜面紀錄欄寬度"
+            side="right"
+            value={shownLeft}
+            min={LEFT_MIN}
+            max={leftMax}
+            defaultValue={LEFT_DEFAULT}
+            direction={1}
+            onChange={(value) => (leftWidth = value)}
+          />
+        </div>
+      {/if}
+    </div>
 
-  <main class="layout">
     <section class="stage-column">
       <div class="stage-area">
         <DiscStage />
@@ -117,65 +238,139 @@
       </div>
     </section>
 
-    <aside class="side-column">
-      <div class="tabbar" role="group" aria-label="側欄面板">
-        {#each TABS as item (item.id)}
-          <button
-            class="btn tab"
-            class:is-active={tab === item.id}
-            aria-pressed={tab === item.id}
-            onclick={() => (tab = item.id)}
-          >
-            {item.label}
-          </button>
-        {/each}
-      </div>
-      <div class="side-body scroll">
-        {#if tab === 'edit'}
-          <EditorPanel />
-        {:else if tab === 'solution'}
-          <SolutionPanel />
-        {:else if tab === 'note'}
-          <NoteInspector />
-        {:else if tab === 'config'}
-          <ConfigPanel />
-        {:else}
-          <ViewPanel />
-        {/if}
-      </div>
-    </aside>
+    <div class="column side-wrap">
+      <aside class="pane side-column">
+        <div class="tabbar" role="group" aria-label="側欄面板">
+          {#each TABS as item (item.id)}
+            <button
+              class="btn tab"
+              class:is-active={tab === item.id}
+              aria-pressed={tab === item.id}
+              onclick={() => (tab = item.id)}
+            >
+              <Icon name={item.icon} size={14} />
+              {item.label}
+            </button>
+          {/each}
+        </div>
+        <div class="side-body scroll">
+          {#if tab === 'solution'}
+            <SolutionPanel />
+          {:else if tab === 'note'}
+            <NoteInspector />
+          {:else if tab === 'config'}
+            <ConfigPanel />
+          {:else}
+            <ViewPanel />
+          {/if}
+        </div>
+      </aside>
+      <ResizeHandle
+        label="調整資訊欄寬度"
+        side="left"
+        value={shownRight}
+        min={RIGHT_MIN}
+        max={rightMax}
+        defaultValue={RIGHT_DEFAULT}
+        direction={-1}
+        onChange={(value) => (rightWidth = value)}
+      />
+    </div>
   </main>
+
+  <NewChartDialog bind:open={dialogOpen} />
+  <Toaster />
 </div>
 
 <style>
   .app {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
     height: 100%;
     background: var(--c-bg);
   }
 
-  .app-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    white-space: nowrap;
-    background: var(--c-panel);
-    border-bottom: 1px solid var(--c-border);
-  }
-
+  /* 三欄：譜面紀錄｜盤面與播放列｜資訊分頁。欄寬由面板邊緣上的分隔線拖曳，中間吃剩下的空間。 */
   .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(320px, 27vw, 400px);
     grid-template-rows: minmax(0, 1fr);
-    gap: var(--space-3);
+    column-gap: var(--space-3);
+    height: 100%;
     padding: var(--space-3);
     min-height: 0;
   }
 
-  /* 狀態一律用標題列的標記表示，盤面欄位的高度因此固定，
-     切換範例時盤面不會被重新縮放（那正是先前的閃爍來源）。 */
+  .layout.is-animating {
+    transition: grid-template-columns 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* 欄位外框：分隔線掛在面板邊緣，跨出面板一半，不能被面板的 overflow 裁掉。 */
+  .column {
+    position: relative;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  /* 轉場期間面板維持原寬、由欄位裁切，文字不會被擠到換行；
+     多留幾像素給跨在邊緣上的分隔線。 */
+  .records-column {
+    overflow: clip;
+    overflow-clip-margin: 8px;
+  }
+
+  .records-slot {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  .records-pane {
+    height: 100%;
+  }
+
+  .capsule {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    width: 40px;
+    padding: 4px;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+  }
+
+  .capsule-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    color: var(--c-text-dim);
+    background: none;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .capsule-btn:hover {
+    color: var(--c-text);
+    background: var(--c-control-hover);
+  }
+
+  .pane {
+    min-height: 0;
+    min-width: 0;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  /* 盤面欄位的高度固定，切換譜面時盤面不會被重新縮放。 */
   .stage-column {
     display: flex;
     flex-direction: column;
@@ -197,13 +392,14 @@
     min-width: 0;
   }
 
+  .side-wrap {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
   .side-column {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    min-height: 0;
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius-md);
   }
 
   .tabbar {
@@ -216,31 +412,57 @@
   .tab {
     flex: 1 1 0;
     min-width: 0;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
   }
 
   .side-body {
     min-height: 0;
   }
 
-  /* 只有真的很窄（低於 900px）才改成上下排列並允許整頁捲動。
-     一般桌面視窗（含 125%／150% 縮放後的 1440×960）維持左右排列，播放列不會被推到視窗外。 */
+  /* 只有真的很窄（低於 900px）才改成上下排列並允許整頁捲動，分隔線隱藏。 */
   @media (max-width: 899px) {
     .layout {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
       overflow: auto;
     }
 
-    /* 窄視窗改用 flex 直向排列，高度直接由內容決定，避免 grid 的內在尺寸把盤面壓扁。 */
+    .layout :global(.handle) {
+      display: none;
+    }
+
+    .records-column {
+      flex: none;
+      height: 240px;
+    }
+
+    .records-column.is-collapsed {
+      height: 40px;
+    }
+
+    .records-slot {
+      width: 100% !important;
+    }
+
+    .capsule {
+      flex-direction: row;
+      width: auto;
+    }
+
     .stage-column {
-      display: flex;
-      flex-direction: column;
-      margin-bottom: var(--space-3);
+      flex: none;
     }
 
     .stage-area {
       flex: 0 0 auto;
       height: min(52vh, 460px);
       min-height: 260px;
+    }
+
+    .side-wrap {
+      flex: none;
     }
 
     .side-column {

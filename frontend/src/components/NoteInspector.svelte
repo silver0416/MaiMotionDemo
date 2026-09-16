@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import { HAND_LABEL, KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
   import { noteBadges, noteTarget } from '../lib/notes';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
@@ -63,7 +64,7 @@
     <div class="section-title">
       <span>音符</span>
       {#if note}
-        <button class="linkish xsmall" onclick={() => session.selectNote(null)}>取消選取</button>
+        <button class="linkish xsmall" onclick={() => session.selectNote(null)}><Icon name="x" size={12} />取消選取</button>
       {/if}
     </div>
 
@@ -148,9 +149,9 @@
         </p>
       {/if}
       <div class="row row-wrap" style="margin-top: var(--space-3)">
-        <button class="btn btn--icon" onclick={() => seekNoteTime(note)}>跳到判定時間</button>
+        <button class="btn btn--icon" onclick={() => seekNoteTime(note)}><Icon name="clock" />跳到判定時間</button>
         {#if note.motionStart !== null}
-          <button class="btn btn--icon" onclick={() => seekMotionStart(note)}>跳到移動開始</button>
+          <button class="btn btn--icon" onclick={() => seekMotionStart(note)}><Icon name="to-start" />跳到移動開始</button>
         {/if}
       </div>
     </section>
@@ -234,9 +235,11 @@
         </p>
         <div class="row row-wrap" style="margin-top: var(--space-3)">
           <button class="btn btn--icon" onclick={() => playback.seek(palm.startSeconds)}>
+            <Icon name="to-start" />
             跳到覆蓋開始
           </button>
           <button class="btn btn--icon" onclick={() => playback.seek(palm.endSeconds)}>
+            <Icon name="to-end" />
             跳到覆蓋結束
           </button>
         </div>

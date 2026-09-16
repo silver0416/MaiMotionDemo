@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
   import { DEFAULT_CONFIG } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
@@ -319,9 +320,9 @@
         onclick={() => session.analyze()}
         disabled={!session.desktop || session.phase === 'analyzing' || issues.length > 0}
       >
-        套用並重新生成
+        <Icon name="refresh-cw" />套用並重新生成
       </button>
-      <button class="btn" onclick={() => session.resetConfig()}>還原預設</button>
+      <button class="btn" onclick={() => session.resetConfig()}><Icon name="rotate-ccw" />還原預設</button>
     </div>
     {#if !session.desktop}
       <p class="field-hint" style="margin-top: var(--space-2)">瀏覽器預覽不能重跑搜尋。</p>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+  import DiagnosticList from './DiagnosticList.svelte';
   import { COST_HINT, COST_KEYS, COST_LABEL, STATUS_LABEL, WEIGHT_OF_COST, costSum } from '../lib/contract';
   import { formatClock, formatDelta, formatNumber } from '../lib/format';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
@@ -9,6 +11,7 @@
   const solutions = $derived<Solution[]>(session.solutions);
   const solution = $derived<Solution | null>(session.solution);
   const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
+  const diagnostics = $derived(session.response?.diagnostics ?? []);
   const best = $derived<number>(solutions.length > 0 ? solutions[0].totalCost : 0);
 
   interface SolutionStats {
@@ -118,8 +121,13 @@
       <div class="section-title"><span>沒有可用方案</span></div>
       <div class="alert alert--warn">
         <div class="alert-title">{status ? (STATUS_LABEL[status] ?? status) : '無方案'}</div>
-        <p>只顯示譜面層，原因見「編輯」分頁的診斷。</p>
+        <p>只顯示譜面層，原因見下方診斷。</p>
       </div>
+      {#if diagnostics.length > 0}
+        <div style="margin-top: var(--space-3)">
+          <DiagnosticList {diagnostics} linked />
+        </div>
+      {/if}
       <p class="small muted" style="margin-top: var(--space-3)">
         可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
       </p>
@@ -285,7 +293,7 @@
                         playback.pause();
                         playback.seek(handover.startSeconds);
                         session.selectNote(handover.noteId);
-                      }}>定位</button
+                      }}><Icon name="crosshair" size={12} />定位</button
                     >
                   </td>
                 </tr>
@@ -343,7 +351,7 @@
                       <div class="muted">{formatNumber(palmSeconds(placement), 2)} 秒</div>
                     </td>
                     <td>
-                      <button class="linkish xsmall" onclick={() => seekPalm(placement)}>定位</button>
+                      <button class="linkish xsmall" onclick={() => seekPalm(placement)}><Icon name="crosshair" size={12} />定位</button>
                     </td>
                   </tr>
                 {/each}

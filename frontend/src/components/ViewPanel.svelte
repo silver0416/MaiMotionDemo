@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
   import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
   import { PALM_APPROX_HINT } from '../lib/palm';
@@ -346,6 +347,7 @@
       （圖片 {IMAGE_WIDTH}×{IMAGE_HEIGHT}）
     </p>
     <button class="btn" style="margin-top: var(--space-3)" onclick={() => view.resetCalibration()}>
+      <Icon name="rotate-ccw" />
       還原校準與縮放
     </button>
   </section>

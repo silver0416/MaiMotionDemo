@@ -41,6 +41,9 @@
   --c-focus: #8fd2ff;
 
   --c-on-invert: #0b0d11;
+
+  /* 讓原生捲軸、輸入框拉桿等瀏覽器元件使用深色外觀。 */
+  color-scheme: dark;
 }
 
 * {
@@ -226,6 +229,31 @@ textarea {
   border-color: var(--c-border);
   color: var(--c-text-dim);
   font-weight: 400;
+}
+
+.btn--danger {
+  background: var(--c-danger);
+  border-color: var(--c-danger);
+  color: var(--c-on-invert);
+  font-weight: 600;
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: #f27e92;
+  border-color: #f27e92;
+}
+
+/* 無填滿按鈕：沒有底色與邊框，hover 才出現淡底，用在側欄這類次要入口。 */
+.btn--ghost {
+  justify-content: flex-start;
+  background: none;
+  border-color: transparent;
+  color: var(--c-text-dim);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--c-control);
+  color: var(--c-text);
 }
 
 .btn--wide {
@@ -471,6 +499,9 @@ input[type='checkbox'] {
 }
 
 .linkish {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   background: none;
   border: none;
   padding: 0;
@@ -490,7 +521,29 @@ details[open] > summary {
   margin-bottom: var(--space-2);
 }
 
+.scroll,
+.textarea {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong) transparent;
+}
+
 .scroll {
   overflow: auto;
-  scrollbar-color: var(--c-border-strong) var(--c-panel);
+}
+
+/* 按鈕圖示被按下時壓扁再彈回，見 lib/press.ts。 */
+.is-squashing .icon {
+  animation: icon-squash 260ms cubic-bezier(0.3, 0.7, 0.4, 1.4);
+}
+
+@keyframes icon-squash {
+  0% {
+    transform: scale(1, 1);
+  }
+  35% {
+    transform: scale(0.45, 1.2);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
 }
