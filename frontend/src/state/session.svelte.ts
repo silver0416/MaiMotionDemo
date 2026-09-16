@@ -1,4 +1,5 @@
-import { analyzeChart, isDesktop, nextRequestId } from '../lib/api';
+import { analyzeChart, appVersion, isDesktop, nextRequestId } from '../lib/api';
+import { STORE_ANALYSES, dbGet, dbPut, hashText } from '../lib/db';
 import {
   DEFAULT_DRAFT,
   SCHEMA_VERSION,
@@ -46,6 +47,43 @@ export interface ResultBundle {
   config: SolverConfig;
   firstSeconds: number;
   receivedAt: number;
+  /** 從資料庫載入的既有分析，沒有重新呼叫 Rust。 */
+  fromCache?: boolean;
+}
+
+/** 呼叫核心失敗（IPC 錯誤、版本不符等）時保留的請求，供複製除錯資訊。 */
+export interface AnalyzeFailure {
+  request: AnalyzeRequest;
+  message: string;
+  at: number;
+}
+
+interface CachedAnalysis {
+  key: string;
+  sourceHash: string;
+  createdAt: number;
+  response: AnalyzeResponse;
+  config: SolverConfig;
+  firstSeconds: number;
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
+}
+
+/** 快取鍵：核心版本＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
+async function cacheKey(
+  source: string,
+  firstSeconds: number,
+  config: SolverConfig,
+): Promise<{ key: string; sourceHash: string }> {
+  const [version, sourceHash] = await Promise.all([appVersion(), hashText(source)]);
+  return { key: `${version}|${sourceHash}|${firstSeconds}|${stableJson(config)}`, sourceHash };
 }
 
 export interface Bounds {
@@ -67,11 +105,15 @@ export class Session {
   /** IPC 失敗或被拒絕（例如核心忙碌）的訊息；不會清掉上一份結果。 */
   errorMessage = $state<string | null>(null);
   lastRequestId = $state<string | null>(null);
+  /** 最近一次呼叫核心失敗的請求；成功分析或清除後歸零。 */
+  lastFailure = $state<AnalyzeFailure | null>(null);
 
   solutionIndex = $state(0);
   selectedNoteId = $state<string | null>(null);
 
   #pendingRequestId: string | null = null;
+  /** 開啟紀錄時的快取查詢序號，只套用最後一次。 */
+  #loadToken = 0;
 
   response = $derived<AnalyzeResponse | null>(this.result?.response ?? null);
   chart = $derived<Chart | null>(this.result?.response.chart ?? null);
@@ -270,7 +312,7 @@ export class Session {
       this.#pendingRequestId = null;
       if (response.requestId !== requestId) {
         this.phase = previousPhase;
-        this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`);
+        this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`, request);
         return null;
       }
       const model = scoringModelOf(request.solverConfig);
@@ -279,6 +321,7 @@ export class Session {
         this.#fail(
           `核心回傳 schemaVersion ${response.schemaVersion}，與「${SCORING_LABEL[model]}」需要的 ` +
             `${SCHEMA_VERSION[model]} 不符；核心可能尚未支援這個評分方式，結果未套用。`,
+          request,
         );
         return null;
       }
@@ -288,30 +331,83 @@ export class Session {
         return response;
       }
       this.source = source;
-      this.#applyResult({
+      const bundle: ResultBundle = {
         response,
         source,
         config: request.solverConfig,
         firstSeconds: request.firstSeconds,
         receivedAt: Date.now(),
-      });
+      };
+      this.lastFailure = null;
+      this.#applyResult(bundle);
       this.#announce(response);
+      void this.#store(bundle);
       return response;
     } catch (error) {
       if (this.#pendingRequestId !== requestId) return null;
       this.#pendingRequestId = null;
       this.phase = previousPhase;
-      this.#fail(typeof error === 'string' ? error : String(error));
+      this.#fail(typeof error === 'string' ? error : String(error), request);
       return null;
     }
   }
 
-  #fail(message: string): void {
+  /**
+   * 開啟既有紀錄：同一份原文、同樣參數與核心版本分析過就直接從資料庫載入，
+   * 否則交給 Rust 分析（結果會寫回資料庫）。
+   */
+  async load(source: string): Promise<AnalyzeResponse | null> {
+    const token = ++this.#loadToken;
+    if (this.configIssues.length === 0) {
+      const config = projectConfig(this.config);
+      const firstSeconds = this.firstSeconds;
+      const { key } = await cacheKey(source, firstSeconds, config);
+      const cached = await dbGet<CachedAnalysis>(STORE_ANALYSES, key);
+      if (token !== this.#loadToken) return null;
+      if (cached && cached.response?.schemaVersion === SCHEMA_VERSION[scoringModelOf(config)]) {
+        // 查詢期間不可有其他分析插隊。
+        if (this.phase === 'analyzing') return null;
+        this.#pendingRequestId = null;
+        this.source = source;
+        this.errorMessage = null;
+        this.lastFailure = null;
+        this.lastRequestId = cached.response.requestId;
+        this.#applyResult({
+          response: cached.response,
+          source,
+          config: cached.config,
+          firstSeconds: cached.firstSeconds,
+          receivedAt: cached.createdAt,
+          fromCache: true,
+        });
+        this.#announce(cached.response, true);
+        return cached.response;
+      }
+    }
+    if (token !== this.#loadToken) return null;
+    return this.analyze(source);
+  }
+
+  async #store(bundle: ResultBundle): Promise<void> {
+    const { key, sourceHash } = await cacheKey(bundle.source, bundle.firstSeconds, bundle.config);
+    const entry: CachedAnalysis = {
+      key,
+      sourceHash,
+      createdAt: bundle.receivedAt,
+      response: $state.snapshot(bundle.response) as AnalyzeResponse,
+      config: $state.snapshot(bundle.config) as SolverConfig,
+      firstSeconds: bundle.firstSeconds,
+    };
+    await dbPut(STORE_ANALYSES, entry);
+  }
+
+  #fail(message: string, request?: AnalyzeRequest): void {
     this.errorMessage = message;
+    if (request) this.lastFailure = { request, message, at: Date.now() };
     toasts.show({ id: ANALYSIS_TOAST, tone: 'error', title: '分析未完成', body: message, sticky: true });
   }
 
-  #announce(response: AnalyzeResponse): void {
+  #announce(response: AnalyzeResponse, fromCache = false): void {
     const status = response.status as AnalyzeStatus;
     const label = STATUS_LABEL[status] ?? status;
     if (status === 'ok') {
@@ -320,7 +416,7 @@ export class Session {
       toasts.show({
         id: ANALYSIS_TOAST,
         tone: 'ok',
-        title: label,
+        title: fromCache ? '已載入先前的分析' : label,
         body: `${notes} 個音符・${candidates} 個候選方案`,
       });
       return;
@@ -344,6 +440,7 @@ export class Session {
     this.selectedNoteId = null;
     this.solutionIndex = 0;
     this.errorMessage = null;
+    this.lastFailure = null;
   }
 }
 

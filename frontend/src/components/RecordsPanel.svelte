@@ -1,26 +1,36 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { records, recordPreview, recordTitle, type ChartRecord } from '../state/records.svelte';
+  import { records, recordDate, recordTitle, type ChartRecord } from '../state/records.svelte';
   import { squash } from '../lib/press';
   import { session } from '../state/session.svelte';
 
   interface Props {
     onCreate: () => void;
+    onSearch: () => void;
     onCollapse: () => void;
   }
 
-  let { onCreate, onCollapse }: Props = $props();
+  let { onCreate, onSearch, onCollapse }: Props = $props();
 
   /** 刪除要按兩次：第一次只把該列切成確認狀態。 */
   let confirmingId = $state<string | null>(null);
 
   const analyzing = $derived(session.phase === 'analyzing');
 
+  let listEl: HTMLElement | null = $state(null);
+
+  // 從搜尋視窗跳到既有紀錄時，把那一列捲進可視範圍。
+  $effect(() => {
+    const id = records.activeId;
+    if (!id || !listEl) return;
+    listEl.querySelector(`[data-record-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+  });
+
   async function open(record: ChartRecord) {
     confirmingId = null;
     if (analyzing) return;
     records.activeId = record.id;
-    await session.analyze(record.source);
+    await session.load(record.source);
   }
 
   function remove(record: ChartRecord) {
@@ -39,6 +49,9 @@
     <button class="btn btn--ghost btn--wide" onclick={onCreate}>
       <span class="lead lead--disc"><Icon name="plus" size={14} /></span>新增
     </button>
+    <button class="btn btn--ghost btn--wide" onclick={onSearch}>
+      <span class="lead lead--disc"><Icon name="search" size={14} /></span>搜尋
+    </button>
   </div>
 
   <div class="records-title">
@@ -54,13 +67,15 @@
   {/if}
 
   <div class="records-body scroll">
-    {#if records.items.length === 0}
-      <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt。</p>
+    {#if !records.loaded && records.items.length === 0}
+      <p class="empty small muted">讀取紀錄中…</p>
+    {:else if records.items.length === 0}
+      <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt，或按「搜尋」從 Majdata 匯入。</p>
     {:else}
-      <ul class="list">
+      <ul class="list" bind:this={listEl}>
         {#each records.items as record (record.id)}
           {@const active = records.activeId === record.id}
-          <li class="item" class:is-active={active}>
+          <li class="item" class:is-active={active} data-record-id={record.id}>
             {#if confirmingId === record.id}
               <div class="confirm">
                 <span class="small">刪除這筆紀錄？</span>
@@ -80,11 +95,11 @@
                 disabled={analyzing || !session.desktop}
                 aria-current={active ? 'true' : undefined}
               >
-                <span class="item-title mono">
+                <span class="item-title">
                   <Icon name="file-text" size={13} />
-                  {recordTitle(record)}
+                  <span class="item-title-text">{recordTitle(record)}</span>
                 </span>
-                <span class="item-preview xsmall">{recordPreview(record)}</span>
+                <span class="item-preview xsmall mono">{recordDate(record)}</span>
               </button>
               <button
                 class="remove btn btn--icon"
@@ -223,6 +238,16 @@
     font-weight: 600;
     color: var(--c-text);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .item-title :global(svg) {
+    flex: none;
+  }
+
+  .item-title-text {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }

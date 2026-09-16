@@ -1,12 +1,14 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import DiagnosticList from './DiagnosticList.svelte';
+  import CopyDebugButton from './CopyDebugButton.svelte';
   import { STATUS_HINT, STATUS_LABEL, SUPPORT_NOTES } from '../lib/contract';
   import { reducedMotion } from '../lib/press';
   import { byteOffsetToIndex } from '../lib/text';
-  import { records } from '../state/records.svelte';
+  import { records, sourceHeading } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
   import type { AnalyzeResponse, AnalyzeStatus, Diagnostic } from '../lib/types';
+  import type { AnalyzeFailure } from '../state/session.svelte';
 
   interface Props {
     open: boolean;
@@ -18,10 +20,15 @@
   let textarea: HTMLTextAreaElement | null = $state(null);
   /** 取消時保留草稿，下次打開接著編輯；成功新增後才清空。 */
   let draft = $state('');
+  /** 自訂名稱；留空時紀錄標題用譜面開頭。 */
+  let name = $state('');
   /** 被退回（語法錯誤或未支援）的核心回應，以及當時送出的原文。 */
   let rejected = $state<{ response: AnalyzeResponse; source: string } | null>(null);
+  /** 呼叫核心本身失敗（不是譜面問題）。 */
+  let failed = $state<AnalyzeFailure | null>(null);
 
   const analyzing = $derived(session.phase === 'analyzing');
+  const draftHeading = $derived(draft.trim().length > 0 ? sourceHeading(draft) : '');
   const canGenerate = $derived(
     session.desktop && !analyzing && draft.trim().length > 0 && session.configIssues.length === 0,
   );
@@ -82,15 +89,24 @@
   async function generate() {
     if (!canGenerate) return;
     const source = draft;
+    failed = null;
     const response = await session.analyze(source, usable);
-    if (!response) return;
+    if (!response) {
+      if (session.lastFailure?.request.source === source) {
+        failed = session.lastFailure;
+        rejected = null;
+      }
+      return;
+    }
     if (!usable(response)) {
       rejected = { response, source };
       return;
     }
-    records.add(source);
+    await records.add(source, { name });
     draft = '';
+    name = '';
     rejected = null;
+    failed = null;
     open = false;
   }
 
@@ -146,7 +162,18 @@
 
   <div class="dialog-body">
     <div class="editor">
-      <label class="field-label" for="new-chart-source">simai 原文或 maidata.txt</label>
+      <label class="field-label" for="new-chart-name">名稱（選填）</label>
+      <input
+        id="new-chart-name"
+        class="input"
+        type="text"
+        autocomplete="off"
+        maxlength="120"
+        bind:value={name}
+        onkeydown={onKeydown}
+        placeholder={draftHeading || '留空時使用譜面開頭'}
+      />
+      <label class="field-label name-gap" for="new-chart-source">simai 原文或 maidata.txt</label>
       <textarea
         id="new-chart-source"
         class="textarea source"
@@ -161,6 +188,28 @@
         <p class="field-error">瀏覽器預覽沒有 Rust 核心，無法生成。請改用桌面版。</p>
       {:else if session.configIssues.length > 0}
         <p class="field-error">「參數」分頁有超出範圍的數值，修正後才能生成。</p>
+      {/if}
+
+      {#if failed}
+        <section class="result" aria-live="polite">
+          <div class="row row-wrap">
+            <span class="badge badge--danger">分析未完成</span>
+            <span class="xsmall muted">呼叫核心失敗，不是譜面本身的問題。</span>
+          </div>
+          <p class="small">{failed.message}</p>
+          <div class="row row-wrap">
+            <CopyDebugButton
+              input={() => ({
+                context: '新增譜面（呼叫核心失敗）',
+                source: failed?.request.source ?? draft,
+                config: failed?.request.solverConfig ?? null,
+                firstSeconds: failed?.request.firstSeconds ?? null,
+                requestId: failed?.request.requestId ?? null,
+                error: failed?.message ?? null,
+              })}
+            />
+          </div>
+        </section>
       {/if}
 
       {#if rejected && rejectedStatus}
@@ -181,6 +230,17 @@
               />
             </div>
           {/if}
+          <div class="row row-wrap">
+            <CopyDebugButton
+              input={() => ({
+                context: '新增譜面',
+                source: rejected?.source ?? draft,
+                config: session.requestConfig,
+                firstSeconds: session.firstSeconds,
+                response: rejected?.response ?? null,
+              })}
+            />
+          </div>
         </section>
       {/if}
     </div>
@@ -287,6 +347,10 @@
     gap: var(--space-2);
     min-width: 0;
     padding: var(--space-4);
+  }
+
+  .name-gap {
+    margin-top: var(--space-2);
   }
 
   .source {
