@@ -2,11 +2,11 @@
 
 **把 simai 譜面變成可播放的左右手動作動畫。** MaiMotionDemo 是 Windows 桌面展示工具：在 maimai 圓盤上呈現 Tap、Hold、Touch 和 Slide 的接觸與移動軌跡，並比較不同的雙手分配方案，包括 Slide 中途換手。
 
-[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.0/MaiMotionDemo-v0.1.0-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
+[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.5/MaiMotionDemo-v0.1.5-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
 
 ## 下載與啟動
 
-從 GitHub Release 下載 `MaiMotionDemo-v0.1.0-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
+從 GitHub Release 下載 `MaiMotionDemo-v0.1.5-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
 
 支援 Windows x64。介面使用系統的 Microsoft Edge WebView2；如果 Windows 缺少 WebView2 Runtime，請先安裝 [Microsoft 官方 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。
 
@@ -45,7 +45,7 @@
 
 演算法將每隻手簡化為一個接觸點。某些 Slide 曲線與 Touch 感應區使用可辨識的近似位置，並非實機軌道座標或官方判定。「未找到可行方案」也不表示玩家無法完成譜面。這些限制會影響方案與成本，請把動畫當作打法討論與資料分析的起點。
 
-本機開發版已能讓一隻手掌覆蓋多個 Touch：除了同時出現的落點，持續中的 Touch Hold 也能在後續鄰近 Touch 到來時擴展成同一掌，例如用一手維持 C 並依序覆蓋 B 區，另一手繼續按鍵。預設以半徑 0.5 的圓形近似手掌，約占四分之一盤面。若同一判定有至少 16 個一般 Touch，求解器也會嘗試雙手連續掃屏：左右手各負責半邊，能經過 C 與內圈，並在判定前最多 0.18 秒開始滑行。這些參數不是官方判定或真實手形；Tap、Slide 與 Touch Hold 不會自動算入掃屏。畫面上的小型 Touch 多邊形只用來辨識落點，手掌範圍另以大圓虛線表示。公開下載的 v0.1.0 尚未包含本機開發版變更。
+v0.1.5 已能讓一隻手掌覆蓋多個 Touch：除了同時出現的落點，持續中的 Touch Hold 也能在後續鄰近 Touch 到來時擴展成同一掌，例如用一手維持 C 並依序覆蓋 B 區，另一手繼續按鍵。預設以半徑 0.5 的圓形近似手掌，約占四分之一盤面。若同一判定有至少 16 個一般 Touch，求解器也會嘗試雙手連續掃屏：左右手各負責半邊，能經過 C 與內圈，並在判定前最多 0.18 秒開始滑行。這些參數不是官方判定或真實手形；Tap、Slide 與 Touch Hold 不會自動算入掃屏。畫面上的小型 Touch 多邊形只用來辨識落點，手掌範圍另以大圓虛線表示。
 
 ## 從原始碼執行
 
