@@ -217,6 +217,7 @@ export const PART_LABEL: Record<string, string> = {
   head: 'Slide 起點',
   contact: '接觸',
   slide: 'Slide 軌道',
+  group: 'Group 連帶判定',
 };
 
 export const KIND_LABEL: Record<string, string> = {

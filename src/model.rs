@@ -73,6 +73,8 @@ pub struct SlidePath {
     pub samples: Vec<PathSample>,
     /// Wifi 的兩條側線；其餘形狀為空。手的移動一律以 samples 為準。
     pub branches: Vec<Vec<PathSample>>,
+    /// 引導星星進入最後一個判定區時的弧長比例 u（Slide 尾判的正解位置）。
+    pub judge_progress: f64,
 }
 impl SlidePath {
     pub fn at(&self, u: f64) -> Point {

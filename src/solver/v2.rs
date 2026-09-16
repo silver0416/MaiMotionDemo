@@ -120,7 +120,8 @@ impl<'a> Context<'a> {
         }
         fresh.reverse();
         for assignment in fresh {
-            if assignment.part == "slide" {
+            // Touch Group 連帶判定沒有實際接觸，不計分工。
+            if assignment.part == "slide" || assignment.part == "group" {
                 continue;
             }
             let note = self.notes[assignment.note_id.as_str()];

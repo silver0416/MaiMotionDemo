@@ -140,64 +140,60 @@ fn arc_points(start: u8, steps: f64) -> Vec<Point> {
         .collect()
 }
 
-/// `p` `q` `pp` `qq`：從起點沿指定旋轉方向捲進內圈繞行，再捲出到終點。
-/// 這是 Demo 的近似形狀，不是實機軌道座標；`pp` `qq` 用較大的繞行半徑。
+/// `p` `q` `pp` `qq` 的幾何，依 MajdataPlay SlideGeo 的圓與切線定義重建
+/// （盤面半徑 1）。只用來產生可辨識的路徑，不是實機軌道座標。
+///
+/// - `p`／`q`：以盤心為圓心、半徑 cos(3π/8) 的圓；從起點切入，繞到可以切出往終點的角度。
+/// - `pp`／`qq`：半徑 cos(π/8)/2、通過盤心的圓，圓心朝向起點旁第 3 個 D 區
+///   （`pp` 為順時針方向的 D(起點+2)，`qq` 鏡射為 D(起點−1)）。弧長不足 90° 時多繞一圈，
+///   對應 Majdata 判定表中 4、5 號相對終點會先繞完再穿過中心。
+///
+/// 旋轉方向以畫面上看為準：`p`／`pp` 逆時針，`q`／`qq` 順時針。
 fn loop_points(start: u8, end: u8, ccw: bool, wide: bool) -> Vec<Point> {
+    // 本檔座標 y 向下，畫面逆時針即角度遞減。
     let dir = if ccw { -1.0 } else { 1.0 };
-    let rho = if wide { 0.72 } else { 0.42 };
-    let from = angle(start);
-    let to = angle(end);
-    let enter = from + dir * PI / 4.0;
-    let exit = to - dir * PI / 4.0;
+    let (center, radius) = if wide {
+        let b = (PI / 8.0).cos() / 2.0;
+        let d = if ccw {
+            wrap(start as i32 + 2)
+        } else {
+            wrap(start as i32 - 1)
+        };
+        // D 區 k 位於 k−1 與 k 號鍵之間。
+        (polar(angle(d) - PI / 8.0, b), b)
+    } else {
+        (Point { x: 0.0, y: 0.0 }, (3.0 * PI / 8.0).cos())
+    };
+    let from = button(start);
+    let to = button(end);
+    // 從外部點沿 dir 方向切入圓的切點角度；切出則是反方向切線。
+    let tangent = |p: Point, sign: f64| {
+        let (dx, dy) = (p.x - center.x, p.y - center.y);
+        let delta = (radius / dx.hypot(dy)).acos();
+        dy.atan2(dx) + sign * delta
+    };
+    let enter = tangent(from, dir);
+    let exit = tangent(to, -dir);
     let mut sweep = ((exit - enter) * dir).rem_euclid(TAU);
-    if sweep < 1e-9 {
-        sweep = TAU;
+    if sweep < 0.002 || (wide && sweep < PI / 2.0) {
+        sweep += TAU;
     }
-    let mut points = vec![];
-    let ramp = 18;
-    for i in 0..=ramp {
-        let u = i as f64 / ramp as f64;
-        let s = u * u * (3.0 - 2.0 * u);
-        points.push(polar(from + (enter - from) * u, 1.0 + (rho - 1.0) * s));
+    let mut points = vec![from];
+    let n = (sweep * radius / 0.02).ceil().max(2.0) as usize;
+    for i in 0..=n {
+        let a = enter + dir * sweep * i as f64 / n as f64;
+        points.push(Point {
+            x: center.x + radius * a.cos(),
+            y: center.y + radius * a.sin(),
+        });
     }
-    let n = (sweep / 0.04).ceil().max(2.0) as usize;
-    for i in 1..=n {
-        points.push(polar(enter + dir * sweep * i as f64 / n as f64, rho));
-    }
-    for i in 1..=ramp {
-        let u = i as f64 / ramp as f64;
-        let s = u * u * (3.0 - 2.0 * u);
-        points.push(polar(exit + (to - exit) * u, rho + (1.0 - rho) * s));
-    }
+    points.push(to);
     points
 }
 
-/// 以 Catmull-Rom 取樣通過控制點的平滑曲線，用於 S 與 Z。
-fn smooth(control: &[Point], per: usize) -> Vec<Point> {
-    let mut nodes = vec![control[0]];
-    nodes.extend_from_slice(control);
-    nodes.push(*control.last().unwrap());
-    let mut points = vec![];
-    for w in nodes.windows(4) {
-        for i in 0..per {
-            let t = i as f64 / per as f64;
-            let t2 = t * t;
-            let t3 = t2 * t;
-            let x = 0.5
-                * ((2.0 * w[1].x)
-                    + (-w[0].x + w[2].x) * t
-                    + (2.0 * w[0].x - 5.0 * w[1].x + 4.0 * w[2].x - w[3].x) * t2
-                    + (-w[0].x + 3.0 * w[1].x - 3.0 * w[2].x + w[3].x) * t3);
-            let y = 0.5
-                * ((2.0 * w[1].y)
-                    + (-w[0].y + w[2].y) * t
-                    + (2.0 * w[0].y - 5.0 * w[1].y + 4.0 * w[2].y - w[3].y) * t2
-                    + (-w[0].y + 3.0 * w[1].y - 3.0 * w[2].y + w[3].y) * t3);
-            points.push(Point { x, y });
-        }
-    }
-    points.push(*control.last().unwrap());
-    points
+/// B 區判定節點（不是 B 區 Touch 的代表點）：Majdata 以 cos(3π/8)/cos(π/8) 為半徑。
+fn b_node(k: u8) -> Point {
+    polar(angle(k), (3.0 * PI / 8.0).cos() / (PI / 8.0).cos())
 }
 
 fn wrap(k: i32) -> u8 {
@@ -225,8 +221,14 @@ pub fn segment_points(segment: &Segment) -> Result<Vec<Point>, String> {
             if turn != wrap(start as i32 + 2) && turn != wrap(start as i32 - 2) {
                 return Err("V 形 Slide 的轉折鍵必須是起點左右各兩格的鍵位".into());
             }
-            if turn == end {
-                return Err("V 形 Slide 的轉折鍵不可等於終點".into());
+            // Majdata：轉折在逆時針側時，終點限順時針 1–4 格；轉折在順時針側時鏡射。
+            let reach = if turn == wrap(start as i32 - 2) {
+                d
+            } else {
+                (8 - d) % 8
+            };
+            if !(1..=4).contains(&reach) {
+                return Err("V 形 Slide 的終點必須在轉折鍵另一側、距起點 1–4 格".into());
             }
             Ok(vec![button(start), button(turn), button(end)])
         }
@@ -235,17 +237,15 @@ pub fn segment_points(segment: &Segment) -> Result<Vec<Point>, String> {
             if d != 4 {
                 return Err("S 與 Z 形 Slide 只能連到正對面的鍵位".into());
             }
-            let side = if shape == Shape::S { 2 } else { -2 };
-            let bend = button(wrap(start as i32 + side));
-            let first = Point {
-                x: bend.x * 0.55,
-                y: bend.y * 0.55,
-            };
-            let second = Point {
-                x: -first.x,
-                y: -first.y,
-            };
-            Ok(smooth(&[button(start), first, second, button(end)], 12))
+            // Majdata 的 `s` 判定佇列為 A1 B8 B7 C B3 B4 A5：先往起點逆時針側的內圈折入，
+            // 穿過中心，再從對側內圈折出；`z` 為其鏡射。
+            let side = if shape == Shape::S { -2 } else { 2 };
+            Ok(vec![
+                button(start),
+                b_node(wrap(start as i32 + side)),
+                b_node(wrap(end as i32 + side)),
+                button(end),
+            ])
         }
         Shape::Wifi => {
             if d != 4 {
@@ -253,6 +253,65 @@ pub fn segment_points(segment: &Segment) -> Result<Vec<Point>, String> {
             }
             Ok(vec![button(start), button(end)])
         }
+    }
+}
+
+/// 引導星星在最後一個判定區停留的時間佔這段 Slide 時長的比例，取自 MajdataPlay
+/// SlideTables.cs 的 Const。Slide 尾判的正解時刻 = 移動開始 + 時長 × (1 − Const)，
+/// 因此 Critical Perfect 區間會隨形狀與 Slide 長度改變。
+fn judge_const(segment: &Segment) -> f64 {
+    let Segment { start, end, shape } = *segment;
+    // Majdata 以「相對終點」1–8 查表（1 為同鍵），逆向形狀用鏡射後的鍵查同一張表。
+    let relative = ((end + 8 - start) % 8 + 1) as usize;
+    let mirror = |r: usize| if r == 1 { 1 } else { 10 - r };
+    let upper = matches!(start, 1 | 2 | 7 | 8);
+    const LINE: [f64; 9] = [0.0, 0.0, 0.0, 0.182, 0.19, 0.152, 0.19, 0.182, 0.0];
+    const CIRCLE: [f64; 9] = [0.0, 0.058, 0.465, 0.233, 0.155, 0.116, 0.093, 0.078, 0.066];
+    const V: [f64; 9] = [0.0, 0.185, 0.15, 0.158, 0.158, 0.158, 0.158, 0.158, 0.154];
+    const L: [f64; 9] = [0.0, 0.0, 0.1, 0.104, 0.098, 0.105, 0.0, 0.0, 0.0];
+    const PPQQ: [f64; 9] = [0.0, 0.065, 0.086, 0.157, 0.065, 0.065, 0.067, 0.079, 0.0626];
+    const PQ: [f64; 9] = [0.0, 0.095, 0.112, 0.125, 0.139, 0.160, 0.080, 0.084, 0.0895];
+    let value = match shape {
+        Shape::Line => LINE[relative],
+        Shape::Arc('^') => {
+            CIRCLE[if relative < 5 {
+                relative
+            } else {
+                mirror(relative)
+            }]
+        }
+        Shape::Arc(c) => {
+            let clockwise = (c == '>') == upper;
+            CIRCLE[if clockwise {
+                relative
+            } else {
+                mirror(relative)
+            }]
+        }
+        Shape::Center => V[relative],
+        Shape::Grand(turn) => {
+            if turn == wrap(start as i32 - 2) {
+                L[relative]
+            } else {
+                L[mirror(relative)]
+            }
+        }
+        Shape::Loop { ccw, wide } => {
+            let r = if ccw { relative } else { mirror(relative) };
+            if wide {
+                PPQQ[r]
+            } else {
+                PQ[r]
+            }
+        }
+        Shape::S | Shape::Z => 0.13,
+        Shape::Wifi => 0.16287,
+    };
+    // 表外組合在前面的形狀檢查已被拒絕；保底用直線的典型值。
+    if value > 0.0 {
+        value
+    } else {
+        0.15
     }
 }
 
@@ -301,8 +360,10 @@ pub fn build_path(id: String, segments: &[Segment]) -> Result<SlidePath, String>
     }
     let mut points: Vec<Point> = vec![];
     let mut shape = String::new();
+    let mut last_length = 0.0;
     for (i, segment) in segments.iter().enumerate() {
         let part = segment_points(segment)?;
+        last_length = part.windows(2).map(|w| w[0].distance(w[1])).sum();
         shape.push_str(&segment.shape.token());
         if i == 0 {
             points.extend(part);
@@ -315,12 +376,17 @@ pub fn build_path(id: String, segments: &[Segment]) -> Result<SlidePath, String>
     } else {
         vec![]
     };
+    let samples = resample(&points)?;
+    let total: f64 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
+    // 連續寫法共用一段時間、依弧長等速前進，最後一段的停留比例換算到整條路徑上。
+    let last = judge_const(segments.last().unwrap()) * last_length / total.max(1e-9);
     Ok(SlidePath {
         id,
         shape,
         start_button: segments[0].start,
         end_button: segments[segments.len() - 1].end,
-        samples: resample(&points)?,
+        samples,
         branches,
+        judge_progress: (1.0 - last).clamp(0.0, 1.0),
     })
 }

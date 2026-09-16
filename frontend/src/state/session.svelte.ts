@@ -76,14 +76,25 @@ function stableJson(value: unknown): string {
   return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
 }
 
-/** 快取鍵：核心版本＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
+/**
+ * Rust 求解規則的修訂號。改了演算法但 App 版本號沒變時，舊快取（包含 no_solution）
+ * 仍會被採用；每次求解行為改變就遞增這個值，讓舊結果自然失效。
+ * judgment-1：依判定規則加入滑移最短一幀、Hold 結尾提早放手、Touch 晚接與順帶碰觸。
+ * judgment-2：Touch Group 過半判定、Slide 進入最後判定區後可離手；s/z 方向與 pp/qq 形狀修正。
+ */
+const SOLVER_REVISION = 'judgment-2';
+
+/** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(
   source: string,
   firstSeconds: number,
   config: SolverConfig,
 ): Promise<{ key: string; sourceHash: string }> {
   const [version, sourceHash] = await Promise.all([appVersion(), hashText(source)]);
-  return { key: `${version}|${sourceHash}|${firstSeconds}|${stableJson(config)}`, sourceHash };
+  return {
+    key: `${version}|${SOLVER_REVISION}|${sourceHash}|${firstSeconds}|${stableJson(config)}`,
+    sourceHash,
+  };
 }
 
 export interface Bounds {

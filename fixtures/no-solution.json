@@ -394,7 +394,7 @@
     "diagnostics": [
       {
         "code": "no_solution",
-        "message": "本模型未找到可行方案：手被佔用或無法連續接觸。這不代表人類無法遊玩；可增加 beamWidth 或縮短片段。",
+        "message": "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。",
         "noteIds": [
           "n0",
           "n1",

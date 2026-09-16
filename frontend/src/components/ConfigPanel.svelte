@@ -306,7 +306,7 @@
           />
           <NumberField
             label="敲擊接觸時間"
-            hint="Tap 觸碰後停留多久才放開（0.001–1 秒）。"
+            hint="Tap 觸碰後停留多久才放開（0.001–1 秒）。要滑向下一個相鄰目標時，最短只需停留一個判定幀（1/60 秒）。"
             value={config.contactSeconds}
             min={R.contactSeconds.min}
             max={R.contactSeconds.max}
@@ -331,7 +331,7 @@
           />
           <NumberField
             label="相鄰連擊滑移距離"
-            hint="連續兩次接觸近到這個距離內、且間隔短於下方的連打判定間隔時，當成手不抬起、貼著面板滑過去（相鄰鍵約 0.77，隔兩鍵 1.41）。0 表示關閉。"
+            hint="連續兩次接觸近到這個距離內、且間隔短於下方的連打判定間隔時，當成手不抬起、貼著面板滑過去（相鄰鍵約 0.77，隔兩鍵 1.41）；間隔比敲擊接觸時間還短也可以，只要至少一幀。0 表示關閉。"
             value={config.glideDistance}
             min={R.glideDistance.min}
             max={R.glideDistance.max}

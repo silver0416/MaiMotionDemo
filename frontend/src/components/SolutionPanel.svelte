@@ -68,6 +68,8 @@
     const seen = new Set<string>();
     const slideNotes = new Set<string>();
     for (const assignment of item.assignments) {
+      // 連帶判定不是手的接觸，不列入左右手統計。
+      if (assignment.part === 'group') continue;
       const isSlide = assignment.part === 'slide';
       const key = `${isSlide ? 'slide' : 'contact'}:${assignment.noteId}:${assignment.hand}`;
       if (isSlide) slideNotes.add(assignment.noteId);

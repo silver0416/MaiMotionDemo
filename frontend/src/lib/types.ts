@@ -43,6 +43,8 @@ export interface SlidePath {
   samples: PathSample[];
   /** Wifi 的兩條側線；其餘形狀為空陣列 */
   branches: PathSample[][];
+  /** 引導星星進入最後判定區時的弧長比例（Slide 尾判正解位置）；舊快取可能沒有 */
+  judgeProgress?: number;
 }
 
 export type NoteKind = 'tap' | 'hold' | 'slide' | 'touch' | 'touchHold';
@@ -202,7 +204,8 @@ export interface MotionSegment {
   samples: MotionSample[];
 }
 
-export type AssignmentPart = 'head' | 'contact' | 'slide';
+/** group：Touch Group 過半判定連帶完成，沒有實際接觸 */
+export type AssignmentPart = 'head' | 'contact' | 'slide' | 'group';
 
 export interface Assignment {
   noteId: string;

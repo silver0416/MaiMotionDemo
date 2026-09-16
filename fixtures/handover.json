@@ -97,6 +97,7 @@
           "branches": [],
           "endButton": 4,
           "id": "p0",
+          "judgeProgress": 0.884,
           "samples": [
             {
               "u": 0.0,
@@ -3043,7 +3044,7 @@
             "startSeconds": 3.6
           },
           {
-            "endSeconds": 3.7,
+            "endSeconds": 3.652,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -3051,6 +3052,24 @@
                 "timeSeconds": 3.65,
                 "x": 0.6883211317088904,
                 "y": 0.7253391907216482
+              },
+              {
+                "timeSeconds": 3.652,
+                "x": 0.6868038485588935,
+                "y": 0.7267828659523351
+              }
+            ],
+            "startSeconds": 3.65
+          },
+          {
+            "endSeconds": 3.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 3.652,
+                "x": 0.6868038485588935,
+                "y": 0.7267828659523351
               },
               {
                 "timeSeconds": 3.658227848101268,
@@ -3073,7 +3092,7 @@
                 "y": 0.7603818339961859
               }
             ],
-            "startSeconds": 3.65
+            "startSeconds": 3.652
           },
           {
             "endSeconds": 3.75,
@@ -5139,7 +5158,7 @@
             "startSeconds": 3.6
           },
           {
-            "endSeconds": 3.7,
+            "endSeconds": 3.652,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -5147,6 +5166,24 @@
                 "timeSeconds": 3.65,
                 "x": 0.6883211317088904,
                 "y": 0.7253391907216482
+              },
+              {
+                "timeSeconds": 3.652,
+                "x": 0.6868038485588935,
+                "y": 0.7267828659523351
+              }
+            ],
+            "startSeconds": 3.65
+          },
+          {
+            "endSeconds": 3.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 3.652,
+                "x": 0.6868038485588935,
+                "y": 0.7267828659523351
               },
               {
                 "timeSeconds": 3.658227848101268,
@@ -5169,7 +5206,7 @@
                 "y": 0.7603818339961859
               }
             ],
-            "startSeconds": 3.65
+            "startSeconds": 3.652
           },
           {
             "endSeconds": 3.75,
@@ -7222,7 +7259,7 @@
             "startSeconds": 3.6
           },
           {
-            "endSeconds": 3.7,
+            "endSeconds": 3.652,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -7230,6 +7267,24 @@
                 "timeSeconds": 3.65,
                 "x": 0.6928215478317625,
                 "y": 0.7210571031730006
+              },
+              {
+                "timeSeconds": 3.652,
+                "x": 0.691278548018206,
+                "y": 0.7225252474753945
+              }
+            ],
+            "startSeconds": 3.65
+          },
+          {
+            "endSeconds": 3.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 3.652,
+                "x": 0.691278548018206,
+                "y": 0.7225252474753945
               },
               {
                 "timeSeconds": 3.6639240506329136,
@@ -7247,7 +7302,7 @@
                 "y": 0.7569276549440291
               }
             ],
-            "startSeconds": 3.65
+            "startSeconds": 3.652
           },
           {
             "endSeconds": 3.75,

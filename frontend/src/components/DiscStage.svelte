@@ -237,6 +237,10 @@
       const last = handovers[handovers.length - 1];
       return { text: `${first.from}→${last.to}`, hand: first.from, handover: true };
     }
+    // Touch Group 連帶判定沒有實際接觸，標籤要和真的按下去的區分開。
+    if (list.every((item) => item.part === 'group')) {
+      return { text: `${list[0].hand}連帶`, hand: list[0].hand, handover: false };
+    }
     const head = list.find((item) => item.part === 'head' || item.part === 'contact');
     const slide = list.find((item) => item.part === 'slide');
     // 起點與軌道分屬不同手（且沒有交接段）時要講清楚，不能只寫其中一隻手。

@@ -159,6 +159,7 @@
           "branches": [],
           "endButton": 5,
           "id": "p0",
+          "judgeProgress": 0.848,
           "samples": [
             {
               "u": 0.0,
@@ -510,7 +511,7 @@
           "distance": 5.061467458920718,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.036611016732717105,
+          "side": 0.03661104805601967,
           "speed": 0.38348035257910695
         },
         "handovers": [],
@@ -1150,7 +1151,7 @@
             "startSeconds": 1.7
           },
           {
-            "endSeconds": 1.8,
+            "endSeconds": 1.772,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -1160,12 +1161,30 @@
                 "y": 0.615919688340858
               },
               {
+                "timeSeconds": 1.772,
+                "x": -0.2663476689261024,
+                "y": 0.6430201546278556
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.772,
+                "x": -0.2663476689261024,
+                "y": 0.6430201546278556
+              },
+              {
                 "timeSeconds": 1.8,
                 "x": -0.28063451706773246,
                 "y": 0.6775116571749438
               }
             ],
-            "startSeconds": 1.75
+            "startSeconds": 1.772
           },
           {
             "endSeconds": 1.85,
@@ -1240,7 +1259,7 @@
             "startSeconds": 1.95
           }
         ],
-        "totalCost": 5.481558828232542,
+        "totalCost": 5.481558859555844,
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
@@ -1310,7 +1329,7 @@
           "distance": 5.061467458920715,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.03539060640309906,
+          "side": 0.0353906399238747,
           "speed": 0.3892274790158884
         },
         "handovers": [],
@@ -1932,7 +1951,7 @@
             "startSeconds": 1.7
           },
           {
-            "endSeconds": 1.8,
+            "endSeconds": 1.772,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -1942,12 +1961,30 @@
                 "y": 0.6053003833694637
               },
               {
+                "timeSeconds": 1.772,
+                "x": -0.26233609087648224,
+                "y": 0.6333353484939444
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.772,
+                "x": -0.26233609087648224,
+                "y": 0.6333353484939444
+              },
+              {
                 "timeSeconds": 1.8,
                 "x": -0.27711558895403055,
                 "y": 0.6690162131978283
               }
             ],
-            "startSeconds": 1.75
+            "startSeconds": 1.772
           },
           {
             "endSeconds": 1.85,
@@ -2022,7 +2059,7 @@
             "startSeconds": 1.95
           }
         ],
-        "totalCost": 5.486085544339702,
+        "totalCost": 5.486085577860478,
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
@@ -2092,8 +2129,8 @@
           "distance": 5.061467458920718,
           "handover": 0.0,
           "repetition": 0.0,
-          "side": 0.03417019450791708,
-          "speed": 0.39538511448386887
+          "side": 0.03417023046578992,
+          "speed": 0.3953851144838689
         },
         "handovers": [],
         "id": "solution-3",
@@ -2696,7 +2733,7 @@
             "startSeconds": 1.7
           },
           {
-            "endSeconds": 1.8,
+            "endSeconds": 1.772,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -2706,12 +2743,30 @@
                 "y": 0.5939225566143986
               },
               {
+                "timeSeconds": 1.772,
+                "x": -0.25803797153760344,
+                "y": 0.622958770493325
+              }
+            ],
+            "startSeconds": 1.75
+          },
+          {
+            "endSeconds": 1.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 1.772,
+                "x": -0.25803797153760344,
+                "y": 0.622958770493325
+              },
+              {
                 "timeSeconds": 1.8,
                 "x": -0.2733453088322071,
                 "y": 0.6599139517937767
               }
             ],
-            "startSeconds": 1.75
+            "startSeconds": 1.772
           },
           {
             "endSeconds": 1.85,
@@ -2786,7 +2841,7 @@
             "startSeconds": 1.95
           }
         ],
-        "totalCost": 5.491022767912503,
+        "totalCost": 5.491022803870377,
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。"
