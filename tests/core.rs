@@ -40,6 +40,14 @@ fn absolute_step_and_hold_duration() {
     let c = chart("(120){4}1h[240#4:2],E");
     near(c.notes[0].end_seconds, 0.5);
 }
+
+#[test]
+fn majdata_accepts_sub_millisecond_1280th_holds() {
+    let c = chart("(200){64}1hx[1280:1]/6x/B1/C,E");
+    let hold = &c.notes[0];
+    near(hold.end_seconds - hold.time_seconds, 0.0009375);
+    assert!(hold.modifiers.ex);
+}
 #[test]
 fn invalid_input_and_unicode_location() {
     for s in [
@@ -185,6 +193,53 @@ fn touch_hold_in_a_palm_reserves_the_hand_until_release() {
         .any(|p| { p.covered_note_ids.len() == 3 && p.end_seconds >= 2.0 - 1e-8 }));
     let blocked = analyze("(120){4}Ch[4:4]/B1/E1/7,8/2,E");
     assert_eq!(blocked.status, "no_solution");
+}
+
+#[test]
+fn active_center_touch_hold_can_expand_to_cover_later_b_touches() {
+    let source = "(190){4}1h[4:15],,,Ch[1:3],,,,,B1,B8,B2,B7,B3,B6,B4,B5,E";
+    let r = analyze(source);
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let solution = &r.solutions[0];
+    let chart = r.chart.as_ref().unwrap();
+    let center = &chart.notes[1];
+    let palm = solution
+        .palm_placements
+        .iter()
+        .find(|p| p.covered_note_ids.contains(&center.id))
+        .expect("中央 Touch Hold 應擴展成手掌覆蓋");
+    assert_eq!(palm.covered_note_ids.len(), 9);
+    assert!(palm.end_seconds >= chart.notes.last().unwrap().end_seconds - 1e-8);
+    let owner = solution
+        .assignments
+        .iter()
+        .find(|a| a.note_id == center.id)
+        .unwrap()
+        .hand;
+    assert!(chart.notes[1..].iter().all(|note| {
+        solution
+            .assignments
+            .iter()
+            .any(|a| a.note_id == note.id && a.hand == owner)
+    }));
+    verify_segments(&solution.left_segments);
+    verify_segments(&solution.right_segments);
+
+    let disabled = analyze_chart(AnalyzeRequest {
+        request_id: "sequential-palm-disabled".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig {
+            palm_radius: 0.0,
+            ..SolverConfig::default()
+        },
+    });
+    assert_eq!(disabled.status, "no_solution");
+    assert_eq!(
+        analyze("(120){4}1h[4:8],Ch[4:4],A1,E").status,
+        "no_solution",
+        "超出手掌半徑的後續 Touch 不可合併"
+    );
 }
 #[test]
 fn both_hands_can_cover_separate_touch_clusters() {

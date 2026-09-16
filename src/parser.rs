@@ -144,8 +144,8 @@ impl<'a> Parser<'a> {
             })?;
             240.0 * self.positive(m, start)? / self.positive(n, start)? / bpm
         };
-        if !result.is_finite() || !(0.001..=120.0).contains(&result) {
-            return Err(self.error("invalid", "單一長音時間須為 0.001–120 秒", start));
+        if !result.is_finite() || result <= 0.0 || result > 120.0 {
+            return Err(self.error("invalid", "單一長音時間須大於 0 且不超過 120 秒", start));
         }
         Ok(result)
     }
@@ -180,8 +180,12 @@ impl<'a> Parser<'a> {
                     .split_once(':')
                     .ok_or_else(|| self.error("invalid", "局部 BPM 長度需寫成 [bpm#n:m]", start))?;
                 let duration = 240.0 * self.positive(m, start)? / self.positive(n, start)? / bpm;
-                if !duration.is_finite() || !(0.001..=120.0).contains(&duration) {
-                    return Err(self.error("invalid", "單一長音時間須為 0.001–120 秒", start));
+                if !duration.is_finite() || duration <= 0.0 || duration > 120.0 {
+                    return Err(self.error(
+                        "invalid",
+                        "單一長音時間須大於 0 且不超過 120 秒",
+                        start,
+                    ));
                 }
                 return Ok((60.0 / bpm, duration));
             }

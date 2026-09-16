@@ -114,6 +114,10 @@ struct State {
     assignments: Chain<Assignment>,
     handovers: Chain<Handover>,
     palms: Chain<PalmPlacement>,
+    /// 尚在持續、之後可再納入鄰近 Touch 的手掌覆蓋。
+    active_palms: [Option<PalmPlacement>; 2],
+    /// 以單點開始的 Touch Hold；後續鄰近 Touch 到來時可擴展成手掌。
+    held_touch: [Option<usize>; 2],
     /// 只保留還在進行中的 Slide；結束的項目每個時間點清掉，複製成本才不會隨譜面長度成長。
     owners: BTreeMap<usize, Hand>,
     /// 每條進行中的 Slide 實際被接上的時間；手晚接上時，剩下的路徑就壓縮在剩餘時間內走完。
@@ -705,6 +709,9 @@ fn assign(
         start_seconds: begin,
         end_seconds: task.end,
     });
+    if n.kind == "touchHold" {
+        next.held_touch[idx] = Some(task.note);
+    }
     if let Some(pickup) = pickup {
         next.owners.insert(task.note, hand);
         if next.engaged.insert(task.note, pickup).is_none() {
@@ -832,7 +839,11 @@ fn assign_palm(
             end_seconds: group[*i].end,
         });
     }
-    next.palms = next.palms.push(PalmPlacement {
+    if let Some(previous) = next.active_palms[idx].take() {
+        next.palms = next.palms.push(previous);
+    }
+    next.held_touch[idx] = None;
+    next.active_palms[idx] = Some(PalmPlacement {
         hand,
         center,
         radius: c.palm_radius,
@@ -840,6 +851,97 @@ fn assign_palm(
         end_seconds: end,
         covered_note_ids: note_ids,
     });
+    Some(next)
+}
+
+/// 已按住中央／內圈 Touch Hold 時，後續落在同一掌範圍內的 Touch 可以由同一隻手掌
+/// 繼續覆蓋。這讓 C 先出現、B 區稍後依序出現的配置不必虛構第三隻手。
+fn extend_palm_to_touch(
+    state: &State,
+    task: &Task,
+    hand: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Option<State> {
+    if c.palm_radius <= 0.0 || task.mode == "slide" {
+        return None;
+    }
+    let note = &chart.notes[task.note];
+    if !matches!(note.kind.as_str(), "touch" | "touchHold") {
+        return None;
+    }
+    let idx = hand.index();
+    let (center, mut placement, expected_mode) = if let Some(palm) = &state.active_palms[idx] {
+        if palm.end_seconds < task.start - EPS
+            || palm.center.distance(note.position) > palm.radius + EPS
+        {
+            return None;
+        }
+        (palm.center, palm.clone(), "palm")
+    } else {
+        let held_index = state.held_touch[idx]?;
+        let held = &chart.notes[held_index];
+        if held.end_seconds < task.start - EPS
+            || held.position.distance(note.position) > c.palm_radius + EPS
+        {
+            return None;
+        }
+        (
+            held.position,
+            PalmPlacement {
+                hand,
+                center: held.position,
+                radius: c.palm_radius,
+                start_seconds: held.time_seconds,
+                end_seconds: held.end_seconds,
+                covered_note_ids: vec![held.id.clone()],
+            },
+            "hold",
+        )
+    };
+
+    let mut next = state.clone();
+    let (rest, previous) = next.arms[idx].segments.pop()?;
+    if previous.mode != expected_mode
+        || previous.end_seconds < task.start - EPS
+        || previous
+            .samples
+            .iter()
+            .any(|sample| sample.point().distance(center) > EPS)
+    {
+        return None;
+    }
+    let (distance, speed, side) = segment_terms(&previous.samples, hand, c);
+    next.cost.distance -= distance;
+    next.cost.speed -= speed;
+    next.cost.side -= side;
+    next.arms[idx].segments = rest;
+
+    if !placement.covered_note_ids.contains(&note.id) {
+        placement.covered_note_ids.push(note.id.clone());
+    }
+    placement.end_seconds = placement.end_seconds.max(task.end);
+    add_segment(
+        &mut next.arms[idx],
+        hand,
+        vec![
+            MotionSample::new(placement.start_seconds, center),
+            MotionSample::new(placement.end_seconds, center),
+        ],
+        "palm",
+        previous.note_id,
+        &mut next.cost,
+        c,
+    );
+    next.assignments = next.assignments.push(Assignment {
+        note_id: note.id.clone(),
+        part: "contact".into(),
+        hand,
+        start_seconds: task.start,
+        end_seconds: task.end,
+    });
+    next.held_touch[idx] = None;
+    next.active_palms[idx] = Some(placement);
     Some(next)
 }
 
@@ -975,6 +1077,8 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         assignments: Chain::default(),
         handovers: Chain::default(),
         palms: Chain::default(),
+        active_palms: [None, None],
+        held_touch: [None, None],
         owners: BTreeMap::new(),
         engaged: BTreeMap::new(),
         pending: 0.0,
@@ -1006,6 +1110,20 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 }
                 keep
             });
+            for idx in 0..2 {
+                if state.active_palms[idx]
+                    .as_ref()
+                    .is_some_and(|palm| palm.end_seconds < time - EPS)
+                {
+                    let palm = state.active_palms[idx].take().unwrap();
+                    state.palms = state.palms.push(palm);
+                }
+                if state.held_touch[idx]
+                    .is_some_and(|note| chart.notes[note].end_seconds < time - EPS)
+                {
+                    state.held_touch[idx] = None;
+                }
+            }
         }
         // 兩手若在這一刻碰頭，先把「互換目的地」的變化加進 beam，再一起展開這個任務。
         let swapped: Vec<State> = beam
@@ -1039,6 +1157,10 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             for hand in [Hand::L, Hand::R] {
                 expansions += 1;
                 if let Some(s) = assign(&state, task, hand, chart, c) {
+                    pending.push((s, after.clone()));
+                }
+                expansions += 1;
+                if let Some(s) = extend_palm_to_touch(&state, task, hand, chart, c) {
                     pending.push((s, after.clone()));
                 }
             }
@@ -1134,6 +1256,13 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         if !signatures.insert(signature) {
             continue;
         }
+        let mut palm_placements = state.palms.to_vec();
+        palm_placements.extend(state.active_palms.iter().flatten().cloned());
+        palm_placements.sort_by(|a, b| {
+            a.start_seconds
+                .total_cmp(&b.start_seconds)
+                .then_with(|| a.hand.index().cmp(&b.hand.index()))
+        });
         let [left, right] = state.arms;
         solutions.push(Solution {
             id: format!("solution-{}", solutions.len() + 1),
@@ -1141,7 +1270,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             cost_breakdown: state.cost,
             assignments,
             handovers: state.handovers.to_vec(),
-            palm_placements: state.palms.to_vec(),
+            palm_placements,
             left_segments: left.segments.to_vec(),
             right_segments: right.segments.to_vec(),
             config_snapshot: c.clone(),
