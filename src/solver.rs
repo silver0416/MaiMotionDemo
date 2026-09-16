@@ -17,6 +17,10 @@ const MEET_TOLERANCE: f64 = 1e-6;
 const MAX_EXPANSIONS: u64 = 120_000_000;
 const MAX_GROUP_STATES: usize = 500_000;
 const BUDGET: Duration = Duration::from_secs(20);
+/// 大量同時 Touch 無法靠兩個固定掌面覆蓋時，允許雙手在判定前貼著面板掃過。
+/// 這是 Demo 的可玩性近似；0.18 秒不是官方判定窗。
+const TOUCH_SWEEP_SECONDS: f64 = 0.18;
+const MIN_TOUCH_SWEEP_NOTES: usize = 16;
 
 /// 不可變的單向串列。Beam Search 每展開一步就要複製一份狀態；用結構共享把
 /// 複製成本壓到 O(1)，整體搜尋才會隨音符數線性成長，而不是平方成長。
@@ -130,6 +134,7 @@ struct State {
     pending: f64,
     deposit: BTreeMap<usize, f64>,
     last_handover: BTreeMap<usize, f64>,
+    used_touch_sweep: bool,
 }
 struct PalmCandidate {
     covered: Vec<usize>,
@@ -986,6 +991,147 @@ fn extend_palm_to_touch(
     Some(next)
 }
 
+fn is_touch_sweep_group(group: &[Task], chart: &Chart) -> bool {
+    group.len() >= MIN_TOUCH_SWEEP_NOTES
+        && group
+            .iter()
+            .all(|task| task.mode == "tap" && chart.notes[task.note].kind.as_str() == "touch")
+}
+
+/// 從目前手位出發，以最近鄰順序掃過半邊盤面的 Touch。相同距離時以音符索引
+/// 固定順序，讓輸出在不同執行間保持一致。
+fn order_touch_sweep_route(
+    mut route: Vec<usize>,
+    group: &[Task],
+    chart: &Chart,
+    mut point: Point,
+) -> Vec<usize> {
+    let mut ordered = Vec::with_capacity(route.len());
+    while !route.is_empty() {
+        let best = route
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                let pa = chart.notes[group[**a].note].position;
+                let pb = chart.notes[group[**b].note].position;
+                point
+                    .distance(pa)
+                    .total_cmp(&point.distance(pb))
+                    .then_with(|| group[**a].note.cmp(&group[**b].note))
+            })
+            .map(|(index, _)| index)
+            .unwrap();
+        let task = route.remove(best);
+        point = chart.notes[group[task].note].position;
+        ordered.push(task);
+    }
+    ordered
+}
+
+/// 全盤級的大型同時 Touch 不是兩個固定掌心，而是兩隻手各掃過半邊面板。
+/// 每個感應區仍有實際經過時間與 hand assignment；軌跡使用既有 glide 模式，
+/// 因此前端不需要自行猜測一條額外路徑。
+fn assign_touch_sweep(
+    state: &State,
+    group: &[Task],
+    chart: &Chart,
+    c: &SolverConfig,
+    reversed: bool,
+) -> Option<State> {
+    if !is_touch_sweep_group(group, chart) {
+        return None;
+    }
+    let judgment = group[0].start;
+    let mut routes: [Vec<usize>; 2] = [vec![], vec![]];
+    for (task_index, task) in group.iter().enumerate() {
+        let point = chart.notes[task.note].position;
+        let side = if point.x < -EPS {
+            0
+        } else if point.x > EPS {
+            1
+        } else if routes[0].len() <= routes[1].len() {
+            0
+        } else {
+            1
+        };
+        routes[side ^ usize::from(reversed)].push(task_index);
+    }
+    if routes.iter().any(Vec::is_empty) {
+        return None;
+    }
+
+    let mut next = state.clone();
+    for hand in [Hand::L, Hand::R] {
+        let idx = hand.index();
+        let route_start = (judgment - TOUCH_SWEEP_SECONDS).max(next.arms[idx].free);
+        if route_start >= judgment - EPS {
+            return None;
+        }
+        if route_start > next.arms[idx].free + EPS {
+            let arm = &mut next.arms[idx];
+            add_segment(
+                arm,
+                hand,
+                vec![
+                    MotionSample::new(arm.free, arm.point),
+                    MotionSample::new(route_start, arm.point),
+                ],
+                "idle",
+                None,
+                &mut next.cost,
+                c,
+            );
+        }
+
+        let route = order_touch_sweep_route(
+            std::mem::take(&mut routes[idx]),
+            group,
+            chart,
+            next.arms[idx].point,
+        );
+        let mut samples = vec![MotionSample::new(route_start, next.arms[idx].point)];
+        let mut hits = Vec::with_capacity(route.len());
+        for (step, task_index) in route.iter().enumerate() {
+            let hit =
+                route_start + (judgment - route_start) * (step + 1) as f64 / route.len() as f64;
+            let note = &chart.notes[group[*task_index].note];
+            samples.push(MotionSample::new(hit, note.position));
+            hits.push((*task_index, hit));
+        }
+        let finish = hits
+            .iter()
+            .map(|(task_index, _)| group[*task_index].end)
+            .fold(judgment, f64::max);
+        let last_point = samples.last().unwrap().point();
+        if finish > judgment + EPS {
+            samples.push(MotionSample::new(finish, last_point));
+        }
+        let first_note = chart.notes[group[route[0]].note].id.clone();
+        add_segment(
+            &mut next.arms[idx],
+            hand,
+            samples,
+            "glide",
+            Some(first_note),
+            &mut next.cost,
+            c,
+        );
+        next.arms[idx].last_tap = Some(judgment);
+        for (task_index, hit) in hits {
+            let note = &chart.notes[group[task_index].note];
+            next.assignments = next.assignments.push(Assignment {
+                note_id: note.id.clone(),
+                part: "contact".into(),
+                hand,
+                start_seconds: hit,
+                end_seconds: (hit + c.contact_seconds).min(finish),
+            });
+        }
+    }
+    next.used_touch_sweep = true;
+    Some(next)
+}
+
 /// 把連續的動作段攤平成單調的取樣序列，供交叉成本以線性掃描計算。
 fn flatten(segments: &[MotionSegment]) -> Vec<MotionSample> {
     let mut out: Vec<MotionSample> = vec![];
@@ -1125,6 +1271,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         pending: 0.0,
         deposit: BTreeMap::new(),
         last_handover: BTreeMap::new(),
+        used_touch_sweep: false,
     }];
     let tasks = tasks(chart, c)?;
     let clock = Instant::now();
@@ -1172,6 +1319,26 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             .filter_map(|state| swap_at(state, time, chart, c))
             .collect();
         beam.extend(swapped);
+        if is_touch_sweep_group(group, chart) {
+            let swept: Vec<State> = beam
+                .iter()
+                .flat_map(|state| {
+                    [
+                        assign_touch_sweep(state, group, chart, c, false),
+                        assign_touch_sweep(state, group, chart, c, true),
+                    ]
+                    .into_iter()
+                    .flatten()
+                })
+                .collect();
+            if !swept.is_empty() {
+                beam = swept;
+                beam.sort_by(|a, b| a.rank().total_cmp(&b.rank()));
+                beam.truncate(c.beam_width);
+                cursor = limit;
+                continue;
+            }
+        }
         let candidates = palm_candidates(group, chart, c.palm_radius);
         let mut next = vec![];
         let mut pending: Vec<(State, Vec<bool>)> = beam
@@ -1304,7 +1471,17 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 .total_cmp(&b.start_seconds)
                 .then_with(|| a.hand.index().cmp(&b.hand.index()))
         });
+        let used_touch_sweep = state.used_touch_sweep;
         let [left, right] = state.arms;
+        let mut warnings = vec![
+            "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。".into(),
+            "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。".into(),
+        ];
+        if used_touch_sweep {
+            warnings.push(
+                "大型同時 Touch 以判定前 0.18 秒的雙手連續掃屏近似；這不是官方判定窗。".into(),
+            );
+        }
         solutions.push(Solution {
             id: format!("solution-{}", solutions.len() + 1),
             total_cost: state.cost.total(),
@@ -1315,10 +1492,7 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             left_segments: left.segments.to_vec(),
             right_segments: right.segments.to_vec(),
             config_snapshot: c.clone(),
-            warnings: vec![
-                "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。".into(),
-                "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。".into(),
-            ],
+            warnings,
         });
         if solutions.len() == c.top_k {
             break;

@@ -241,6 +241,48 @@ fn active_center_touch_hold_can_expand_to_cover_later_b_touches() {
         "超出手掌半徑的後續 Touch 不可合併"
     );
 }
+
+#[test]
+fn full_sensor_touch_chord_uses_a_two_hand_screen_sweep() {
+    let source = "(220){4},A1/A2/A3/A4/A5/A6/A7/A8/B1/B2/B3/B4/B5/B6/B7/B8/Cf/D1/D2/D3/D4/D5/D6/D7/D8/E1/E2/E3/E4/E5/E6/E7/E8,E";
+    let response = analyze(source);
+    assert_eq!(response.status, "ok", "{:?}", response.diagnostics);
+    let chart = response.chart.as_ref().unwrap();
+    assert_eq!(chart.notes.len(), 33);
+    let solution = &response.solutions[0];
+    assert_eq!(solution.assignments.len(), 33);
+    assert!(solution.assignments.iter().any(|a| a.hand == Hand::L));
+    assert!(solution.assignments.iter().any(|a| a.hand == Hand::R));
+    assert!(solution.assignments.iter().all(|assignment| {
+        let note = chart
+            .notes
+            .iter()
+            .find(|note| note.id == assignment.note_id)
+            .unwrap();
+        assignment.start_seconds >= note.time_seconds - 0.18 - 1e-8
+            && assignment.start_seconds <= note.time_seconds + 1e-8
+    }));
+    assert!(
+        solution
+            .left_segments
+            .iter()
+            .chain(&solution.right_segments)
+            .filter(|segment| segment.mode == "glide")
+            .count()
+            >= 2
+    );
+    assert!(solution
+        .warnings
+        .iter()
+        .any(|warning| warning.contains("雙手連續掃屏")));
+    verify_segments(&solution.left_segments);
+    verify_segments(&solution.right_segments);
+    assert_eq!(
+        serde_json::to_string(&response).unwrap(),
+        serde_json::to_string(&analyze(source)).unwrap()
+    );
+}
+
 #[test]
 fn both_hands_can_cover_separate_touch_clusters() {
     let r = analyze("(120){4}A1/B1/A5/B5,E");
