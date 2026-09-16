@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import DiagnosticList from './DiagnosticList.svelte';
+  import CopyDebugButton from './CopyDebugButton.svelte';
   import {
     COST_HINT,
     COST_KEYS,
@@ -147,6 +148,31 @@
 </script>
 
 <div class="stack">
+  {#if session.lastFailure && session.phase !== 'analyzing'}
+    {@const failure = session.lastFailure}
+    <section class="section">
+      <div class="alert alert--error">
+        <div class="alert-title">分析未完成</div>
+        <p class="small">{failure.message}</p>
+        {#if session.result}
+          <p class="small">盤面仍是上一次成功的結果。</p>
+        {/if}
+      </div>
+      <div class="row row-wrap" style="margin-top: var(--space-3)">
+        <CopyDebugButton
+          input={() => ({
+            context: '分析請求失敗',
+            source: failure.request.source,
+            config: failure.request.solverConfig,
+            firstSeconds: failure.request.firstSeconds,
+            requestId: failure.request.requestId,
+            error: failure.message,
+          })}
+        />
+      </div>
+    </section>
+  {/if}
+
   {#if !session.result}
     <section class="section">
       <p class="small muted">尚未產生結果。</p>
@@ -166,6 +192,17 @@
       <p class="small muted" style="margin-top: var(--space-3)">
         可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
       </p>
+      <div class="row row-wrap" style="margin-top: var(--space-3)">
+        <CopyDebugButton
+          input={() => ({
+            context: '方案分頁（沒有可用方案）',
+            source: session.result?.source ?? '',
+            config: session.result?.config ?? null,
+            firstSeconds: session.result?.firstSeconds ?? null,
+            response: session.result?.response ?? null,
+          })}
+        />
+      </div>
     </section>
   {:else}
     <section class="section">

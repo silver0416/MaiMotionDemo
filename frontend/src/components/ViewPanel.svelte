@@ -98,11 +98,11 @@
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={view.showLeft} />
-        <span>顯示左手 L（實線・圓形）</span>
+        <span>顯示左手 L（粉紅）</span>
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={view.showRight} />
-        <span>顯示右手 R（虛線・方形）</span>
+        <span>顯示右手 R（藍）</span>
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={view.showRecentTrail} />
@@ -148,7 +148,7 @@
     <div style="margin-top: var(--space-4)">
       <div class="field-label" id="sensor-mode-label">Touch 落點標記</div>
       <p class="field-hint" style="margin: 2px 0 var(--space-2)">
-        核心輸出的 33 個 simai 可指名落點；一般 Tap 譜面預設不顯示。
+        核心輸出的 33 個 simai 可指名落點；預設關閉，需要對照時再打開。
       </p>
       <div class="row row-wrap" role="group" aria-labelledby="sensor-mode-label">
         {#each SENSOR_MODES as item (item.id)}

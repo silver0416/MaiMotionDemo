@@ -200,8 +200,8 @@
   </div>
 
   <div class="row row-wrap xsmall muted legend">
-    <span><span class="swatch swatch--left"></span>左手 L・實線圓形</span>
-    <span><span class="swatch swatch--right"></span>右手 R・虛線方形</span>
+    <span><span class="swatch swatch--left"></span>左手 L</span>
+    <span><span class="swatch swatch--right"></span>右手 R</span>
     <span><span class="swatch swatch--accent"></span>換手</span>
     {#if session.hasPalms}
       <span>時間軸上緣細條：該手的手掌覆蓋區間</span>
@@ -408,7 +408,7 @@
     height: 10px;
     margin-right: 4px;
     vertical-align: middle;
-    border-radius: 2px;
+    border-radius: 999px;
   }
 
   .swatch--left {

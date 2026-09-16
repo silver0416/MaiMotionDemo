@@ -393,7 +393,6 @@
 
   const handMarkerRadius = $derived(len(0.075));
   // 右手方框畫得比左手圓稍大，交接時兩手位置重疊也看得出兩個標記。
-  const rightMarkerRadius = $derived(len(0.1));
 
   // 盤面圓幾乎佔滿背景圖，額外留白避免標記與文字被裁掉。
   const MARGIN_X = 90;
@@ -731,15 +730,9 @@
           {#if view.showRight && rightState}
             {@const point = px(rightState.point)}
             <g class="hand hand--right" class:is-contact={rightState.contacting}>
-              <rect
-                x={point.x - rightMarkerRadius}
-                y={point.y - rightMarkerRadius}
-                width={rightMarkerRadius * 2}
-                height={rightMarkerRadius * 2}
-                rx={len(0.022)}
-              />
+              <circle cx={point.x} cy={point.y} r={handMarkerRadius} />
               {#if rightState.contacting}
-                <circle class="contact-ring" cx={point.x} cy={point.y} r={len(0.145)} />
+                <circle class="contact-ring" cx={point.x} cy={point.y} r={len(0.115)} />
               {/if}
               <text x={point.x} y={point.y} text-anchor="middle" dominant-baseline="central">R</text>
               <text class="hand-mode" x={point.x} y={point.y + len(0.17)} text-anchor="middle">
@@ -1085,7 +1078,6 @@
 
   .track--right {
     stroke: var(--c-right);
-    stroke-dasharray: 14 9;
   }
 
   .trail {
@@ -1101,7 +1093,6 @@
 
   .trail--right {
     stroke: var(--c-right);
-    stroke-dasharray: 20 10;
   }
 
   .handover-diamond {
@@ -1183,8 +1174,7 @@
     fill: var(--c-right);
   }
 
-  .hand circle,
-  .hand rect {
+  .hand circle {
     fill: #11151a;
     stroke-width: 6;
   }
@@ -1212,8 +1202,7 @@
     fill: var(--c-left);
   }
 
-  .hand--right circle,
-  .hand--right rect {
+  .hand--right circle {
     stroke: var(--c-right);
   }
 
@@ -1225,7 +1214,7 @@
     fill: var(--c-left);
   }
 
-  .hand--right.is-contact rect {
+  .hand--right.is-contact circle {
     fill: var(--c-right);
   }
 
