@@ -307,3 +307,18 @@ export interface AnalyzeResponse {
   chart: Chart | null;
   solutions: Solution[];
 }
+
+/** Majdata 搜尋結果（Rust search_majdata_charts，camelCase）。 */
+export interface MajdataChartSummary {
+  id: string;
+  title: string;
+  artist: string;
+  designer: string;
+  description: string;
+  /** 依 &inote_1… 排列，空難度為 null 或空字串 */
+  levels: (string | null)[];
+  uploader: string;
+  timestamp: string;
+  tags: string[];
+  publicTags: string[];
+}

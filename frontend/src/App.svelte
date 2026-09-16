@@ -9,6 +9,7 @@
   import ViewPanel from './components/ViewPanel.svelte';
   import RecordsPanel from './components/RecordsPanel.svelte';
   import NewChartDialog from './components/NewChartDialog.svelte';
+  import MajdataSearchDialog from './components/MajdataSearchDialog.svelte';
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
@@ -56,6 +57,7 @@
 
   let tab = $state<Tab>('solution');
   let dialogOpen = $state(false);
+  let searchOpen = $state(false);
   let innerWidth = $state(1280);
   let leftWidth = $state(savedPanes.left);
   let rightWidth = $state(savedPanes.right);
@@ -141,7 +143,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (dialogOpen) return;
+    if (dialogOpen || searchOpen) return;
     if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
     switch (event.key) {
       case ' ':
@@ -201,6 +203,14 @@
           >
             <Icon name="plus" size={16} />
           </button>
+          <button
+            class="capsule-btn"
+            onclick={() => (searchOpen = true)}
+            aria-label="搜尋譜面"
+            title="搜尋譜面"
+          >
+            <Icon name="search" size={16} />
+          </button>
         </nav>
       {:else}
         <div
@@ -212,6 +222,7 @@
           <aside class="pane records-pane" aria-label="譜面紀錄">
             <RecordsPanel
               onCreate={() => (dialogOpen = true)}
+              onSearch={() => (searchOpen = true)}
               onCollapse={() => setCollapsed(true)}
             />
           </aside>
@@ -279,6 +290,7 @@
   </main>
 
   <NewChartDialog bind:open={dialogOpen} />
+  <MajdataSearchDialog bind:open={searchOpen} />
   <Toaster />
 </div>
 
