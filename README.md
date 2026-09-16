@@ -2,11 +2,11 @@
 
 **把 simai 譜面變成可播放的左右手動作動畫。** MaiMotionDemo 是 Windows 桌面展示工具：在 maimai 圓盤上呈現 Tap、Hold、Touch 和 Slide 的接觸與移動軌跡，並比較不同的雙手分配方案，包括 Slide 中途換手。
 
-[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.1/MaiMotionDemo-v0.2.1-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
+[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.2/MaiMotionDemo-v0.2.2-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
 
 ## 下載與啟動
 
-從 GitHub Release 下載 `MaiMotionDemo-v0.2.1-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
+從 GitHub Release 下載 `MaiMotionDemo-v0.2.2-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
 
 支援 Windows x64。介面使用系統的 Microsoft Edge WebView2；如果 Windows 缺少 WebView2 Runtime，請先安裝 [Microsoft 官方 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。
 
