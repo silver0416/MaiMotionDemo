@@ -99,6 +99,8 @@ struct Task {
     path_length: f64,
     span: f64,
     continuation: bool,
+    /// 名目終點同時有新接觸時，最後一小段可提前掃完，留下回位時間。
+    release_early: bool,
 }
 #[derive(Clone)]
 struct Arm {
@@ -244,6 +246,26 @@ fn path_samples(
     samples
 }
 
+/// 把路徑的指定比例壓進實際時間區間。用於最後一小段提前掃完；起點仍沿用
+/// 原本的名目位置，因此和上一段軌跡連續，終點則提早抵達 u=1。
+fn path_samples_range(
+    path: &SlidePath,
+    u0: f64,
+    u1: f64,
+    start: f64,
+    end: f64,
+) -> Vec<MotionSample> {
+    let mut samples = vec![MotionSample::new(start, path.at(u0))];
+    for p in &path.samples {
+        if p.u > u0 + EPS && p.u < u1 - EPS {
+            let time = start + (p.u - u0) / (u1 - u0) * (end - start);
+            samples.push(MotionSample::new(time, Point { x: p.x, y: p.y }));
+        }
+    }
+    samples.push(MotionSample::new(end, path.at(u1)));
+    samples
+}
+
 /// 依照準時追蹤的排程，某條 Slide 在 time 當下的位置。
 fn slide_point(chart: &Chart, note: &Note, time: f64) -> Point {
     let path = chart
@@ -362,6 +384,7 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
                 path_length: 0.0,
                 span: 0.0,
                 continuation: false,
+                release_early: false,
             });
         }
         if let Some(path_id) = &n.path_id {
@@ -375,7 +398,11 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
                 .map(|w| (w[1].x - w[0].x).hypot(w[1].y - w[0].y))
                 .sum();
             let steps = times.len() - 1;
+            let contact_at_end = chart.notes.iter().enumerate().any(|(other, note)| {
+                other != i && note.has_head && (note.time_seconds - end).abs() < EPS
+            });
             for (k, pair) in times.windows(2).enumerate() {
+                let last = k + 1 == steps;
                 tasks.push(Task {
                     note: i,
                     start: pair[0],
@@ -383,10 +410,11 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
                     mode: "slide",
                     samples: vec![],
                     path: path_index,
-                    last: k + 1 == steps,
+                    last,
                     path_length: length,
                     span: end - start,
                     continuation: k > 0,
+                    release_early: last && contact_at_end,
                 });
             }
         }
@@ -550,11 +578,19 @@ fn assign(
     // Slide 的移動起點只是星星出發的時刻，不是手一定要貼上去的時刻。
     // 手可以晚一點才接上，剩下的路徑就壓縮在剩餘時間內走完；走得越急，速度成本越高。
     let engaged = state.engaged.get(&task.note).copied();
+    let nominal_finish = n.motion_end;
+    let early_finish = if task.release_early {
+        let margin = c.slide_pickup_seconds.min((task.end - task.start) * 0.5);
+        Some(task.end - margin)
+    } else {
+        None
+    };
+    let task_end = early_finish.unwrap_or(task.end);
     let (begin, pickup) = if task.mode == "slide" {
-        let finish = n.motion_end.unwrap();
+        let finish = early_finish.or(nominal_finish).unwrap();
         let pickup = engaged.unwrap_or_else(|| task.start.max(state.arms[idx].free));
         let begin = task.start.max(pickup);
-        if begin >= task.end - EPS || pickup >= finish - EPS {
+        if begin >= task_end - EPS || pickup >= finish - EPS {
             return None;
         }
         if engaged.is_none() && pickup > n.motion_start.unwrap() + c.slide_pickup_seconds + EPS {
@@ -564,15 +600,20 @@ fn assign(
     } else {
         (task.start, None)
     };
-    let samples = match pickup {
-        Some(pickup) => path_samples(
+    let samples = match (pickup, early_finish) {
+        (Some(pickup), Some(finish)) => {
+            let nominal_end = n.motion_end.unwrap();
+            let u0 = (begin - pickup) / (nominal_end - pickup);
+            path_samples_range(&chart.paths[task.path], u0, 1.0, begin, finish)
+        }
+        (Some(pickup), None) => path_samples(
             &chart.paths[task.path],
             pickup,
             n.motion_end.unwrap(),
             begin,
-            task.end,
+            task_end,
         ),
-        None => task.samples.clone(),
+        (None, _) => task.samples.clone(),
     };
     let start = samples[0].point();
 
@@ -599,7 +640,7 @@ fn assign(
     let old = state.owners.get(&task.note).copied();
     let switching = engaged.is_some() && old != Some(hand);
     if switching {
-        if !c.allow_handover || task.end - task.start + EPS < c.handover_seconds {
+        if !c.allow_handover || task_end - task.start + EPS < c.handover_seconds {
             return None;
         }
         if state
@@ -707,7 +748,7 @@ fn assign(
         .into(),
         hand,
         start_seconds: begin,
-        end_seconds: task.end,
+        end_seconds: task_end,
     });
     if n.kind == "touchHold" {
         next.held_touch[idx] = Some(task.note);

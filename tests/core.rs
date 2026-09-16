@@ -712,6 +712,47 @@ fn a_hand_may_pick_up_a_slide_late_when_the_start_is_contested() {
 }
 
 #[test]
+fn slides_can_finish_early_for_contacts_at_the_nominal_end() {
+    let source = "(145){8}1-5[8:1]/8-4[8:1],27,,18,E";
+    let r = analyze(source);
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    let tap_time = chart.notes[4].time_seconds;
+    let solution = &r.solutions[0];
+    for slide in &chart.notes[..2] {
+        let release = solution
+            .assignments
+            .iter()
+            .filter(|a| a.note_id == slide.id && a.part == "slide")
+            .map(|a| a.end_seconds)
+            .fold(0.0, f64::max);
+        assert!(release < tap_time - 1e-8, "Slide 應在後續 18 前提早掃完");
+        let endpoint = chart
+            .paths
+            .iter()
+            .find(|path| Some(&path.id) == slide.path_id.as_ref())
+            .unwrap()
+            .at(1.0);
+        let traced_endpoint = solution
+            .left_segments
+            .iter()
+            .chain(&solution.right_segments)
+            .filter(|segment| {
+                segment.note_id.as_ref() == Some(&slide.id) && segment.mode == "slide"
+            })
+            .max_by(|a, b| a.end_seconds.total_cmp(&b.end_seconds))
+            .unwrap()
+            .samples
+            .last()
+            .unwrap()
+            .point();
+        assert!(traced_endpoint.distance(endpoint) < 1e-8);
+    }
+    verify_segments(&solution.left_segments);
+    verify_segments(&solution.right_segments);
+}
+
+#[test]
 fn an_uncontested_slide_is_picked_up_on_time() {
     let r = analyze("(120){4}1-5[4:3],8,7,6,E");
     assert_eq!(r.status, "ok");
