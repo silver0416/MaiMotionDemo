@@ -2,23 +2,23 @@
 
 **把 simai 譜面變成可播放的左右手動作動畫。** MaiMotionDemo 是 Windows 桌面展示工具：在 maimai 圓盤上呈現 Tap、Hold、Touch 和 Slide 的接觸與移動軌跡，並比較不同的雙手分配方案，包括 Slide 中途換手。
 
-[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.0/MaiMotionDemo-v0.2.0-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
+[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.1/MaiMotionDemo-v0.2.1-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
 
 ## 下載與啟動
 
-從 GitHub Release 下載 `MaiMotionDemo-v0.2.0-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
+從 GitHub Release 下載 `MaiMotionDemo-v0.2.1-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
 
 支援 Windows x64。介面使用系統的 Microsoft Edge WebView2；如果 Windows 缺少 WebView2 Runtime，請先安裝 [Microsoft 官方 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。
 
 ## 快速展示
 
-v0.2.0 加入「直覺優先 V2」。常用設定為左右分工、快速移動容忍、同手連打容忍、Slide 換手意願；既有時間、手掌與搜尋參數位於「進階設定」。可切換「舊版比較」作 A/B，兩版參數各自保留。
+「參數」預設顯示四個常用控制：左右分工、快速移動容忍、同手連打容忍、Slide 換手意願；既有時間、手掌與搜尋參數位於「進階設定」。可切換「舊版比較」作 A/B，兩版參數各自保留。
 
 1. 按左側「新增」，貼入 `(120){4}1,8,2,7,3,6,4,5,E`，按「生成並新增」，再按「播放」。粉紅圓形 **L** 是左手、藍色圓形 **R** 是右手，兩手軌跡都是實線。
 2. 貼入 `(120){4}1-5[4:1]/5-1[4:1],E`，慢放觀察兩條 Slide 碰頭時互換目的地。
 3. 在「方案」比較分工與姿態、動作負擔、移動距離；在「參數」調整四個偏好後重新生成。左側紀錄保留原文與分析結果，相同設定下再次點選直接載入。
 
-也可以按左側「搜尋」，用歌曲名稱、作者或譜師同時搜尋本地紀錄與 Majdata.net，並可依難度篩選；已匯入的譜面會直接開啟本地紀錄。選擇結果後，程式只下載該份 `maidata.txt`，交給同一套本機 Rust 解析與左右手分析；不會下載音樂、影片或封面。
+也可以按左側「搜尋」，用歌曲名稱、作者或譜師搜尋譜面：視窗上方有「simai Wiki」「Majdata」兩個分頁，「Majdata」分頁會同時列出本地紀錄，兩個分頁都可依難度篩選；已匯入的譜面會直接開啟本地紀錄。選擇結果後，程式只下載該份譜面文字，交給同一套本機 Rust 解析與左右手分析；不會下載音樂、影片或封面。
 
 貼入 `(120){4}A1f,B3,Cf,D5f,E7,Chf[4:2],E` 可觀察 A／B／C／D／E 落點、Touch Hold 的按住進度與 `f` 煙火。可在「顯示」切換 33 個落點標記與煙火；落點座標由 Rust 分析核心提供。
 
@@ -38,9 +38,9 @@ v0.2.0 加入「直覺優先 V2」。常用設定為左右分工、快速移動�
 - 以 Rust 幾何與動作成本規則搜尋最多三個雙手方案，呈現每隻手的移動、接觸時間、Hold 佔用和 Slide 交接區間。
 - Slide 名目終點若同時出現下一組接觸，求解器可把最後一小段提早掃完，再以連續軌跡回位，避免要求手在終點瞬間傳送。
 - 全盤級的大量同時 Touch 可由雙手各掃半邊面板，路徑能穿過中央區域，並保留每個感應區實際經過的手別與時間。
-- 可從 Majdata.net 搜尋並匯入公開 `maidata.txt`；搜尋與下載需要網路，匯入後的解析、求解與播放仍在本機完成。
+- 可從 simai Wiki 或 Majdata.net 搜尋並匯入公開譜面；simai Wiki 索引會快取在本機，離線可沿用。搜尋與下載需要網路，匯入後的解析、求解與播放仍在本機完成。
 - 以 0.25× 至 2× 倍速播放，支援逐時定位、循環片段、音符細節、成本拆解及盤面顯示校準。
-- 在本機分析譜面，不需登入或呼叫 AI API；只有使用 Majdata 搜尋時會連線 `majdata.net`。
+- 在本機分析譜面，不需登入或呼叫 AI API；只有使用譜面搜尋時會連線 simai Wiki 或 `majdata.net`。
 
 單次輸入上限為 10,000 個音符、3,600 秒及 4 MB 原文；過大的搜尋也可能因計算預算而停止。詳細語法、操作和例子見 [使用手冊](USER_GUIDE.md)，simai 原始格式見 [simai 說明](https://w.atwiki.jp/simai/pages/1002.html)。
 
