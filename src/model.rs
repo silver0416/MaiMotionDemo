@@ -145,9 +145,13 @@ pub struct Chart {
     pub touch_sensors: Vec<TouchSensor>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub struct SolverConfig {
+    pub scoring_model: String,
+    pub home_preference: f64,
+    pub travel_comfort: f64,
+    pub repeat_tolerance: f64,
+    pub handover_willingness: f64,
     pub beam_width: usize,
     pub top_k: usize,
     pub allow_handover: bool,
@@ -172,9 +176,166 @@ pub struct SolverConfig {
     pub repetition_weight: f64,
     pub handover_weight: f64,
 }
+#[derive(Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+struct SolverConfigWire {
+    scoring_model: String,
+    home_preference: f64,
+    travel_comfort: f64,
+    repeat_tolerance: f64,
+    handover_willingness: f64,
+    beam_width: usize,
+    top_k: usize,
+    allow_handover: bool,
+    checkpoint_seconds: f64,
+    contact_seconds: f64,
+    handover_seconds: f64,
+    handover_cooldown: f64,
+    slide_pickup_seconds: f64,
+    glide_distance: f64,
+    palm_radius: f64,
+    preparation_seconds: f64,
+    speed_reference: f64,
+    repetition_seconds: f64,
+    distance_weight: f64,
+    speed_weight: f64,
+    side_weight: f64,
+    cross_weight: f64,
+    repetition_weight: f64,
+    handover_weight: f64,
+}
+impl Default for SolverConfigWire {
+    fn default() -> Self {
+        Self::from(&SolverConfig::default())
+    }
+}
+impl From<&SolverConfig> for SolverConfigWire {
+    fn from(c: &SolverConfig) -> Self {
+        Self {
+            scoring_model: c.scoring_model.clone(),
+            home_preference: c.home_preference,
+            travel_comfort: c.travel_comfort,
+            repeat_tolerance: c.repeat_tolerance,
+            handover_willingness: c.handover_willingness,
+            beam_width: c.beam_width,
+            top_k: c.top_k,
+            allow_handover: c.allow_handover,
+            checkpoint_seconds: c.checkpoint_seconds,
+            contact_seconds: c.contact_seconds,
+            handover_seconds: c.handover_seconds,
+            handover_cooldown: c.handover_cooldown,
+            slide_pickup_seconds: c.slide_pickup_seconds,
+            glide_distance: c.glide_distance,
+            palm_radius: c.palm_radius,
+            preparation_seconds: c.preparation_seconds,
+            speed_reference: c.speed_reference,
+            repetition_seconds: c.repetition_seconds,
+            distance_weight: c.distance_weight,
+            speed_weight: c.speed_weight,
+            side_weight: c.side_weight,
+            cross_weight: c.cross_weight,
+            repetition_weight: c.repetition_weight,
+            handover_weight: c.handover_weight,
+        }
+    }
+}
+impl From<SolverConfigWire> for SolverConfig {
+    fn from(c: SolverConfigWire) -> Self {
+        Self {
+            scoring_model: c.scoring_model,
+            home_preference: c.home_preference,
+            travel_comfort: c.travel_comfort,
+            repeat_tolerance: c.repeat_tolerance,
+            handover_willingness: c.handover_willingness,
+            beam_width: c.beam_width,
+            top_k: c.top_k,
+            allow_handover: c.allow_handover,
+            checkpoint_seconds: c.checkpoint_seconds,
+            contact_seconds: c.contact_seconds,
+            handover_seconds: c.handover_seconds,
+            handover_cooldown: c.handover_cooldown,
+            slide_pickup_seconds: c.slide_pickup_seconds,
+            glide_distance: c.glide_distance,
+            palm_radius: c.palm_radius,
+            preparation_seconds: c.preparation_seconds,
+            speed_reference: c.speed_reference,
+            repetition_seconds: c.repetition_seconds,
+            distance_weight: c.distance_weight,
+            speed_weight: c.speed_weight,
+            side_weight: c.side_weight,
+            cross_weight: c.cross_weight,
+            repetition_weight: c.repetition_weight,
+            handover_weight: c.handover_weight,
+        }
+    }
+}
+
+const LEGACY_KEYS: [&str; 7] = [
+    "distanceWeight",
+    "speedWeight",
+    "sideWeight",
+    "crossWeight",
+    "repetitionWeight",
+    "handoverWeight",
+    "speedReference",
+];
+const V2_KEYS: [&str; 4] = [
+    "homePreference",
+    "travelComfort",
+    "repeatTolerance",
+    "handoverWillingness",
+];
+impl<'de> Deserialize<'de> for SolverConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let model = value
+            .get("scoringModel")
+            .and_then(|v| v.as_str())
+            .unwrap_or("legacy-v1");
+        if !matches!(model, "legacy-v1" | "hand-affinity-v2") {
+            return Err(serde::de::Error::custom("未知 scoringModel"));
+        }
+        let forbidden: &[&str] = if model == "hand-affinity-v2" {
+            &LEGACY_KEYS
+        } else {
+            &V2_KEYS
+        };
+        if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
+            return Err(serde::de::Error::custom(format!(
+                "{model} 不接受 {key}，請勿混用版本參數"
+            )));
+        }
+        serde_json::from_value::<SolverConfigWire>(value)
+            .map(Self::from)
+            .map_err(serde::de::Error::custom)
+    }
+}
+impl Serialize for SolverConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut value = serde_json::to_value(SolverConfigWire::from(self))
+            .map_err(serde::ser::Error::custom)?;
+        let map = value.as_object_mut().unwrap();
+        if self.is_v2() {
+            for key in LEGACY_KEYS {
+                map.remove(key);
+            }
+        } else {
+            for key in V2_KEYS {
+                map.remove(key);
+            }
+            map.remove("scoringModel");
+        }
+        value.serialize(serializer)
+    }
+}
 impl Default for SolverConfig {
     fn default() -> Self {
         Self {
+            scoring_model: "legacy-v1".into(),
+            home_preference: 80.0,
+            travel_comfort: 30.0,
+            repeat_tolerance: 60.0,
+            handover_willingness: 40.0,
             beam_width: 128,
             top_k: 3,
             allow_handover: true,
@@ -198,7 +359,47 @@ impl Default for SolverConfig {
     }
 }
 impl SolverConfig {
+    pub fn v2() -> Self {
+        Self {
+            scoring_model: crate::scoring::SCORING_MODEL.into(),
+            ..Self::default()
+        }
+    }
+    pub fn is_v2(&self) -> bool {
+        self.scoring_model == crate::scoring::SCORING_MODEL
+    }
+    pub fn preferences(&self) -> crate::scoring::PreferenceConfig {
+        crate::scoring::PreferenceConfig {
+            home_preference: self.home_preference,
+            travel_comfort: self.travel_comfort,
+            repeat_tolerance: self.repeat_tolerance,
+            handover_willingness: self.handover_willingness,
+        }
+    }
     pub fn validate(&self) -> Result<(), String> {
+        if !matches!(
+            self.scoring_model.as_str(),
+            "legacy-v1" | "hand-affinity-v2"
+        ) {
+            return Err("未知 scoringModel".into());
+        }
+        if self.is_v2() {
+            self.preferences().validate()?;
+            if [
+                self.distance_weight,
+                self.speed_weight,
+                self.side_weight,
+                self.cross_weight,
+                self.repetition_weight,
+                self.handover_weight,
+            ]
+            .iter()
+            .any(|v| *v != 1.0)
+                || self.speed_reference != 4.0
+            {
+                return Err("V2 不接受 Legacy 權重".into());
+            }
+        }
         let values = [
             self.checkpoint_seconds,
             self.contact_seconds,
@@ -372,12 +573,17 @@ impl CostBreakdown {
         self.distance + self.speed + self.side + self.cross + self.repetition + self.handover
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Solution {
     pub id: String,
+    #[serde(default)]
     pub total_cost: f64,
+    #[serde(default)]
     pub cost_breakdown: CostBreakdown,
+    pub score: Option<crate::scoring::Score>,
+    pub score_breakdown: Option<crate::scoring::ScoreBreakdown>,
+    pub scoring_model: Option<String>,
     pub assignments: Vec<Assignment>,
     pub handovers: Vec<Handover>,
     pub palm_placements: Vec<PalmPlacement>,
@@ -385,4 +591,28 @@ pub struct Solution {
     pub right_segments: Vec<MotionSegment>,
     pub config_snapshot: SolverConfig,
     pub warnings: Vec<String>,
+}
+
+impl Serialize for Solution {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("id", &self.id)?;
+        if let Some(score) = &self.score {
+            map.serialize_entry("score", score)?;
+            map.serialize_entry("scoreBreakdown", &self.score_breakdown)?;
+            map.serialize_entry("scoringModel", &self.scoring_model)?;
+        } else {
+            map.serialize_entry("totalCost", &self.total_cost)?;
+            map.serialize_entry("costBreakdown", &self.cost_breakdown)?;
+        }
+        map.serialize_entry("assignments", &self.assignments)?;
+        map.serialize_entry("handovers", &self.handovers)?;
+        map.serialize_entry("palmPlacements", &self.palm_placements)?;
+        map.serialize_entry("leftSegments", &self.left_segments)?;
+        map.serialize_entry("rightSegments", &self.right_segments)?;
+        map.serialize_entry("configSnapshot", &self.config_snapshot)?;
+        map.serialize_entry("warnings", &self.warnings)?;
+        map.end()
+    }
 }

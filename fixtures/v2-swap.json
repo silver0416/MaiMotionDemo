@@ -1,0 +1,2079 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "v2-swap",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "glideDistance": 0.8,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWillingness": 40.0,
+      "homePreference": 80.0,
+      "palmRadius": 0.5,
+      "preparationSeconds": 1.0,
+      "repeatTolerance": 60.0,
+      "repetitionSeconds": 0.15,
+      "scoringModel": "hand-affinity-v2",
+      "slidePickupSeconds": 0.12,
+      "topK": 3,
+      "travelComfort": 30.0
+    },
+    "source": "(120){4}1-5[4:1]/5-1[4:1],E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 1.0,
+      "notes": [
+        {
+          "button": 1,
+          "endSeconds": 1.0,
+          "hasHead": true,
+          "id": "n0",
+          "kind": "slide",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": 1.0,
+          "motionStart": 0.5,
+          "pathId": "p0",
+          "position": {
+            "x": 0.38268343236508984,
+            "y": -0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 16,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        },
+        {
+          "button": 5,
+          "endSeconds": 1.0,
+          "hasHead": true,
+          "id": "n1",
+          "kind": "slide",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": 1.0,
+          "motionStart": 0.5,
+          "pathId": "p1",
+          "position": {
+            "x": -0.3826834323650897,
+            "y": 0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 18,
+            "end": 25,
+            "line": 1,
+            "start": 17
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        }
+      ],
+      "paths": [
+        {
+          "branches": [],
+          "endButton": 5,
+          "id": "p0",
+          "samples": [
+            {
+              "u": 0.0,
+              "x": 0.38268343236508984,
+              "y": -0.9238795325112867
+            },
+            {
+              "u": 1.0,
+              "x": -0.3826834323650897,
+              "y": 0.9238795325112867
+            }
+          ],
+          "shape": "-",
+          "startButton": 1
+        },
+        {
+          "branches": [],
+          "endButton": 1,
+          "id": "p1",
+          "samples": [
+            {
+              "u": 0.0,
+              "x": -0.3826834323650897,
+              "y": 0.9238795325112867
+            },
+            {
+              "u": 1.0,
+              "x": 0.38268343236508984,
+              "y": -0.9238795325112867
+            }
+          ],
+          "shape": "-",
+          "startButton": 5
+        }
+      ],
+      "touchSensors": [
+        {
+          "area": "A",
+          "index": 1,
+          "position": {
+            "x": 0.3444150891285809,
+            "y": -0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 2,
+          "position": {
+            "x": 0.831491579260158,
+            "y": -0.3444150891285808
+          }
+        },
+        {
+          "area": "A",
+          "index": 3,
+          "position": {
+            "x": 0.831491579260158,
+            "y": 0.3444150891285808
+          }
+        },
+        {
+          "area": "A",
+          "index": 4,
+          "position": {
+            "x": 0.3444150891285809,
+            "y": 0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 5,
+          "position": {
+            "x": -0.34441508912858076,
+            "y": 0.831491579260158
+          }
+        },
+        {
+          "area": "A",
+          "index": 6,
+          "position": {
+            "x": -0.831491579260158,
+            "y": 0.34441508912858093
+          }
+        },
+        {
+          "area": "A",
+          "index": 7,
+          "position": {
+            "x": -0.8314915792601582,
+            "y": -0.3444150891285807
+          }
+        },
+        {
+          "area": "A",
+          "index": 8,
+          "position": {
+            "x": -0.3444150891285813,
+            "y": -0.8314915792601579
+          }
+        },
+        {
+          "area": "B",
+          "index": 1,
+          "position": {
+            "x": 0.16072704159333773,
+            "y": -0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 2,
+          "position": {
+            "x": 0.3880294036547404,
+            "y": -0.1607270415933377
+          }
+        },
+        {
+          "area": "B",
+          "index": 3,
+          "position": {
+            "x": 0.3880294036547404,
+            "y": 0.1607270415933377
+          }
+        },
+        {
+          "area": "B",
+          "index": 4,
+          "position": {
+            "x": 0.16072704159333773,
+            "y": 0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 5,
+          "position": {
+            "x": -0.16072704159333767,
+            "y": 0.3880294036547404
+          }
+        },
+        {
+          "area": "B",
+          "index": 6,
+          "position": {
+            "x": -0.3880294036547404,
+            "y": 0.16072704159333775
+          }
+        },
+        {
+          "area": "B",
+          "index": 7,
+          "position": {
+            "x": -0.3880294036547405,
+            "y": -0.16072704159333764
+          }
+        },
+        {
+          "area": "B",
+          "index": 8,
+          "position": {
+            "x": -0.16072704159333795,
+            "y": -0.3880294036547403
+          }
+        },
+        {
+          "area": "D",
+          "index": 1,
+          "position": {
+            "x": 5.5109105961630896e-17,
+            "y": -0.9
+          }
+        },
+        {
+          "area": "D",
+          "index": 2,
+          "position": {
+            "x": 0.6363961030678928,
+            "y": -0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 3,
+          "position": {
+            "x": 0.9,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "D",
+          "index": 4,
+          "position": {
+            "x": 0.6363961030678928,
+            "y": 0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 5,
+          "position": {
+            "x": 5.5109105961630896e-17,
+            "y": 0.9
+          }
+        },
+        {
+          "area": "D",
+          "index": 6,
+          "position": {
+            "x": -0.6363961030678927,
+            "y": 0.6363961030678928
+          }
+        },
+        {
+          "area": "D",
+          "index": 7,
+          "position": {
+            "x": -0.9,
+            "y": 1.1021821192326179e-16
+          }
+        },
+        {
+          "area": "D",
+          "index": 8,
+          "position": {
+            "x": -0.6363961030678932,
+            "y": -0.6363961030678924
+          }
+        },
+        {
+          "area": "E",
+          "index": 1,
+          "position": {
+            "x": 2.5717582782094416e-17,
+            "y": -0.42
+          }
+        },
+        {
+          "area": "E",
+          "index": 2,
+          "position": {
+            "x": 0.29698484809834996,
+            "y": -0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 3,
+          "position": {
+            "x": 0.42,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "E",
+          "index": 4,
+          "position": {
+            "x": 0.29698484809834996,
+            "y": 0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 5,
+          "position": {
+            "x": 2.5717582782094416e-17,
+            "y": 0.42
+          }
+        },
+        {
+          "area": "E",
+          "index": 6,
+          "position": {
+            "x": -0.2969848480983499,
+            "y": 0.29698484809834996
+          }
+        },
+        {
+          "area": "E",
+          "index": 7,
+          "position": {
+            "x": -0.42,
+            "y": 5.143516556418883e-17
+          }
+        },
+        {
+          "area": "E",
+          "index": 8,
+          "position": {
+            "x": -0.29698484809835013,
+            "y": -0.2969848480983498
+          }
+        },
+        {
+          "area": "C",
+          "index": 0,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          }
+        }
+      ]
+    },
+    "diagnostics": [],
+    "requestId": "v2-swap",
+    "schemaVersion": 3,
+    "solutions": [
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "slide",
+            "startSeconds": 0.7499999999998749
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 80.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repeatTolerance": 60.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "hand-affinity-v2",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 30.0
+        },
+        "handovers": [
+          {
+            "endSeconds": 0.7499999999998749,
+            "from": "R",
+            "noteId": "n0",
+            "startSeconds": 0.7499999999998749,
+            "swap": true,
+            "to": "L"
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "from": "L",
+            "noteId": "n1",
+            "startSeconds": 0.7499999999998749,
+            "swap": true,
+            "to": "R"
+          }
+        ],
+        "id": "solution-1",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "score": {
+          "efficiency": 2.179580427103274,
+          "intuition": 1.5295972038319422e-39,
+          "rankingValue": 1.5295972038319422e-39,
+          "strain": 0.0
+        },
+        "scoreBreakdown": {
+          "assignmentAffinity": 0.0,
+          "compressionStrain": 0.0,
+          "crossExposure": 1.5295972038319422e-39,
+          "freeDistance": 2.179580427103274,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "sideExposure": 0.0,
+          "travelStrain": 0.0
+        },
+        "scoringModel": "hand-affinity-v2",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "直覺優先 V2：搜尋已包含活動接觸交叉；Beam Search 不保證全域最佳，分數不是人類使用機率。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "slide",
+            "startSeconds": 0.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 80.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repeatTolerance": 60.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "hand-affinity-v2",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 30.0
+        },
+        "handovers": [],
+        "id": "solution-2",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "score": {
+          "efficiency": 2.179580427103274,
+          "intuition": 0.014102371131617056,
+          "rankingValue": 0.014102371131617056,
+          "strain": 0.0
+        },
+        "scoreBreakdown": {
+          "assignmentAffinity": 0.0,
+          "compressionStrain": 0.0,
+          "crossExposure": 0.012203884117227188,
+          "freeDistance": 2.179580427103274,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "sideExposure": 0.0018984870143898677,
+          "travelStrain": 0.0
+        },
+        "scoringModel": "hand-affinity-v2",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "直覺優先 V2：搜尋已包含活動接觸交叉；Beam Search 不保證全域最佳，分數不是人類使用機率。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "slide",
+            "startSeconds": 0.5
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 80.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repeatTolerance": 60.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "hand-affinity-v2",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 30.0
+        },
+        "handovers": [],
+        "id": "solution-3",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": 1.9156898289907076e-13,
+                "y": -4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": -0.22961005941905385,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": -0.15307337294603582,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.7499999999998749,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": -0.07653668647301798,
+                "y": 0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.7499999999998749,
+                "x": -1.9145796059660825e-13,
+                "y": 4.624078897563777e-13
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.7499999999998749
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": 0.07653668647301809,
+                "y": -0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": 0.15307337294603596,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": 0.229610059419054,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          }
+        ],
+        "score": {
+          "efficiency": 6.179580427103274,
+          "intuition": 0.014102371131617053,
+          "rankingValue": 0.014102371131617053,
+          "strain": 0.0
+        },
+        "scoreBreakdown": {
+          "assignmentAffinity": 0.0,
+          "compressionStrain": 0.0,
+          "crossExposure": 0.012203884117227186,
+          "freeDistance": 6.179580427103274,
+          "handover": 0.0,
+          "repetition": 0.0,
+          "sideExposure": 0.0018984870143898675,
+          "travelStrain": 0.0
+        },
+        "scoringModel": "hand-affinity-v2",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "直覺優先 V2：搜尋已包含活動接觸交叉；Beam Search 不保證全域最佳，分數不是人類使用機率。"
+        ]
+      }
+    ],
+    "status": "ok"
+  }
+}

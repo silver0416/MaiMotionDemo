@@ -1,3 +1,4 @@
+mod v2;
 use crate::geometry::button;
 use crate::*;
 use std::collections::BTreeMap;
@@ -115,6 +116,8 @@ struct Arm {
 }
 #[derive(Clone)]
 struct State {
+    v2: v2::Data,
+    group_origin: usize,
     arms: [Arm; 2],
     cost: CostBreakdown,
     assignments: Chain<Assignment>,
@@ -1258,7 +1261,14 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             segments: Chain::default(),
         },
     ];
+    let v2_context = if c.is_v2() {
+        Some(v2::Context::new(chart, c)?)
+    } else {
+        None
+    };
     let mut beam = vec![State {
+        v2: v2::Data::default(),
+        group_origin: 0,
         arms,
         cost: CostBreakdown::default(),
         assignments: Chain::default(),
@@ -1273,6 +1283,9 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         last_handover: BTreeMap::new(),
         used_touch_sweep: false,
     }];
+    if let Some(context) = &v2_context {
+        context.refresh(&mut beam[0])?;
+    }
     let tasks = tasks(chart, c)?;
     let clock = Instant::now();
     let mut expansions: u64 = 0;
@@ -1285,7 +1298,8 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         }
         let group = &tasks[cursor..limit];
         // 已經結束的 Slide 不會再被查詢；清掉之後每個狀態要複製的資料量才是常數。
-        for state in &mut beam {
+        for (origin, state) in beam.iter_mut().enumerate() {
+            state.group_origin = origin;
             let live =
                 |note: &usize| chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= time - EPS;
             state.owners.retain(|note, _| live(note));
@@ -1320,21 +1334,20 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             .collect();
         beam.extend(swapped);
         if is_touch_sweep_group(group, chart) {
-            let swept: Vec<State> = beam
-                .iter()
-                .flat_map(|state| {
-                    [
-                        assign_touch_sweep(state, group, chart, c, false),
-                        assign_touch_sweep(state, group, chart, c, true),
-                    ]
-                    .into_iter()
-                    .flatten()
-                })
-                .collect();
+            let mut swept = Vec::new();
+            for state in &beam {
+                for reversed in [false, true] {
+                    if let Some(mut result) = assign_touch_sweep(state, group, chart, c, reversed) {
+                        if let Some(context) = &v2_context {
+                            context.update(state, &mut result)?;
+                        }
+                        swept.push(result);
+                    }
+                }
+            }
             if !swept.is_empty() {
                 beam = swept;
-                beam.sort_by(|a, b| a.rank().total_cmp(&b.rank()));
-                beam.truncate(c.beam_width);
+                prune(&mut beam, c);
                 cursor = limit;
                 continue;
             }
@@ -1356,6 +1369,10 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 ));
             }
             let Some(i) = remaining.iter().position(|todo| *todo) else {
+                let mut state = state;
+                if let Some(context) = &v2_context {
+                    context.refresh(&mut state)?;
+                }
                 next.push(state);
                 continue;
             };
@@ -1364,11 +1381,17 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             after[i] = false;
             for hand in [Hand::L, Hand::R] {
                 expansions += 1;
-                if let Some(s) = assign(&state, task, hand, chart, c) {
+                if let Some(mut s) = assign(&state, task, hand, chart, c) {
+                    if let Some(context) = &v2_context {
+                        context.update(&state, &mut s)?;
+                    }
                     pending.push((s, after.clone()));
                 }
                 expansions += 1;
-                if let Some(s) = extend_palm_to_touch(&state, task, hand, chart, c) {
+                if let Some(mut s) = extend_palm_to_touch(&state, task, hand, chart, c) {
+                    if let Some(context) = &v2_context {
+                        context.update(&state, &mut s)?;
+                    }
                     pending.push((s, after.clone()));
                 }
             }
@@ -1384,9 +1407,30 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                         after_palm[*j] = false;
                     }
                     for hand in [Hand::L, Hand::R] {
-                        expansions += 1;
-                        if let Some(s) = assign_palm(&state, candidate, group, hand, chart, c) {
-                            pending.push((s, after_palm.clone()));
+                        let variants: Vec<PalmCandidate> = if c.is_v2() {
+                            candidate
+                                .centers
+                                .iter()
+                                .map(|center| PalmCandidate {
+                                    covered: candidate.covered.clone(),
+                                    centers: vec![*center],
+                                })
+                                .collect()
+                        } else {
+                            vec![PalmCandidate {
+                                covered: candidate.covered.clone(),
+                                centers: candidate.centers.clone(),
+                            }]
+                        };
+                        for variant in &variants {
+                            expansions += 1;
+                            if let Some(mut s) = assign_palm(&state, variant, group, hand, chart, c)
+                            {
+                                if let Some(context) = &v2_context {
+                                    context.update(&state, &mut s)?;
+                                }
+                                pending.push((s, after_palm.clone()));
+                            }
                         }
                     }
                 }
@@ -1396,13 +1440,28 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
                 && !task.last
                 && task.end
                     <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
-            if deferrable && !state.engaged.contains_key(&task.note) {
+            // Late pickup resolves an occupied hand or another simultaneous
+            // contact. It is not a way to shorten an uncontested Slide's
+            // opposite-side exposure for free below the comfort threshold.
+            let pickup_conflict = !c.is_v2()
+                || after
+                    .iter()
+                    .enumerate()
+                    .any(|(j, todo)| *todo && group[j].mode != "slide")
+                || [Hand::L, Hand::R]
+                    .iter()
+                    .all(|hand| assign(&state, task, *hand, chart, c).is_none());
+            if deferrable && !state.engaged.contains_key(&task.note) && pickup_conflict {
                 let dt = task.end - task.start;
                 let span = task.span.max(EPS);
-                let share = c.distance_weight * task.path_length * dt / span
-                    + c.speed_weight * task.path_length.powi(2) * dt
-                        / span.powi(2)
-                        / c.speed_reference.powi(2);
+                let share = if let Some(context) = &v2_context {
+                    context.deposit(task, chart)?
+                } else {
+                    c.distance_weight * task.path_length * dt / span
+                        + c.speed_weight * task.path_length.powi(2) * dt
+                            / span.powi(2)
+                            / c.speed_reference.powi(2)
+                };
                 let mut deferred = state;
                 deferred.pending += share;
                 *deferred.deposit.entry(task.note).or_default() += share;
@@ -1430,8 +1489,10 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
             return Err(d);
         }
-        next.sort_by(|a, b| a.rank().total_cmp(&b.rank()));
-        next.truncate(c.beam_width);
+        if c.is_v2() {
+            v2::remove_unnecessary_deferrals(&mut next);
+        }
+        prune(&mut next, c);
         beam = next;
         cursor = limit;
     }
@@ -1451,11 +1512,16 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         }
         // Crossing is evaluated on both completed trajectories. Beam pruning uses the
         // other additive terms; future free-hand travel is not known until assigned.
-        let left = state.arms[0].segments.to_vec();
-        let right = state.arms[1].segments.to_vec();
-        state.cost.cross = cross_cost(&left, &right, c);
+        if let Some(context) = &v2_context {
+            context.refresh(state)?;
+            context.verify(state)?;
+        } else {
+            let left = state.arms[0].segments.to_vec();
+            let right = state.arms[1].segments.to_vec();
+            state.cost.cross = cross_cost(&left, &right, c);
+        }
     }
-    beam.sort_by(|a, b| a.cost.total().total_cmp(&b.cost.total()));
+    beam.sort_by(|a, b| v2::compare(a, b, c.is_v2(), true));
     let mut solutions = vec![];
     let mut signatures = std::collections::BTreeSet::new();
     for state in beam {
@@ -1477,6 +1543,9 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。".into(),
             "Beam Search 不保證全域最優；交叉成本於候選完整後排序，搜尋剪枝依其他成本。".into(),
         ];
+        if c.is_v2() {
+            warnings[1] = "直覺優先 V2：搜尋已包含活動接觸交叉；Beam Search 不保證全域最佳，分數不是人類使用機率。".into();
+        }
         if used_touch_sweep {
             warnings.push(
                 "大型同時 Touch 以判定前 0.18 秒的雙手連續掃屏近似；這不是官方判定窗。".into(),
@@ -1486,6 +1555,17 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
             id: format!("solution-{}", solutions.len() + 1),
             total_cost: state.cost.total(),
             cost_breakdown: state.cost,
+            score: if c.is_v2() { state.v2.score } else { None },
+            score_breakdown: if c.is_v2() {
+                Some(state.v2.parts)
+            } else {
+                None
+            },
+            scoring_model: if c.is_v2() {
+                Some(c.scoring_model.clone())
+            } else {
+                None
+            },
             assignments,
             handovers: state.handovers.to_vec(),
             palm_placements,
@@ -1499,4 +1579,44 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
         }
     }
     Ok(solutions)
+}
+
+/// Preserve a few distinct active owner/deferred states within the same budget.
+fn prune(states: &mut Vec<State>, c: &SolverConfig) {
+    states.sort_by(|a, b| v2::compare(a, b, c.is_v2(), false));
+    if !c.is_v2() || states.len() <= c.beam_width || c.beam_width < 4 {
+        states.truncate(c.beam_width);
+        return;
+    }
+    let quota = (c.beam_width / 4).min(8);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut selected = std::collections::BTreeSet::new();
+    for (i, state) in states.iter().enumerate() {
+        let signature = (
+            state
+                .owners
+                .iter()
+                .map(|(n, h)| (*n, h.index()))
+                .collect::<Vec<_>>(),
+            state.deposit.keys().copied().collect::<Vec<_>>(),
+        );
+        if seen.insert(signature) {
+            selected.insert(i);
+        }
+        if selected.len() >= quota {
+            break;
+        }
+    }
+    for i in 0..states.len() {
+        if selected.len() >= c.beam_width {
+            break;
+        }
+        selected.insert(i);
+    }
+    let mut index = 0;
+    states.retain(|_| {
+        let keep = selected.contains(&index);
+        index += 1;
+        keep
+    });
 }

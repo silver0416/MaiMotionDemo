@@ -1,6 +1,13 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import { HAND_LABEL, KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
+  import {
+    HAND_LABEL,
+    KIND_LABEL,
+    PART_LABEL,
+    isLegacySolution,
+    isV2Solution,
+    shapeLabel,
+  } from '../lib/contract';
   import { noteBadges, noteTarget } from '../lib/notes';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { TOUCH_AREA_PLACE } from '../lib/touch';
@@ -10,6 +17,8 @@
   import type { Hand, Note, Solution } from '../lib/types';
 
   const note = $derived<Note | null>(session.selectedNote);
+  /** V2 方案沒有總成本，改列分工與姿態／動作負擔，不算與第一名的差值。 */
+  const v2Ranked = $derived(session.solutions.length > 0 && isV2Solution(session.solutions[0]));
 
   function handsOf(solution: Solution, noteId: string): string {
     const list = solution.assignments.filter((item) => item.noteId === noteId);
@@ -254,7 +263,7 @@
             <tr>
               <th>候選</th>
               <th>這顆音符</th>
-              <th>總成本</th>
+              <th>{v2Ranked ? '分工／負擔' : '總成本'}</th>
             </tr>
           </thead>
           <tbody>
@@ -265,10 +274,14 @@
                 </td>
                 <td class="mono">{handsOf(item, note.id)}</td>
                 <td class="mono xsmall">
-                  {formatNumber(item.totalCost)}
-                  <span class="muted">
-                    {formatDelta(item.totalCost - session.solutions[0].totalCost)}
-                  </span>
+                  {#if isV2Solution(item)}
+                    {formatNumber(item.score.intuition, 2)}／{formatNumber(item.score.strain, 2)}
+                  {:else if isLegacySolution(item) && isLegacySolution(session.solutions[0])}
+                    {formatNumber(item.totalCost)}
+                    <span class="muted">
+                      {formatDelta(item.totalCost - session.solutions[0].totalCost)}
+                    </span>
+                  {/if}
                 </td>
               </tr>
             {/each}

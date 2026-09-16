@@ -97,7 +97,14 @@ export interface Chart {
   touchSensors: TouchSensor[];
 }
 
-export interface SolverConfig {
+/**
+ * 評分模型版本。未傳 scoringModel 的舊 request 由 Rust 當成 legacy-v1。
+ * 兩版的設定欄位互斥：V2 不得帶六個權重與 speedReference，V1 不得帶四個行為控制。
+ */
+export type ScoringModel = 'legacy-v1' | 'hand-affinity-v2';
+
+/** 兩版共用的搜尋、時間與手掌設定。 */
+export interface BaseSolverConfig {
   beamWidth: number;
   topK: number;
   allowHandover: boolean;
@@ -108,20 +115,55 @@ export interface SolverConfig {
   slidePickupSeconds: number;
   glideDistance: number;
   preparationSeconds: number;
-  speedReference: number;
   repetitionSeconds: number;
-  distanceWeight: number;
-  speedWeight: number;
-  sideWeight: number;
-  crossWeight: number;
-  repetitionWeight: number;
-  handoverWeight: number;
   /**
    * 一隻手掌同時覆蓋多個 Touch 的圓形近似半徑（盤面半徑為 1）。
    * 0–1，預設 0.5；0 表示關閉手掌覆蓋，每個 Touch 都要各自接觸。
    * 覆蓋是否成立一律由 Rust 判定，前端不自行計算覆蓋組合。
    */
   palmRadius: number;
+}
+
+export interface LegacyWeights {
+  speedReference: number;
+  distanceWeight: number;
+  speedWeight: number;
+  sideWeight: number;
+  crossWeight: number;
+  repetitionWeight: number;
+  handoverWeight: number;
+}
+
+export interface PreferenceControls {
+  /** 左右分工傾向 0–100；越高越偏好各手留在本側 */
+  homePreference: number;
+  /** 快速移動容忍 1–200 半徑/秒；超過才開始計速度負擔，不是速度上限 */
+  travelComfort: number;
+  /** 同手連打容忍 0–100；越高越接受同一隻手重新擊打 */
+  repeatTolerance: number;
+  /** Slide 換手意願 0–100；越高交接附加費越小 */
+  handoverWillingness: number;
+}
+
+/** V1：schemaVersion 2。scoringModel 可省略。 */
+export interface LegacySolverConfig extends BaseSolverConfig, LegacyWeights {
+  scoringModel?: 'legacy-v1';
+}
+
+/** V2：schemaVersion 3。平面物件，scoringModel 必填。 */
+export interface V2SolverConfig extends BaseSolverConfig, PreferenceControls {
+  scoringModel: 'hand-affinity-v2';
+}
+
+/** 實際送給 Rust、也是 configSnapshot 的形狀。 */
+export type SolverConfig = LegacySolverConfig | V2SolverConfig;
+
+/**
+ * 前端參數頁的草稿：兩版欄位同時保存，切換評分方式不互相換算。
+ * 不可直接送給 Rust，必須經 contract.ts 的 projectConfig() 投影。
+ */
+export interface ConfigDraft extends BaseSolverConfig, LegacyWeights, PreferenceControls {
+  scoringModel: ScoringModel;
 }
 
 export interface AnalyzeRequest {
@@ -206,20 +248,58 @@ export interface CostBreakdown {
   handover: number;
 }
 
-export interface Solution {
+/** V2 評分；分數是本 Demo 的相對比較值，不是機率或人體能力。 */
+export interface Score {
+  /** 左右分工與姿態：scoreBreakdown 前四項總和 */
+  intuition: number;
+  /** 動作負擔：travelStrain + compressionStrain + repetition */
+  strain: number;
+  /** 移動距離（半徑）：只在排序值幾乎相同時用來分先後 */
+  efficiency: number;
+  /** intuition + 2^(4 − 8·homePreference/100) · strain */
+  rankingValue: number;
+}
+
+/** 均已乘內部係數；freeDistance 單位為盤面半徑。 */
+export interface ScoreBreakdown {
+  assignmentAffinity: number;
+  sideExposure: number;
+  crossExposure: number;
+  handover: number;
+  travelStrain: number;
+  compressionStrain: number;
+  repetition: number;
+  freeDistance: number;
+}
+
+interface SolutionBase {
   id: string;
-  totalCost: number;
-  costBreakdown: CostBreakdown;
   assignments: Assignment[];
   handovers: Handover[];
   palmPlacements: PalmPlacement[];
   leftSegments: MotionSegment[];
   rightSegments: MotionSegment[];
-  configSnapshot: SolverConfig;
   warnings: string[];
 }
 
+export interface LegacySolution extends SolutionBase {
+  scoringModel?: 'legacy-v1';
+  totalCost: number;
+  costBreakdown: CostBreakdown;
+  configSnapshot: LegacySolverConfig;
+}
+
+export interface V2Solution extends SolutionBase {
+  scoringModel: 'hand-affinity-v2';
+  score: Score;
+  scoreBreakdown: ScoreBreakdown;
+  configSnapshot: V2SolverConfig;
+}
+
+export type Solution = LegacySolution | V2Solution;
+
 export interface AnalyzeResponse {
+  /** legacy-v1 為 2，hand-affinity-v2 為 3 */
   schemaVersion: number;
   requestId: string;
   status: AnalyzeStatus | string;

@@ -1,10 +1,14 @@
 import { analyzeChart, isDesktop, nextRequestId } from '../lib/api';
 import {
-  DEFAULT_CONFIG,
+  DEFAULT_DRAFT,
+  SCHEMA_VERSION,
+  SCORING_LABEL,
   STATUS_HINT,
   STATUS_LABEL,
-  cloneConfig,
+  cloneDraft,
   configEquals,
+  projectConfig,
+  scoringModelOf,
   validateConfig,
 } from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
@@ -16,9 +20,11 @@ import type {
   AnalyzeResponse,
   Assignment,
   Chart,
+  ConfigDraft,
   Handover,
   Note,
   PalmPlacement,
+  ScoringModel,
   SlidePath,
   Solution,
   SolverConfig,
@@ -36,6 +42,7 @@ export interface ResultBundle {
   response: AnalyzeResponse;
   /** 產生這份結果的原文；紀錄清單另外保存原文，重新生成不會覆寫紀錄。 */
   source: string;
+  /** 實際送出的版本化設定（已投影），用來判斷結果是否過期。 */
   config: SolverConfig;
   firstSeconds: number;
   receivedAt: number;
@@ -52,7 +59,8 @@ export class Session {
   /** 目前盤面對應的原文；由譜面紀錄或新增視窗寫入。 */
   source = $state('');
   firstSeconds = $state(0);
-  config = $state<SolverConfig>(cloneConfig(DEFAULT_CONFIG));
+  /** 參數頁草稿，兩版欄位並存；送出前才依評分方式投影。 */
+  config = $state<ConfigDraft>(cloneDraft(DEFAULT_DRAFT));
 
   result = $state<ResultBundle | null>(null);
   phase = $state<Phase>('empty');
@@ -72,6 +80,14 @@ export class Session {
 
   configIssues = $derived(validateConfig(this.config, this.firstSeconds));
 
+  /** 這次會送給 Rust 的設定。 */
+  requestConfig = $derived<SolverConfig>(projectConfig(this.config));
+
+  /** 目前結果使用的評分方式；沒有結果時為 null。 */
+  resultScoringModel = $derived<ScoringModel | null>(
+    this.result ? scoringModelOf(this.result.config) : null,
+  );
+
   /** 參數與結果不一致時，畫面必須標示結果不是目前參數的分析。 */
   stale = $derived.by(() => {
     const result = this.result;
@@ -79,7 +95,7 @@ export class Session {
     return (
       result.source !== this.source ||
       result.firstSeconds !== this.firstSeconds ||
-      !configEquals(result.config, this.config)
+      !configEquals(result.config, this.requestConfig)
     );
   });
 
@@ -196,8 +212,15 @@ export class Session {
     this.selectedNoteId = noteId;
   }
 
+  /** 切換評分方式；兩版各自的數值都保留，不互相換算。 */
+  setScoringModel(model: ScoringModel): void {
+    if (this.config.scoringModel === model) return;
+    this.config = { ...this.config, scoringModel: model };
+  }
+
+  /** 還原預設數值，但保留目前選擇的評分方式，方便 A/B 對照。 */
   resetConfig(): void {
-    this.config = cloneConfig(DEFAULT_CONFIG);
+    this.config = { ...cloneDraft(DEFAULT_DRAFT), scoringModel: this.config.scoringModel };
     this.firstSeconds = 0;
   }
 
@@ -232,7 +255,7 @@ export class Session {
       requestId,
       source,
       firstSeconds: this.firstSeconds,
-      solverConfig: cloneConfig(this.config),
+      solverConfig: projectConfig(this.config),
     };
     const previousPhase: Phase = this.result ? 'ready' : 'empty';
     this.#pendingRequestId = requestId;
@@ -248,6 +271,15 @@ export class Session {
       if (response.requestId !== requestId) {
         this.phase = previousPhase;
         this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`);
+        return null;
+      }
+      const model = scoringModelOf(request.solverConfig);
+      if (response.schemaVersion !== SCHEMA_VERSION[model]) {
+        this.phase = previousPhase;
+        this.#fail(
+          `核心回傳 schemaVersion ${response.schemaVersion}，與「${SCORING_LABEL[model]}」需要的 ` +
+            `${SCHEMA_VERSION[model]} 不符；核心可能尚未支援這個評分方式，結果未套用。`,
+        );
         return null;
       }
       if (!accept(response)) {

@@ -15,8 +15,14 @@ fn main() {
         ),
         ("no-solution", "(120){4}1/4/7,E"),
         ("invalid", "(120){4}1-2[4:1],E"),
+        ("v2-home", "(120){4}1,8,2,7,3,6,4,5,E"),
+        ("v2-palm", "(120){4}C/B1/E1/7,E"),
+        ("v2-swap", "(120){4}1-5[4:1]/5-1[4:1],E"),
     ] {
         let mut config = SolverConfig::default();
+        if name.starts_with("v2-") {
+            config = SolverConfig::v2();
+        }
         if name == "handover" {
             config.handover_weight = 0.05;
             config.side_weight = 12.0;

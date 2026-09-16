@@ -9,6 +9,9 @@
     unit?: string;
     error?: string | null;
     slider?: boolean;
+    /** 滑桿的常用範圍；數字欄仍接受 min–max 的完整合法範圍。 */
+    sliderMin?: number;
+    sliderMax?: number;
     onValue: (value: number) => void;
   }
 
@@ -22,6 +25,8 @@
     unit = '',
     error = null,
     slider = true,
+    sliderMin,
+    sliderMax,
     onValue,
   }: Props = $props();
 
@@ -55,8 +60,8 @@
   {#if slider}
     <input
       type="range"
-      {min}
-      {max}
+      min={sliderMin ?? min}
+      max={sliderMax ?? max}
       {step}
       {value}
       aria-label={`${label} 滑桿`}

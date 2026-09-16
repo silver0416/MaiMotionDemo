@@ -2,23 +2,25 @@
 
 **把 simai 譜面變成可播放的左右手動作動畫。** MaiMotionDemo 是 Windows 桌面展示工具：在 maimai 圓盤上呈現 Tap、Hold、Touch 和 Slide 的接觸與移動軌跡，並比較不同的雙手分配方案，包括 Slide 中途換手。
 
-[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.1.5/MaiMotionDemo-v0.1.5-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
+[下載 Windows x64 單一執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.0/MaiMotionDemo-v0.2.0-windows-x64.exe) · [查看所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [完整使用手冊](USER_GUIDE.md)
 
 ## 下載與啟動
 
-從 GitHub Release 下載 `MaiMotionDemo-v0.1.5-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
+從 GitHub Release 下載 `MaiMotionDemo-v0.2.0-windows-x64.exe`，放在任何可寫入的位置後直接開啟。畫面與分析核心都包含在執行檔裡。
 
 支援 Windows x64。介面使用系統的 Microsoft Edge WebView2；如果 Windows 缺少 WebView2 Runtime，請先安裝 [Microsoft 官方 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。
 
 ## 快速展示
 
-1. 在「編輯」選擇「基本 Tap」範例，按「生成」與「播放」。盤面上粉紅圓形 **L** 是左手、藍色方形 **R** 是右手。
-2. 改選「可行交接」，慢放並拖曳時間軸，觀察左手將 Slide 交給右手的區間。
-3. 在「方案」比較候選打法及成本；在「參數」調整移動、跨側和換手的偏好，重新生成後比較結果。
+v0.2.0 加入「直覺優先 V2」。常用設定為左右分工、快速移動容忍、同手連打容忍、Slide 換手意願；既有時間、手掌與搜尋參數位於「進階設定」。可切換「舊版比較」作 A/B，兩版參數各自保留。
 
-「Touch 區」範例會顯示 A／B／C／D／E 落點、Touch Hold 的按住進度與 `f` 煙火。可在「顯示」切換 33 個落點標記與煙火；落點座標由 Rust 分析核心提供。
+1. 按左側「新增」，貼入 `(120){4}1,8,2,7,3,6,4,5,E`，按「生成並新增」，再按「播放」。粉紅圓形 **L** 是左手、藍色方形 **R** 是右手。
+2. 貼入 `(120){4}1-5[4:1]/5-1[4:1],E`，慢放觀察兩條 Slide 碰頭時互換目的地。
+3. 在「方案」比較分工與姿態、動作負擔、移動距離；在「參數」調整四個偏好後重新生成。左側紀錄保留原文，點選即可重新分析。
 
-「手掌覆蓋 Touch」範例讓一隻手掌同時覆蓋 C／B1／E1，另一手按鍵位 7。播放時大圓虛線是手掌覆蓋範圍；在「參數」可調整手掌半徑或關閉，在「顯示」可隱藏範圍，選取 Touch 可查看覆蓋明細。
+貼入 `(120){4}A1f,B3,Cf,D5f,E7,Chf[4:2],E` 可觀察 A／B／C／D／E 落點、Touch Hold 的按住進度與 `f` 煙火。可在「顯示」切換 33 個落點標記與煙火；落點座標由 Rust 分析核心提供。
+
+貼入 `(120){4}Chf[4:4]/B1/E1/7,8,E` 可觀察一隻手掌同時覆蓋 C／B1／E1，另一手按鍵位 7。播放時大圓虛線是手掌覆蓋範圍；在「參數」可調整手掌半徑或關閉，在「顯示」可隱藏範圍，選取 Touch 可查看覆蓋明細。
 
 也可以貼入自己的 simai 譜面本文，例如：
 
@@ -45,7 +47,7 @@
 
 演算法將每隻手簡化為一個接觸點。某些 Slide 曲線與 Touch 感應區使用可辨識的近似位置，並非實機軌道座標或官方判定。「未找到可行方案」也不表示玩家無法完成譜面。這些限制會影響方案與成本，請把動畫當作打法討論與資料分析的起點。
 
-v0.1.5 已能讓一隻手掌覆蓋多個 Touch：除了同時出現的落點，持續中的 Touch Hold 也能在後續鄰近 Touch 到來時擴展成同一掌，例如用一手維持 C 並依序覆蓋 B 區，另一手繼續按鍵。預設以半徑 0.5 的圓形近似手掌，約占四分之一盤面。若同一判定有至少 16 個一般 Touch，求解器也會嘗試雙手連續掃屏：左右手各負責半邊，能經過 C 與內圈，並在判定前最多 0.18 秒開始滑行。這些參數不是官方判定或真實手形；Tap、Slide 與 Touch Hold 不會自動算入掃屏。畫面上的小型 Touch 多邊形只用來辨識落點，手掌範圍另以大圓虛線表示。
+v0.2.0 也保留一隻手掌覆蓋多個 Touch：除了同時出現的落點，持續中的 Touch Hold 也能在後續鄰近 Touch 到來時擴展成同一掌，例如用一手維持 C 並依序覆蓋 B 區，另一手繼續按鍵。預設以半徑 0.5 的圓形近似手掌，約占四分之一盤面。若同一判定有至少 16 個一般 Touch，求解器也會嘗試雙手連續掃屏：左右手各負責半邊，能經過 C 與內圈，並在判定前最多 0.18 秒開始滑行。這些參數不是官方判定或真實手形；Tap、Slide 與 Touch Hold 不會自動算入掃屏。畫面上的小型 Touch 多邊形只用來辨識落點，手掌範圍另以大圓虛線表示。
 
 ## 從原始碼執行
 
@@ -62,7 +64,7 @@ npm.cmd run tauri dev
 npm.cmd run tauri build -- --no-bundle
 ```
 
-產物位於 `src-tauri/target/release/mai-motion-demo.exe`。單獨使用 `npm.cmd run dev` 開啟的瀏覽器畫面只有範例模式；要解析任意輸入，請執行 Tauri 桌面程式。
+產物位於 `src-tauri/target/release/mai-motion-demo.exe`。單獨使用 `npm.cmd run dev` 可預覽介面，但沒有 Rust 核心；要解析輸入，請執行 Tauri 桌面程式。
 
 ## 驗證
 
