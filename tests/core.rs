@@ -1021,3 +1021,26 @@ fn a_comfortable_gap_lifts_the_hand_instead_of_gliding() {
         .chain(&fast.solutions[0].right_segments)
         .any(|g| g.mode == "glide"));
 }
+
+#[test]
+fn hold_without_length_is_a_zero_length_hold() {
+    // simai 可省略 Hold 長度（MajSimai 視為 0），不是語法錯誤。
+    let r = analyze("(120){4}4h,Ch,5h/6h[4:1],E");
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    for note in &chart.notes[..2] {
+        near(note.end_seconds, note.time_seconds);
+    }
+    assert_eq!(chart.notes[0].kind, "hold");
+    assert_eq!(chart.notes[1].kind, "touchHold");
+    near(
+        chart.notes[3].end_seconds - chart.notes[3].time_seconds,
+        0.5,
+    );
+    for s in &r.solutions {
+        verify_segments(&s.left_segments);
+        verify_segments(&s.right_segments);
+    }
+    // 有左括號就必須正確結束。
+    assert_eq!(analyze("(120){4}4h[4:1,E").status, "invalid");
+}

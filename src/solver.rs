@@ -589,7 +589,8 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
     for (i, n) in chart.notes.iter().enumerate() {
         let holding = n.kind == "hold" || n.kind == "touchHold";
         let end = if holding {
-            n.end_seconds
+            // 長度 0 的 Hold（省略 `[...]`）仍要按下去，至少停留一般敲擊的接觸時間。
+            n.end_seconds.max(n.time_seconds + c.contact_seconds)
         } else {
             n.time_seconds + c.contact_seconds
         };

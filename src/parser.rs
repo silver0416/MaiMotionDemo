@@ -77,6 +77,14 @@ impl<'a> Parser<'a> {
         d.source_span = Some(Box::new(self.span(start)));
         d
     }
+    /// Hold 長度。simai 允許省略 `[...]`（例如 `4h`、`Ch`），與 MajSimai 相同視為長度 0 的 Hold。
+    fn hold_length(&mut self, start: usize) -> Result<f64, Diagnostic> {
+        if self.peek() != Some('[') {
+            return Ok(0.0);
+        }
+        let spec = self.enclosed('[', ']')?;
+        self.duration(&spec, start)
+    }
     fn enclosed(&mut self, open: char, close: char) -> Result<String, Diagnostic> {
         let start = self.at;
         if self.peek() != Some(open) {
@@ -273,9 +281,8 @@ impl<'a> Parser<'a> {
         self.modifiers(&mut note.modifiers, false);
         if self.eat('h') {
             self.modifiers(&mut note.modifiers, false);
-            let spec = self.enclosed('[', ']')?;
             note.kind = "touchHold".into();
-            note.end_seconds = time + self.duration(&spec, start)?;
+            note.end_seconds = time + self.hold_length(start)?;
             self.modifiers(&mut note.modifiers, false);
         }
         note.source_span = self.span(start);
@@ -416,10 +423,9 @@ impl<'a> Parser<'a> {
         self.modifiers(&mut modifiers, false);
         if self.eat('h') {
             self.modifiers(&mut modifiers, false);
-            let spec = self.enclosed('[', ']')?;
             let time = self.now(start)?;
             let mut note = self.blank("hold", button, geometry::button(button), time);
-            note.end_seconds = time + self.duration(&spec, start)?;
+            note.end_seconds = time + self.hold_length(start)?;
             self.modifiers(&mut modifiers, false);
             note.modifiers = modifiers;
             note.source_span = self.span(start);
