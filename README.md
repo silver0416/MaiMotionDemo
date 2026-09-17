@@ -2,7 +2,7 @@
 
 把 simai 譜面變成可播放的左右手動作動畫，在 maimai 圓盤上呈現 Tap、Hold、Touch、Slide 的打法，並比較不同的雙手分配方案。
 
-[下載 Windows x64 執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.3.1/MaiMotionDemo-v0.3.1-windows-x64.exe) · [所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [使用手冊](USER_GUIDE.md)
+[下載 Windows x64 執行檔](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.3.2/MaiMotionDemo-v0.3.2-windows-x64.exe) · [所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [使用手冊](USER_GUIDE.md)
 
 ## 使用
 
@@ -23,6 +23,7 @@
 - 最多比較三種雙手方案，可在「參數」調整打法偏好後重新生成
 - 0.25×–2× 播放、拖曳定位、循環片段、點選音符查看分配
 - 時間軸可加標籤（按 M 或雙擊時間軸上方），拖曳片段把手設定循環範圍
+- 「音符」可一鍵選取目前播放時間最接近的音符
 - 譜面紀錄可右鍵查看、編輯或刪除
 - 「設定」可查看版本、複製匯入錯誤紀錄回報，以及清除暫存或全部資料
 

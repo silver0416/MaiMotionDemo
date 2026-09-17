@@ -1,6 +1,6 @@
 # MaiMotionDemo 使用手冊
 
-本手冊描述 v0.3.1 的預設參數。
+本手冊描述 v0.3.2 的預設參數。
 
 ## 參數
 
@@ -31,7 +31,7 @@ V2 保留原本的分工／動作負擔加權比較，距離只用於幾乎同�
 
 ### 已建置的執行檔
 
-從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.3.1/MaiMotionDemo-v0.3.1-windows-x64.exe) 下載 `MaiMotionDemo-v0.3.1-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。
+從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.3.2/MaiMotionDemo-v0.3.2-windows-x64.exe) 下載 `MaiMotionDemo-v0.3.2-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。
 
 ### 從原始碼執行
 
