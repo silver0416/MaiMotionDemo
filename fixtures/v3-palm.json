@@ -19,7 +19,7 @@
       "scoringModel": "human-motion-v3",
       "slidePickupSeconds": 0.12,
       "topK": 3,
-      "travelComfort": 90.0
+      "travelComfort": 6.5
     },
     "source": "(120){4}C/B1/E1/7,E"
   },
@@ -472,7 +472,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-1",
@@ -617,6 +617,7 @@
           "excursion": 0.0,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.13453307574454298,
@@ -676,7 +677,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-2",
@@ -821,6 +822,7 @@
           "excursion": 0.49734770727187927,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.4685414823773535,

@@ -153,7 +153,7 @@
     return V3_SCORE_GROUPS.map((group) => `${group.short} ${formatNumber(item.score[group.id], 2)}`).join('・');
   }
 
-  /** V3 九項同單位直接加總，長條用九項中的最大值當共同基準，各群之間可以直接比長短。 */
+  /** V3 十項同單位直接加總，長條用十項中的最大值當共同基準，各群之間可以直接比長短。 */
   function v3Peak(item: V3Solution): number {
     return maxOf(V3_BREAKDOWN_KEYS.map((key) => item.scoreBreakdown[key]));
   }
@@ -363,7 +363,7 @@
             <summary>排序方式</summary>
             <p class="field-hint">
               核心把三群直接相加成總分，總分越低排越前面；沒有額外倍率。
-              分項長條以這個候選九項中的最大值為基準，可以跨群比較。
+              分項長條以這個候選十項中的最大值為基準，可以跨群比較。
             </p>
           </details>
           <p class="field-hint" style="margin-top: var(--space-3)">

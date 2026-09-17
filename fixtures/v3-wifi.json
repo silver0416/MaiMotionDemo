@@ -19,7 +19,7 @@
       "scoringModel": "human-motion-v3",
       "slidePickupSeconds": 0.12,
       "topK": 3,
-      "travelComfort": 90.0
+      "travelComfort": 6.5
     },
     "source": "(120){4}1w5[4:2],{8},C,E"
   },
@@ -456,7 +456,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-1",
@@ -1305,6 +1305,7 @@
           "excursion": 0.04522877139929358,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.3923244768785894,
@@ -1365,7 +1366,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-2",
@@ -2214,6 +2215,7 @@
           "excursion": 0.04522877139929358,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.3923244768785894,
@@ -2274,7 +2276,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-3",
@@ -3123,6 +3125,7 @@
           "excursion": 0.04529848825640299,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.3923244768785894,

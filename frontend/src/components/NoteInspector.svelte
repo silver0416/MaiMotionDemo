@@ -47,6 +47,35 @@
     if (target) playback.seek(target.timeSeconds);
   }
 
+  /** 清單容器，用來把選取的列捲進可視範圍。 */
+  let listElement = $state<HTMLDivElement | null>(null);
+
+  /** 播放時間最接近的音符；同樣接近時取較早的一顆。 */
+  const nearestNote = $derived.by(() => {
+    let best: Note | null = null;
+    let bestGap = Infinity;
+    for (const item of session.notes) {
+      const gap = Math.abs(item.timeSeconds - playback.time);
+      if (gap < bestGap) {
+        best = item;
+        bestGap = gap;
+      }
+    }
+    return best;
+  });
+
+  function selectNearest() {
+    const target = nearestNote;
+    if (!target) return;
+    session.selectNote(target.id);
+    // 選取後把該列捲到可視範圍；DOM 尚未更新時直接找目標列即可。
+    queueMicrotask(() => {
+      listElement
+        ?.querySelector(`[data-note-id="${CSS.escape(target.id)}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
   function seekNoteTime(target: Note | null) {
     if (target) playback.seek(target.timeSeconds);
   }
@@ -83,6 +112,15 @@
   <section class="section">
     <div class="section-title">
       <span>音符</span>
+      {#if session.notes.length > 0}
+        <button
+          class="linkish xsmall"
+          title="選取播放時間最接近的音符（不改變播放時間）"
+          onclick={selectNearest}
+        >
+          <Icon name="crosshair" size={12} />目前時間音符{nearestNote ? `：${nearestNote.id}` : ''}
+        </button>
+      {/if}
       {#if note}
         <button class="linkish xsmall" onclick={() => session.selectNote(null)}><Icon name="x" size={12} />取消選取</button>
       {/if}
@@ -91,11 +129,12 @@
     {#if session.notes.length === 0}
       <p class="small muted">這個結果沒有譜面音符。</p>
     {:else}
-      <div class="note-list scroll">
+      <div class="note-list scroll" bind:this={listElement}>
         {#each session.notes as item (item.id)}
           {@const flags = rowFlags(item)}
           <button
             class="note-row"
+            data-note-id={item.id}
             class:is-selected={session.selectedNoteId === item.id}
             onclick={() => pick(item.id, true)}
           >

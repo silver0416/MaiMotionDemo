@@ -1,5 +1,6 @@
 //! Transition audit: inspect physical events, not merely the reported score.
 use super::*;
+use crate::scoring_v3::ContactKey;
 fn initial() -> State {
     State {
         v2: Default::default(),
@@ -131,11 +132,21 @@ fn slide_tracking_pickup_brush_and_duplicate_contact_add_no_action() {
         s = next;
     }
     assert_eq!(s.actions.len, 1);
+    // Only the slide head is a genuine contact: checkpoints never observe ownership.
+    let owned = |s: &State| {
+        s.v3.roles
+            .ownership
+            .entries()
+            .map(|(k, e)| (k, e.owner))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(owned(&s), [(ContactKey::Button(1), Hand::R)]);
     let touch = ts.iter().find(|t| t.note == 1).unwrap();
     let mut brushed = brush_touch(&s, touch, Hand::R, &chart, &c).unwrap();
     context.update(&s, &mut brushed).unwrap();
     context.verify(&brushed).unwrap();
     assert_eq!(brushed.actions.len, 1);
+    assert_eq!(owned(&brushed), owned(&s));
     let chart = parse_chart("(120){4}1/1,E", 0.).unwrap().chart;
     let ts = tasks(&chart, &c).unwrap();
     let mut s = initial();
@@ -180,4 +191,73 @@ fn screen_sweep_records_continuous_contacts_in_each_hands_time_order() {
             .all(|p| p[1].time_seconds >= p[0].time_seconds));
     }
     assert_eq!(next.v3.parts.jack_fatigue, 0.);
+}
+
+fn placed(l: u8, r: u8, travel: f64) -> State {
+    let mut s = initial();
+    s.arms[0].point = button(l);
+    s.arms[1].point = button(r);
+    s.v3.parts.travel = travel;
+    s
+}
+#[test]
+fn future_role_changes_rank_but_never_the_reported_score() {
+    let c = SolverConfig::v3();
+    let chart = parse_chart("(120){8}13,{16}2,2,{8}3,1,E", 0.)
+        .unwrap()
+        .chart;
+    let context = v3::Context::new(&chart, &c).unwrap();
+    // A: slightly cheaper now, both hands crowd the middle of the 1/3 phrase.
+    // B: slightly more expensive now, hands already on the two anchors.
+    let mut states = vec![placed(2, 2, 0.10), placed(1, 3, 0.12)];
+    context.plan(&mut states, -0.05).unwrap();
+    let (a, b) = (&states[0], &states[1]);
+    assert!(a.v3.future.anchor_readiness > 0.);
+    assert_eq!(b.v3.future.anchor_readiness, 0.);
+    let rank = |s: &State| s.v3.rank_score.as_ref().unwrap().total();
+    let score = |s: &State| s.v3.score.as_ref().unwrap().total();
+    assert!(rank(b) < rank(a), "{} / {}", rank(b), rank(a));
+    assert!(score(a) < score(b));
+    for s in &states {
+        assert!((score(s) - s.v3.parts.values().iter().sum::<f64>()).abs() < 1e-12);
+        assert!((rank(s) - score(s) - s.v3.future.total()).abs() < 1e-12);
+    }
+    assert_eq!(v3::compare(a, b, true), std::cmp::Ordering::Less);
+    let mut sorted = states.clone();
+    sorted.sort_by(|x, y| v3::compare(x, y, false));
+    assert_eq!(sorted[0].arms[0].point.distance(button(1)), 0.);
+}
+#[test]
+fn return_readiness_keeps_the_helper_that_can_leave_the_cluster() {
+    let c = SolverConfig::v3();
+    let chart = parse_chart("(150){16}7,6,7,6,7,{8}2,E", 0.).unwrap().chart;
+    let context = v3::Context::new(&chart, &c).unwrap();
+    // After the last 6: the phrase finishes on 7, then the right side needs 2.
+    let time = chart.notes[3].time_seconds;
+    let mut states = vec![placed(7, 6, 0.), placed(7, 3, 0.)];
+    context.plan(&mut states, time).unwrap();
+    let (stuck, ready) = (&states[0], &states[1]);
+    assert!(
+        ready.v3.future.return_readiness < stuck.v3.future.return_readiness,
+        "{:?} / {:?}",
+        ready.v3.future,
+        stuck.v3.future
+    );
+    assert_eq!(v3::compare(ready, stuck, false), std::cmp::Ordering::Less);
+    assert_eq!(v3::compare(ready, stuck, true), std::cmp::Ordering::Equal);
+}
+#[test]
+fn lookahead_window_is_bounded_by_groups_and_seconds() {
+    let chart = parse_chart("(240){32}1,2,3,4,5,6,7,8,1,2,3,4,E", 0.)
+        .unwrap()
+        .chart;
+    let look = v3::lookahead::Lookahead::from_chart(&chart);
+    let w = look.window(-1e-3);
+    assert_eq!(w.len(), v3::lookahead::LOOKAHEAD_MAX_GROUPS);
+    let slow = parse_chart("(60){4}1,2,3,4,E", 0.).unwrap().chart;
+    let look = v3::lookahead::Lookahead::from_chart(&slow);
+    // 1 second apart: only the next onset within 0.8 s is visible.
+    assert_eq!(look.window(0.5).len(), 1);
+    assert_eq!(look.window(0.1).len(), 0);
+    assert_eq!(look.revisit(ContactKey::Button(2), 0.5), Some(1.0));
 }

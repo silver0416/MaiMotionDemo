@@ -162,7 +162,7 @@ export function buildDebugReport(input: DebugInput): string {
 
   const scores = (response?.solutions ?? []).map(scoreEntry);
   if (scores.length > 0) {
-    // 只輸出評分與分項，不含動作段；V3 需要完整九項才看得出為什麼選這個打法。
+    // 只輸出評分與分項，不含動作段；V3 需要完整十項才看得出為什麼選這個打法。
     parts.push(`## 候選評分（依核心排序）\n\n${fence(JSON.stringify(scores, null, 2), 'json')}`);
   }
 

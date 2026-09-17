@@ -153,7 +153,7 @@ export interface PreferenceControls {
 export interface V3PreferenceControls {
   /** 左右分工傾向 0–100；直接控制跨區（excursion）成本，0 表示不收跨區成本 */
   homePreference: number;
-  /** 快速移動容忍 1–200 半徑/秒；超過才加高速負擔，低於此速度仍計移動距離 */
+  /** 快速移動容忍 1–200 半徑/秒（預設 6.5）；超過才依移動距離加高速負擔，低於此速度仍計移動距離 */
   travelComfort: number;
   /** 同點連打容忍 0–100；越高越接受同一隻手高速重複敲同一位置 */
   jackTolerance: number;
@@ -304,7 +304,7 @@ export interface V3Score {
   total: number;
 }
 
-/** V3 九個分項，依三大群排列。 */
+/** V3 十個分項，依三大群排列。 */
 export interface V3ScoreBreakdown {
   travel: number;
   speedStrain: number;
@@ -313,6 +313,8 @@ export interface V3ScoreBreakdown {
   excursion: number;
   crossExposure: number;
   handover: number;
+  /** V3.1：短時間內換掉鍵位原本的手，或離開較緊的局部分工。 */
+  ownershipSwitch: number;
 
   jackFatigue: number;
   reversal: number;

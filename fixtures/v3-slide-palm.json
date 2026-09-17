@@ -19,7 +19,7 @@
       "scoringModel": "human-motion-v3",
       "slidePickupSeconds": 0.12,
       "topK": 3,
-      "travelComfort": 90.0
+      "travelComfort": 6.5
     },
     "source": "(120){4}1-5[4:1]/8h[4:3],{16},B2,E"
   },
@@ -462,7 +462,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-1",
@@ -807,6 +807,7 @@
           "excursion": 0.04518968393421062,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.2755320713028645,
@@ -866,7 +867,7 @@
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
           "topK": 3,
-          "travelComfort": 90.0
+          "travelComfort": 6.5
         },
         "handovers": [],
         "id": "solution-2",
@@ -1202,15 +1203,16 @@
         "score": {
           "fatigue": 0.0,
           "movement": 0.5091168824543142,
-          "posture": 0.1256969957672236,
-          "total": 0.6348138782215378
+          "posture": 0.6737635819401155,
+          "total": 1.1828804643944297
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 0.028801166516656235,
+          "crossExposure": 0.5768677526895482,
           "excursion": 0.09689582925056736,
           "handover": 0.0,
           "jackFatigue": 0.0,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.5091168824543142,

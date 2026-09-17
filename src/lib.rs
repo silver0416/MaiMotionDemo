@@ -7,6 +7,8 @@ mod solver;
 
 pub use model::*;
 pub use parser::{parse_chart, ParseOutput};
+/// Debug-only V3 replay of the Top-1 candidate's ownership, roles and lookahead.
+pub use solver::trace_v3;
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {

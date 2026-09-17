@@ -104,7 +104,7 @@ export const DEFAULT_PREFERENCES: PreferenceControls = {
 /** 與 src/scoring_v3.rs 的 PreferenceConfigV3::default() 一致。 */
 export const DEFAULT_V3_PREFERENCES: V3PreferenceControls = {
   homePreference: 60,
-  travelComfort: 90,
+  travelComfort: 6.5,
   jackTolerance: 60,
   handoverWillingness: 40,
 };
@@ -152,6 +152,12 @@ function finiteNumber(value: unknown): value is number {
  * 加入 V3 前保存的資料沒有 `v3`，使用 V3 預設；頂層的 V2／V1 數值與已選的評分方式照舊，
  * 各版之間不互相換算。
  */
+/**
+ * V3.1 以前的 V3 預設快速移動容忍。當時的負擔按秒數累積，90 半徑/秒實際上從不觸發；
+ * 改為按距離計算後，保存的舊預設值換成新預設，使用者自訂的其他值保留。
+ */
+const LEGACY_V3_TRAVEL_COMFORT = 90;
+
 export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft {
   const next = cloneDraft(current);
   if (!stored || typeof stored !== 'object') return next;
@@ -169,6 +175,7 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
   if (v3 && typeof v3 === 'object') {
     for (const key of V3_PREFERENCE_KEYS) {
       const value = (v3 as Record<string, unknown>)[key];
+      if (key === 'travelComfort' && value === LEGACY_V3_TRAVEL_COMFORT) continue;
       if (finiteNumber(value)) next.v3[key] = value;
     }
   }
@@ -337,7 +344,7 @@ export interface V3ScoreGroup {
   items: V3ScoreItem[];
 }
 
-/** V3 方案面板的三群分數與九個分項，依 Rust 的 ScoreBreakdownV3 欄位。 */
+/** V3 方案面板的三群分數與十個分項，依 Rust 的 ScoreBreakdownV3 欄位。 */
 export const V3_SCORE_GROUPS: V3ScoreGroup[] = [
   {
     id: 'movement',
@@ -346,7 +353,7 @@ export const V3_SCORE_GROUPS: V3ScoreGroup[] = [
     hint: '移動距離、超過容忍速度的部分與 Slide 趕接；越低越省力。',
     items: [
       { key: 'travel', label: '移動距離', hint: '接觸之間的移動長度；低速移動也會計入。' },
-      { key: 'speedStrain', label: '高速移動', hint: '移動速度超過「快速移動容忍」的額外負擔。' },
+      { key: 'speedStrain', label: '高速移動', hint: '移動速度超過「快速移動容忍」的額外負擔，依移動距離累計；極短時間的大移動最吃力。' },
       { key: 'compressionStrain', label: 'Slide 趕接', hint: '晚接或提早掃完造成比原定更快的追蹤。' },
     ],
   },
@@ -354,11 +361,12 @@ export const V3_SCORE_GROUPS: V3ScoreGroup[] = [
     id: 'posture',
     label: '姿態與分工',
     short: '姿態',
-    hint: '手離開本側、雙手交叉與 Slide 中途換手；越低越自然。',
+    hint: '手離開本側、雙手交叉、Slide 中途換手與打破短期分工；越低越自然。',
     items: [
       { key: 'excursion', label: '跨區', hint: '手到另一側的程度與停留時間，由「左右分工傾向」控制。' },
-      { key: 'crossExposure', label: '雙手交叉', hint: '左手位於右手右邊的程度；平面代理，不是手臂碰撞。' },
+      { key: 'crossExposure', label: '雙手交叉', hint: '左手位於右手右邊的程度，加上兩手同時停在對側的持續時間；短暫交叉很便宜，一直交叉才會累積。平面代理，不是手臂碰撞。' },
       { key: 'handover', label: 'Slide 換手', hint: 'Slide 中途交給另一隻手的附加費。' },
+      { key: 'ownershipSwitch', label: '打破分工', hint: '同一鍵位剛由某隻手處理又改用另一隻手，或離開局部分工去接另一隻手負責的目標；隨時間衰減，同時音會減輕。' },
     ],
   },
   {

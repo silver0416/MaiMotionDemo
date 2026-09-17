@@ -316,7 +316,7 @@ impl<'de> Deserialize<'de> for SolverConfig {
                 .as_object_mut()
                 .ok_or_else(|| serde::de::Error::custom("設定需為物件"))?;
             map.entry("homePreference").or_insert(60.0.into());
-            map.entry("travelComfort").or_insert(90.0.into());
+            map.entry("travelComfort").or_insert(6.5.into());
         }
         serde_json::from_value::<SolverConfigWire>(value)
             .map(Self::from)
@@ -383,7 +383,7 @@ impl SolverConfig {
         Self {
             scoring_model: crate::scoring_v3::SCORING_MODEL_V3.into(),
             home_preference: 60.0,
-            travel_comfort: 90.0,
+            travel_comfort: 6.5,
             ..Self::default()
         }
     }

@@ -1,8 +1,10 @@
 //! Incremental V3 bookkeeping around the existing feasibility transitions.
 use super::*;
 use crate::scoring_v3::{
-    HandHistory, ScoreBreakdownV3 as ScoreBreakdown, ScoreV3 as Score, ScoringV3,
+    HandHistory, RoleState, ScoreBreakdownV3 as ScoreBreakdown, ScoreV3 as Score, ScoringV3,
 };
+pub(super) mod lookahead;
+use lookahead::{FutureParts, Lookahead};
 
 #[derive(Clone, Default)]
 pub(super) struct Data {
@@ -12,6 +14,13 @@ pub(super) struct Data {
     pub rank_score: Option<Score>,
     contacts_at: Option<f64>,
     contacts: [Vec<(Point, bool)>; 2],
+    /// Short-term key ownership and temporary local roles (replayable from actions).
+    pub roles: RoleState,
+    /// Rank-only lookahead bias for the current group; never in `score`.
+    pub future: FutureParts,
+    /// Rank-only swapped posture a waiting hand has accrued up to the current
+    /// group but that is only charged once its next segment is added.
+    pub pending_posture: f64,
 }
 
 pub(super) struct Context<'a> {
@@ -20,6 +29,9 @@ pub(super) struct Context<'a> {
     notes: BTreeMap<&'a str, &'a Note>,
     // Nominal tracking strain per unit of path length.
     nominal: BTreeMap<&'a str, f64>,
+    lookahead: Lookahead,
+    /// End of the last note; swapped posture is not charged after it.
+    posture_end: f64,
 }
 
 fn error(message: String) -> Diagnostic {
@@ -64,6 +76,12 @@ impl<'a> Context<'a> {
             repetition_seconds: c.repetition_seconds,
             notes: chart.notes.iter().map(|n| (n.id.as_str(), n)).collect(),
             nominal,
+            lookahead: Lookahead::from_chart(chart),
+            posture_end: chart
+                .notes
+                .iter()
+                .map(|n| n.end_seconds.max(n.motion_end.unwrap_or(n.time_seconds)))
+                .fold(f64::NEG_INFINITY, f64::max),
         })
     }
 
@@ -143,22 +161,146 @@ impl<'a> Context<'a> {
             }
         }
         for event in fresh_values(&old.actions, &next.actions) {
-            let terms = self
-                .engine
-                .action(
-                    &mut next.v3.histories[event.hand.index()],
-                    event,
-                    self.repetition_seconds,
-                )
-                .map_err(error)?;
-            next.v3.parts.jack_fatigue += terms.jack_fatigue;
-            next.v3.parts.reversal += terms.reversal;
-            next.v3.parts.workload += terms.workload;
+            let data = &mut next.v3;
+            let terms = self.action(&mut data.histories, &mut data.roles, event)?;
+            data.parts.jack_fatigue += terms.jack_fatigue;
+            data.parts.reversal += terms.reversal;
+            data.parts.workload += terms.workload;
+            data.parts.ownership_switch += terms.ownership_switch;
         }
         for handover in fresh_values(&old.handovers, &next.handovers) {
             next.v3.parts.handover += self.engine.handover(handover.swap);
         }
         self.refresh(next)
+    }
+
+    /// One physical action with V3.1 ownership and roles. Only genuine button
+    /// contacts (strike or continuous arrival) observe ownership; palms and
+    /// Touch contacts release the hand's local role. Slide checkpoints,
+    /// handovers, brushes and Touch Group completion have no action at all.
+    fn action(
+        &self,
+        histories: &mut [HandHistory; 2],
+        roles: &mut RoleState,
+        event: &ActionEvent,
+    ) -> Result<ScoreBreakdown, Diagnostic> {
+        let (hand, point, time) = (event.hand, event.point, event.time_seconds);
+        let key = event
+            .note_id
+            .as_deref()
+            .map(|id| lookahead::contact_key(self.notes[id]))
+            .filter(|key| {
+                event.kind != ActionKind::Palm
+                    && matches!(key, crate::scoring_v3::ContactKey::Button(_))
+            });
+        let history = &mut histories[hand.index()];
+        let (mut switch, mut scale) = (0.0, 1.0);
+        if let Some(key) = key {
+            let chord = self.lookahead.is_button_chord(time);
+            switch = roles.contact_cost(hand, point, key, time, chord);
+            let recurs = history
+                .recent_points()
+                .1
+                .is_some_and(|p| self.lookahead.point_recurs(p, time));
+            scale = roles.reversal_scale(history, hand, point, time, recurs);
+        }
+        let mut terms = self
+            .engine
+            .action_with(history, event, self.repetition_seconds, scale)
+            .map_err(error)?;
+        match key {
+            Some(key) => roles.observe(hand, point, key, self.lookahead.revisit(key, time), time),
+            None => roles.release(hand),
+        }
+        terms.ownership_switch = switch;
+        Ok(terms)
+    }
+
+    /// Rank-only lookahead for every state that finished the group at `time`.
+    pub fn plan(&self, states: &mut [State], time: f64) -> Result<(), Diagnostic> {
+        let window = self.lookahead.window(time);
+        for state in states {
+            let hands = [state.arms[0].point, state.arms[1].point];
+            state.v3.future = lookahead::future_role(window, hands, &state.v3.roles);
+            state.v3.pending_posture = self.pending_posture(state, time);
+            self.refresh(state)?;
+        }
+        Ok(())
+    }
+
+    /// Posture while a hand waits past its last segment, assuming it stays put.
+    fn pending_posture(&self, state: &State, time: f64) -> f64 {
+        let [l, r] = &state.arms;
+        let from = l.free.min(r.free);
+        let to = time.min(self.posture_end);
+        if to <= from {
+            return 0.0;
+        }
+        let at = |arm: &Arm, t: f64| {
+            if t < arm.free {
+                arm_point_at(arm, t)
+            } else {
+                arm.point
+            }
+        };
+        const PIECES: usize = 8;
+        let h = (to - from) / PIECES as f64;
+        let f = |t: f64| self.engine.swapped_rate(at(l, t), at(r, t));
+        (0..PIECES)
+            .map(|k| {
+                let a = from + h * k as f64;
+                h / 6.0 * (f(a) + 4.0 * f(a + h / 2.0) + f(a + h))
+            })
+            .sum()
+    }
+
+    /// Debug replay of ownership, roles and the lookahead parts per action.
+    pub fn trace(&self, state: &State) -> Result<Vec<String>, Diagnostic> {
+        let mut histories = [HandHistory::default(), HandHistory::default()];
+        let mut roles = RoleState::default();
+        let mut hands = [state.arms[0].point; 2];
+        let mut lines = vec![];
+        for event in state.actions.to_vec() {
+            let terms = self.action(&mut histories, &mut roles, &event)?;
+            hands[event.hand.index()] = event.point;
+            let t = event.time_seconds;
+            let future = lookahead::future_role(self.lookahead.window(t), hands, &roles);
+            let ownership: Vec<String> = roles
+                .ownership
+                .entries()
+                .filter_map(|(key, e)| {
+                    let s = e.strength_at(t);
+                    (s > 0.0).then(|| format!("{key}->{:?} {s:.2}", e.owner))
+                })
+                .collect();
+            let role = |h: Hand| {
+                let r = roles.roles[h.index()];
+                match r.anchor {
+                    Some(a) if r.live(t) => {
+                        format!(
+                            "{h:?} anchor {a} until {:.3} ({:.2})",
+                            r.expires_at, r.strength
+                        )
+                    }
+                    _ => format!("{h:?} free"),
+                }
+            };
+            lines.push(format!(
+                "{t:.3} {} {:?} {:?} switch {:.3} reversal {:.3} | ownership: {} | roles: {}; {} | future: ownership {:.3} anchor {:.3} return {:.3}",
+                event.note_id.as_deref().unwrap_or("-"),
+                event.hand,
+                event.kind,
+                terms.ownership_switch,
+                terms.reversal,
+                ownership.join(", "),
+                role(Hand::L),
+                role(Hand::R),
+                future.ownership_readiness,
+                future.anchor_readiness,
+                future.return_readiness,
+            ));
+        }
+        Ok(lines)
     }
 
     fn cross_chain(
@@ -176,9 +318,9 @@ impl<'a> Context<'a> {
             }
             if other.start_seconds < segment.end_seconds {
                 result += if is_left {
-                    self.engine.crossing(segment, other)
+                    self.engine.crossing_until(segment, other, self.posture_end)
                 } else {
-                    self.engine.crossing(other, segment)
+                    self.engine.crossing_until(other, segment, self.posture_end)
                 }
                 .map_err(error)?;
             }
@@ -203,7 +345,9 @@ impl<'a> Context<'a> {
         }
         state.v3.score = Some(self.engine.score(p).map_err(error)?);
         let mut rank = p.clone();
-        rank.excursion += state.pending.max(0.0);
+        // Rank-only terms: deferred slide deposit and the lookahead role bias.
+        rank.excursion +=
+            state.pending.max(0.0) + state.v3.future.total() + state.v3.pending_posture;
         state.v3.rank_score = Some(self.engine.score(&rank).map_err(error)?);
         Ok(())
     }
@@ -270,7 +414,10 @@ impl<'a> Context<'a> {
         }
         let (mut i, mut j) = (0, 0);
         while i < left.len() && j < right.len() {
-            expected.cross_exposure += self.engine.crossing(&left[i], &right[j]).map_err(error)?;
+            expected.cross_exposure += self
+                .engine
+                .crossing_until(&left[i], &right[j], self.posture_end)
+                .map_err(error)?;
             let (le, re) = (left[i].end_seconds, right[j].end_seconds);
             if le <= re {
                 i += 1;
@@ -280,18 +427,13 @@ impl<'a> Context<'a> {
             }
         }
         let mut histories = [HandHistory::default(), HandHistory::default()];
+        let mut roles = RoleState::default();
         for event in state.actions.to_vec() {
-            let terms = self
-                .engine
-                .action(
-                    &mut histories[event.hand.index()],
-                    &event,
-                    self.repetition_seconds,
-                )
-                .map_err(error)?;
+            let terms = self.action(&mut histories, &mut roles, &event)?;
             expected.jack_fatigue += terms.jack_fatigue;
             expected.reversal += terms.reversal;
             expected.workload += terms.workload;
+            expected.ownership_switch += terms.ownership_switch;
         }
         for handover in state.handovers.to_vec() {
             expected.handover += self.engine.handover(handover.swap);

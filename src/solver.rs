@@ -257,6 +257,43 @@ fn relieve(
     let arm = &state.arms[idx];
     let mut out = vec![];
     if arm.free <= time + EPS {
+        // V3: a hold that already ended may still be left at its earliest legal
+        // release, so the hand is not forced into a burst move right at the end.
+        if c.is_v3() && !late {
+            if let (Some(target), Some(last)) = (target, arm.segments.last()) {
+                if last.mode == "hold"
+                    && last.samples.last().unwrap().point().distance(target) > EPS
+                {
+                    if let Some(held) = chart
+                        .notes
+                        .iter()
+                        .find(|n| Some(&n.id) == last.note_id.as_ref())
+                    {
+                        let release = earliest_release(held, c).max(last.start_seconds);
+                        if release < last.end_seconds - EPS {
+                            let mut next = state.clone();
+                            let point = last.samples.last().unwrap().point();
+                            let samples = vec![
+                                MotionSample::new(last.start_seconds, point),
+                                MotionSample::new(release, point),
+                            ];
+                            if replace_last(&mut next, idx, hand, samples, "hold", c).is_some() {
+                                if next.held_touch[idx]
+                                    .is_some_and(|n| chart.notes[n].id == held.id)
+                                {
+                                    next.held_touch[idx] = None;
+                                }
+                                out.push(Relief {
+                                    state: next,
+                                    begin: time,
+                                    glided: false,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return out;
     }
     let Some(last) = arm.segments.last().cloned() else {
@@ -2057,9 +2094,24 @@ fn merge_assignments(mut assignments: Vec<Assignment>) -> Vec<Assignment> {
 /// 先以「準時接觸優先」搜尋；若因此找不到方案，再允許所有 Touch 使用晚接觸重試一次。
 /// 優先規則只是縮小候選的策略，可能剪掉必須晚接才走得通的路線。
 pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
-    match solve_with(chart, c, false) {
+    solve_traced(chart, c, None)
+}
+
+/// V3 debug: replay ownership, roles and lookahead parts of the Top-1 candidate.
+pub fn trace_v3(chart: &Chart, c: &SolverConfig) -> Result<Vec<String>, Diagnostic> {
+    let mut lines = vec![];
+    solve_traced(chart, c, Some(&mut lines))?;
+    Ok(lines)
+}
+
+fn solve_traced(
+    chart: &Chart,
+    c: &SolverConfig,
+    mut trace: Option<&mut Vec<String>>,
+) -> Result<Vec<Solution>, Diagnostic> {
+    match solve_with(chart, c, false, trace.as_deref_mut()) {
         Err(first) if first.code == "no_solution" => {
-            let mut solutions = solve_with(chart, c, true)?;
+            let mut solutions = solve_with(chart, c, true, trace)?;
             for solution in &mut solutions {
                 solution.warnings.push(
                     "準時接觸優先的搜尋無解，此方案允許 Touch 在判定區間內任意晚接觸。".into(),
@@ -2071,7 +2123,12 @@ pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnosti
     }
 }
 
-fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solution>, Diagnostic> {
+fn solve_with(
+    chart: &Chart,
+    c: &SolverConfig,
+    relaxed: bool,
+    trace: Option<&mut Vec<String>>,
+) -> Result<Vec<Solution>, Diagnostic> {
     let start = chart
         .notes
         .iter()
@@ -2207,6 +2264,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
             }
             if !swept.is_empty() {
                 beam = swept;
+                if let Some(context) = &v3_context {
+                    context.plan(&mut beam, time)?;
+                }
                 prune(&mut beam, c);
                 cursor = limit;
                 continue;
@@ -2454,6 +2514,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                 .collect();
             next.retain(|s| !s.lenient_in_group || !on_time.contains(&s.group_origin));
         }
+        if let Some(context) = &v3_context {
+            context.plan(&mut next, time)?;
+        }
         prune(&mut next, c);
         beam = next;
         cursor = limit;
@@ -2462,6 +2525,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         .duration_seconds
         .max(tasks.iter().map(|t| t.end).fold(0.0, f64::max));
     for state in &mut beam {
+        // V3 counts idle posture (sustained crossing), so the closing idle
+        // pieces go through the same incremental update as everything else.
+        let before = v3_context.as_ref().map(|_| state.clone());
         for hand in [Hand::L, Hand::R] {
             let a = &mut state.arms[hand.index()];
             if a.free < end {
@@ -2478,7 +2544,7 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
             context.refresh(state)?;
             context.verify(state)?;
         } else if let Some(context) = &v3_context {
-            context.refresh(state)?;
+            context.update(before.as_ref().unwrap(), state)?;
             context.verify(state)?;
         } else {
             let left = state.arms[0].segments.to_vec();
@@ -2487,6 +2553,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         }
     }
     beam.sort_by(|a, b| compare_states(a, b, c, true));
+    if let (Some(lines), Some(context), Some(best)) = (trace, &v3_context, beam.first()) {
+        *lines = context.trace(best)?;
+    }
     let mut solutions = vec![];
     let mut signatures = std::collections::BTreeSet::new();
     for state in beam {

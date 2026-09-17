@@ -16,4 +16,6 @@
 /node_modules/
 /dist/
 /.local/
+# Player-supplied full chart transcriptions used as local regression input
+/tests/charts/
 *.log
