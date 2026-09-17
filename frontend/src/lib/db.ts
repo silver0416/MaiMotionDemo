@@ -127,6 +127,31 @@ export async function dbDeleteAnalysesBySource(sourceHash: string): Promise<void
   }
 }
 
+/** 某個 store 的筆數；資料庫不可用時回傳 null。 */
+export async function dbCount(store: string): Promise<number | null> {
+  const db = await openDb();
+  if (!db) return null;
+  try {
+    return await done(db.transaction(store, 'readonly').objectStore(store).count());
+  } catch {
+    return null;
+  }
+}
+
+/** 清空指定的 store；回傳是否成功。 */
+export async function dbClear(...stores: string[]): Promise<boolean> {
+  const db = await openDb();
+  if (!db) return false;
+  try {
+    const tx = db.transaction(stores, 'readwrite');
+    for (const store of stores) tx.objectStore(store).clear();
+    await finished(tx);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** SHA-256 十六進位；不支援 WebCrypto 時退回簡單的 FNV-1a（只用於快取鍵與重複判定）。 */
 export async function hashText(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);

@@ -17,6 +17,8 @@
     type MajdataOrigin,
   } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
+  import { errorLog, type ImportFailure } from '../state/errorLog.svelte';
+  import type { DebugInput } from '../lib/debug';
   import { toasts } from '../state/toasts.svelte';
   import type { AnalyzeResponse, AnalyzeStatus, MajdataChartSummary } from '../lib/types';
 
@@ -98,6 +100,44 @@
   /** 對話框完全關閉時呼叫；下次打開一律重新下載。 */
   export function reset() {
     if (importing === null) downloaded.clear();
+  }
+
+  function debugInputOf(current: Failure): Omit<DebugInput, 'appVersion'> {
+    return {
+      context: 'Majdata 匯入',
+      source: current.kind === 'download' ? '' : current.source,
+      config:
+        current.kind === 'analysis'
+          ? (session.lastFailure?.request.solverConfig ?? session.requestConfig)
+          : session.requestConfig,
+      firstSeconds: session.firstSeconds,
+      requestId:
+        current.kind === 'analysis' ? (session.lastFailure?.request.requestId ?? null) : null,
+      response: current.kind === 'rejected' ? current.response : null,
+      error: current.kind === 'rejected' ? null : current.message,
+      extra: {
+        'Majdata song id': current.chart.id,
+        'Majdata 標題': current.chart.title,
+        'Majdata 譜師': current.chart.designer,
+        'Majdata 上傳者': current.chart.uploader,
+      },
+    };
+  }
+
+  /** 匯入失敗一律寫進設定頁的錯誤紀錄；相同錯誤由 errorLog 去重。 */
+  function logFailure(current: Failure) {
+    const entry: ImportFailure = {
+      kind: current.kind,
+      origin: 'Majdata',
+      title: current.chart.title || current.chart.id,
+      identity: `majdata:${current.chart.id}`,
+      summary:
+        current.kind === 'rejected'
+          ? `${STATUS_LABEL[current.response.status as AnalyzeStatus] ?? current.response.status}：${current.response.diagnostics[0]?.message ?? '沒有診斷'}`
+          : current.message,
+      debug: $state.snapshot(debugInputOf(current)) as Omit<DebugInput, 'appVersion'>,
+    };
+    void errorLog.record(entry);
   }
 
   function usable(response: AnalyzeResponse): boolean {
@@ -206,6 +246,7 @@
       } catch (error) {
         importing = null;
         failure = { kind: 'download', chart, message: messageOf(error) };
+        logFailure(failure);
         focusFeedback();
         return;
       }
@@ -228,11 +269,13 @@
         source,
         message: session.errorMessage ?? '分析沒有完成，盤面維持原狀。',
       };
+      logFailure(failure);
       focusFeedback();
       return;
     }
     if (!usable(response)) {
       failure = { kind: 'rejected', chart, response, source };
+      logFailure(failure);
       focusFeedback();
       return;
     }
@@ -361,25 +404,7 @@
         {@const current = failure}
         <div class="row row-wrap">
           <CopyDebugButton
-            input={() => ({
-              context: 'Majdata 匯入',
-              source: current.source,
-              config:
-                current.kind === 'analysis'
-                  ? (session.lastFailure?.request.solverConfig ?? session.requestConfig)
-                  : session.requestConfig,
-              firstSeconds: session.firstSeconds,
-              requestId:
-                current.kind === 'analysis' ? (session.lastFailure?.request.requestId ?? null) : null,
-              response: current.kind === 'rejected' ? current.response : null,
-              error: current.kind === 'analysis' ? current.message : null,
-              extra: {
-                'Majdata song id': current.chart.id,
-                'Majdata 標題': current.chart.title,
-                'Majdata 譜師': current.chart.designer,
-                'Majdata 上傳者': current.chart.uploader,
-              },
-            })}
+            input={() => debugInputOf(current)}
           />
         </div>
       {/if}

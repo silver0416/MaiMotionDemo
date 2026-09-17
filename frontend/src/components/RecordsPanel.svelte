@@ -1,6 +1,9 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import Icon from './Icon.svelte';
+  import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import { records, recordDate, recordTitle, type ChartRecord } from '../state/records.svelte';
+  import { errorLog } from '../state/errorLog.svelte';
   import { squash } from '../lib/press';
   import { session } from '../state/session.svelte';
 
@@ -8,9 +11,75 @@
     onCreate: () => void;
     onSearch: () => void;
     onCollapse: () => void;
+    onEdit: (record: ChartRecord) => void;
+    onSettings: () => void;
   }
 
-  let { onCreate, onSearch, onCollapse }: Props = $props();
+  let { onCreate, onSearch, onCollapse, onEdit, onSettings }: Props = $props();
+
+  const MENU_ITEMS: MenuItem[] = [
+    { id: 'edit', label: '查看／編輯', icon: 'pencil' },
+    { id: 'delete', label: '刪除', icon: 'trash', danger: true },
+  ];
+
+  /** 三點按鈕與右鍵共用同一個選單；fromButton 決定關閉後焦點回到哪裡。 */
+  let menu = $state<{ id: string; x: number; y: number; align: 'start' | 'end'; fromButton: boolean } | null>(
+    null,
+  );
+  const menuRecord = $derived(menu ? records.get(menu.id) : null);
+
+  function openMenuFromButton(record: ChartRecord, event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (menu?.id === record.id && menu.fromButton) {
+      menu = null;
+      return;
+    }
+    confirmingId = null;
+    menu = { id: record.id, x: rect.right, y: rect.bottom + 4, align: 'end', fromButton: true };
+  }
+
+  function openContextMenu(record: ChartRecord, event: MouseEvent) {
+    event.preventDefault();
+    confirmingId = null;
+    menu = { id: record.id, x: event.clientX, y: event.clientY, align: 'start', fromButton: false };
+  }
+
+  async function closeMenu(focusBack: boolean) {
+    const current = menu;
+    menu = null;
+    if (!focusBack || !current || !listEl) return;
+    await tick();
+    const row = listEl.querySelector(`[data-record-id="${CSS.escape(current.id)}"]`);
+    row?.querySelector<HTMLElement>(current.fromButton ? '.more' : '.open')?.focus();
+  }
+
+  async function selectMenu(action: string) {
+    const record = menuRecord;
+    menu = null;
+    if (!record) return;
+    if (action === 'edit') {
+      onEdit(record);
+    } else if (action === 'delete') {
+      confirmingId = record.id;
+      await tick();
+      // 焦點先放在「取消」，誤按 Enter 不會直接刪掉。
+      listEl
+        ?.querySelector<HTMLElement>(
+          `[data-record-id="${CSS.escape(record.id)}"] .confirm .btn:not(.btn--danger)`,
+        )
+        ?.focus();
+    }
+  }
+
+  /** 列上按 Shift+F10 或選單鍵，和右鍵一樣打開選單。 */
+  function onRowKeydown(record: ChartRecord, event: KeyboardEvent) {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      event.preventDefault();
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      confirmingId = null;
+      menu = { id: record.id, x: rect.left + 24, y: rect.bottom, align: 'start', fromButton: false };
+    }
+  }
 
   /** 刪除要按兩次：第一次只把該列切成確認狀態。 */
   let confirmingId = $state<string | null>(null);
@@ -75,7 +144,13 @@
       <ul class="list" bind:this={listEl}>
         {#each records.items as record (record.id)}
           {@const active = records.activeId === record.id}
-          <li class="item" class:is-active={active} data-record-id={record.id}>
+          <li
+            class="item"
+            class:is-active={active}
+            class:is-menu={menu?.id === record.id}
+            data-record-id={record.id}
+            oncontextmenu={(event) => confirmingId !== record.id && openContextMenu(record, event)}
+          >
             {#if confirmingId === record.id}
               <div class="confirm">
                 <span class="small">刪除這筆紀錄？</span>
@@ -91,6 +166,7 @@
             {:else}
               <button
                 class="open"
+                onkeydown={(event) => onRowKeydown(record, event)}
                 onclick={() => open(record)}
                 disabled={analyzing || !session.desktop}
                 aria-current={active ? 'true' : undefined}
@@ -102,11 +178,14 @@
                 <span class="item-preview xsmall mono">{recordDate(record)}</span>
               </button>
               <button
-                class="remove btn btn--icon"
-                onclick={() => (confirmingId = record.id)}
-                aria-label={`刪除 ${recordTitle(record)}`}
+                class="more btn btn--icon"
+                onclick={(event) => openMenuFromButton(record, event)}
+                aria-label={`${recordTitle(record)} 的更多動作`}
+                aria-haspopup="menu"
+                aria-expanded={menu?.id === record.id}
+                title="更多動作（也可以在列上按右鍵）"
               >
-                <Icon name="trash" size={14} />
+                <Icon name="more-horizontal" size={16} />
               </button>
             {/if}
           </li>
@@ -114,7 +193,31 @@
       </ul>
     {/if}
   </div>
+
+  <div class="records-foot">
+    <button class="btn btn--ghost btn--wide" onclick={onSettings}>
+      <span class="lead"><Icon name="settings" size={16} /></span>設定
+      {#if errorLog.entries.length > 0}
+        <span class="spacer"></span>
+        <span class="badge badge--danger" title="有尚未回報的錯誤紀錄">
+          {errorLog.entries.length}<span class="sr-only"> 筆錯誤紀錄</span>
+        </span>
+      {/if}
+    </button>
+  </div>
 </div>
+
+{#if menu && menuRecord}
+  <ContextMenu
+    items={MENU_ITEMS}
+    x={menu.x}
+    y={menu.y}
+    align={menu.align}
+    label={`${recordTitle(menuRecord)} 的動作`}
+    onSelect={selectMenu}
+    onClose={closeMenu}
+  />
+{/if}
 
 <style>
   /* 瀏覽器預覽提示只在沒有核心時出現，用 flex 讓清單永遠吃掉剩下的高度。 */
@@ -264,8 +367,8 @@
     white-space: nowrap;
   }
 
-  /* 刪除鈕平常隱藏，但鍵盤聚焦到這一列時一定看得到。 */
-  .remove {
+  /* 更多動作鈕平常隱藏；滑過、鍵盤聚焦或選單開著時一定看得到。 */
+  .more {
     position: absolute;
     top: 50%;
     right: var(--space-1);
@@ -276,9 +379,38 @@
     visibility: hidden;
   }
 
-  .item:hover .remove,
-  .item:focus-within .remove {
+  .item:hover .more,
+  .item:focus-within .more,
+  .item.is-menu .more {
     visibility: visible;
+  }
+
+  .item.is-menu {
+    background: var(--c-control);
+  }
+
+  .more {
+    background: none;
+    border-color: transparent;
+    color: var(--c-text-dim);
+  }
+
+  .more:hover:not(:disabled),
+  .item.is-menu .more {
+    color: var(--c-text);
+    background: var(--c-control-hover);
+  }
+
+  .records-foot {
+    padding: var(--space-2);
+    border-top: 1px solid var(--c-border);
+  }
+
+  .records-foot .btn {
+    min-height: 34px;
+    padding: 0 var(--space-2);
+    gap: var(--space-3);
+    font-size: var(--fs-md);
   }
 
   .confirm {

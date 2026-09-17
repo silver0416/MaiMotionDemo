@@ -18,6 +18,9 @@
     type WikiOrigin,
   } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
+  import { errorLog, type ImportFailure } from '../state/errorLog.svelte';
+  import { cacheEvents } from '../state/cacheEvents.svelte';
+  import type { DebugInput } from '../lib/debug';
   import { toasts } from '../state/toasts.svelte';
   import type {
     AnalyzeResponse,
@@ -148,6 +151,47 @@
     if (importing === null) downloaded.clear();
   }
 
+  function debugInputOf(current: Failure): Omit<DebugInput, 'appVersion'> {
+    const payload = current.kind === 'download' ? null : current.payload;
+    return {
+      context: 'simai Wiki 匯入',
+      source: payload?.chartText ?? '',
+      config:
+        current.kind === 'analysis'
+          ? (session.lastFailure?.request.solverConfig ?? session.requestConfig)
+          : session.requestConfig,
+      firstSeconds: session.firstSeconds,
+      requestId:
+        current.kind === 'analysis' ? (session.lastFailure?.request.requestId ?? null) : null,
+      response: current.kind === 'rejected' ? current.response : null,
+      error: current.kind === 'rejected' ? null : current.message,
+      extra: {
+        'Wiki page id': String(current.song.pageId),
+        'Wiki 標題': payload?.title ?? current.song.title,
+        種類: typeLabel(current.song.chartType),
+        難度: current.difficulty.label,
+        Level: payload?.level ?? '—',
+        'Page URL': payload?.pageUrl ?? current.song.pageUrl,
+      },
+    };
+  }
+
+  /** 匯入失敗一律寫進設定頁的錯誤紀錄；相同錯誤由 errorLog 去重。 */
+  function logFailure(current: Failure) {
+    const entry: ImportFailure = {
+      kind: current.kind,
+      origin: 'simai Wiki',
+      title: `${current.song.title}（${typeLabel(current.song.chartType)} ${current.difficulty.label}）`,
+      identity: `wiki:${current.song.pageId}:${current.song.chartType}:${current.difficulty.key}`,
+      summary:
+        current.kind === 'rejected'
+          ? `${STATUS_LABEL[current.response.status as AnalyzeStatus] ?? current.response.status}：${current.response.diagnostics[0]?.message ?? '沒有診斷'}`
+          : current.message,
+      debug: $state.snapshot(debugInputOf(current)) as Omit<DebugInput, 'appVersion'>,
+    };
+    void errorLog.record(entry);
+  }
+
   function usable(response: AnalyzeResponse): boolean {
     return response.chart !== null && response.status !== 'invalid' && response.status !== 'unsupported';
   }
@@ -192,6 +236,19 @@
       `${pad(date.getHours())}:${pad(date.getMinutes())}`
     );
   }
+
+  // 設定頁清除了 Wiki 快取：Rust 端索引已不在，這裡的索引資訊與已下載的譜面一併作廢。
+  let seenWikiGeneration = cacheEvents.wikiGeneration;
+  $effect(() => {
+    const generation = cacheEvents.wikiGeneration;
+    if (generation === seenWikiGeneration) return;
+    seenWikiGeneration = generation;
+    indexToken += 1;
+    index = null;
+    indexLoading = false;
+    indexError = null;
+    if (importing === null) downloaded.clear();
+  });
 
   async function loadIndex(force: boolean) {
     if (!session.desktop) return;
@@ -333,6 +390,7 @@
       } catch (error) {
         importing = null;
         failure = { kind: 'download', song, difficulty, message: messageOf(error) };
+        logFailure(failure);
         focusFeedback();
         return;
       }
@@ -356,11 +414,13 @@
         payload,
         message: session.errorMessage ?? '分析沒有完成，盤面維持原狀。',
       };
+      logFailure(failure);
       focusFeedback();
       return;
     }
     if (!usable(response)) {
       failure = { kind: 'rejected', song, difficulty, response, payload };
+      logFailure(failure);
       focusFeedback();
       return;
     }
@@ -503,27 +563,7 @@
         {@const current = failure}
         <div class="row row-wrap">
           <CopyDebugButton
-            input={() => ({
-              context: 'simai Wiki 匯入',
-              source: current.payload.chartText,
-              config:
-                current.kind === 'analysis'
-                  ? (session.lastFailure?.request.solverConfig ?? session.requestConfig)
-                  : session.requestConfig,
-              firstSeconds: session.firstSeconds,
-              requestId:
-                current.kind === 'analysis' ? (session.lastFailure?.request.requestId ?? null) : null,
-              response: current.kind === 'rejected' ? current.response : null,
-              error: current.kind === 'analysis' ? current.message : null,
-              extra: {
-                'Wiki page id': String(current.song.pageId),
-                'Wiki 標題': current.payload.title,
-                種類: typeLabel(current.song.chartType),
-                難度: current.difficulty.label,
-                Level: current.payload.level ?? '—',
-                'Page URL': current.payload.pageUrl,
-              },
-            })}
+            input={() => debugInputOf(current)}
           />
         </div>
       {/if}

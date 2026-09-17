@@ -83,3 +83,77 @@ pub fn save_song_html(path: &Path, html: &str) -> Result<(), WikiError> {
         .map_err(|error| WikiError::Cache(format!("Wiki 歌曲快取寫入失敗：{error}")))?;
     Ok(())
 }
+
+/// 磁碟快取統計：檔案數與總位元組。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CacheUsage {
+    pub files: u64,
+    pub bytes: u64,
+}
+
+fn wiki_dir(base: &Path) -> PathBuf {
+    base.join("wiki")
+}
+
+fn walk(dir: &Path, usage: &mut CacheUsage) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            walk(&entry.path(), usage);
+        } else if kind.is_file() {
+            usage.files += 1;
+            usage.bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        }
+    }
+}
+
+/// 目前 Wiki 快取（索引＋歌曲頁）的用量；目錄不存在時為 0。
+pub fn cache_usage(base: &Path) -> CacheUsage {
+    let mut usage = CacheUsage::default();
+    walk(&wiki_dir(base), &mut usage);
+    usage
+}
+
+/// 刪除整個 Wiki 快取目錄，回傳刪除前的用量。目錄不存在視為成功。
+pub fn clear_cache(base: &Path) -> Result<CacheUsage, WikiError> {
+    let dir = wiki_dir(base);
+    let usage = cache_usage(base);
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => Ok(usage),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(usage),
+        Err(error) => Err(WikiError::Cache(format!("無法清除 Wiki 快取：{error}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_cache_removes_index_and_pages() {
+        let base = std::env::temp_dir().join(format!(
+            "maimotion-wiki-cache-test-{}-{}",
+            std::process::id(),
+            now_unix_seconds()
+        ));
+        assert_eq!(cache_usage(&base), CacheUsage::default());
+        assert_eq!(clear_cache(&base).unwrap(), CacheUsage::default());
+
+        save_index_cache(&index_cache_path(&base), &[], 1).unwrap();
+        save_song_html(&song_cache_path(&base, 7), "<html></html>").unwrap();
+        let usage = cache_usage(&base);
+        assert_eq!(usage.files, 2);
+        assert!(usage.bytes > 0);
+
+        assert_eq!(clear_cache(&base).unwrap(), usage);
+        assert_eq!(cache_usage(&base), CacheUsage::default());
+        assert!(load_index_cache(&index_cache_path(&base)).is_none());
+        assert!(load_song_html(&song_cache_path(&base, 7)).is_none());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

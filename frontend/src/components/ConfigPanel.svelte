@@ -7,12 +7,12 @@
     DEFAULT_BASE,
     FIELD_LABEL,
     SCORING_LABEL,
-    SCORING_V1,
+    SCORING_MODELS,
     SCORING_V2,
   } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
-  import type { ConfigDraft, ScoringModel } from '../lib/types';
+  import type { ConfigDraft } from '../lib/types';
 
   const issues = $derived(session.configIssues);
 
@@ -28,10 +28,8 @@
   const isV2 = $derived(config.scoringModel === SCORING_V2);
   const R = CONFIG_RANGE;
 
-  const MODELS: { id: ScoringModel; hint: string }[] = [
-    { id: SCORING_V2, hint: '先維持左右分工，再看動作負擔' },
-    { id: SCORING_V1, hint: '六項成本加總，供對照' },
-  ];
+  /** 目前結果用的評分方式與選取的不同時，在該列標示「目前結果」。 */
+  const resultModel = $derived(session.resultScoringModel);
 
   // 進階區預設收起；裡面有欄位超出範圍時自動展開，避免錯誤藏在看不到的地方。
   let advancedOpen = $state(false);
@@ -62,22 +60,36 @@
         <span class="badge badge--quiet">需重新生成</span>
       {/if}
     </div>
-    <div class="segmented" role="radiogroup" aria-label="評分方式">
-      {#each MODELS as model (model.id)}
-        <button
-          class="btn segment"
-          class:is-active={config.scoringModel === model.id}
-          role="radio"
-          aria-checked={config.scoringModel === model.id}
-          onclick={() => session.setScoringModel(model.id)}
-        >
-          <span class="segment-label">{SCORING_LABEL[model.id]}</span>
-          <span class="segment-hint">{model.hint}</span>
-        </button>
+    <!-- 原生 radio：方向鍵切換、Tab 只停一次。版本增加時直接多一列，不必重排版面。 -->
+    <fieldset class="models">
+      <legend class="sr-only">評分方式</legend>
+      {#each SCORING_MODELS as model (model.id)}
+        {@const checked = config.scoringModel === model.id}
+        <label class="model" class:is-active={checked}>
+          <input
+            class="sr-only"
+            type="radio"
+            name="scoring-model"
+            value={model.id}
+            {checked}
+            onchange={() => session.setScoringModel(model.id)}
+          />
+          <span class="model-dot" aria-hidden="true"></span>
+          <span class="model-text">
+            <span class="model-name">
+              {SCORING_LABEL[model.id]}
+              <span class="model-version mono">{model.version}</span>
+              {#if resultModel === model.id && !checked}
+                <span class="badge badge--quiet">目前結果</span>
+              {/if}
+            </span>
+            <span class="model-hint">{model.hint}</span>
+          </span>
+        </label>
       {/each}
-    </div>
+    </fieldset>
     <p class="field-hint" style="margin-top: var(--space-2)">
-      兩種方式的參數各自保存，切換時不互相換算；舊版權重沒有對應到下方四個偏好的精確公式。
+      各評分方式的參數分開保存，切換時不互相換算；舊版權重沒有對應到新版偏好的精確公式。
     </p>
   </section>
 
@@ -460,30 +472,83 @@
 </div>
 
 <style>
-  .segmented {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-2);
-  }
-
-  .segment {
+  .models {
+    display: flex;
     flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    border: none;
+    min-width: 0;
+  }
+
+  .model {
+    display: flex;
     align-items: flex-start;
-    justify-content: center;
-    gap: 2px;
-    height: auto;
+    gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    text-align: left;
-    white-space: normal;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
+    background: var(--c-panel);
+    cursor: pointer;
   }
 
-  .segment-label {
+  .model:hover {
+    background: var(--c-control);
+  }
+
+  .model.is-active {
+    background: var(--c-control);
+    border-color: var(--c-text-dim);
+  }
+
+  .model:has(input:focus-visible) {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 2px;
+  }
+
+  /* 單選圓點：選取時是實心圓外加一圈，不只靠顏色辨識。 */
+  .model-dot {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+    border: 2px solid var(--c-border-strong);
+    border-radius: 999px;
+  }
+
+  .model.is-active .model-dot {
+    border-color: var(--c-text);
+    background: var(--c-text);
+    box-shadow: inset 0 0 0 2px var(--c-control);
+  }
+
+  .model-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .model-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fs-md);
     font-weight: 600;
+    color: var(--c-text);
   }
 
-  .segment-hint {
+  .model-version {
     font-size: var(--fs-xs);
     font-weight: 400;
+    color: var(--c-text-dim);
+  }
+
+  .model-hint {
+    font-size: var(--fs-xs);
+    color: var(--c-text-dim);
   }
 
   .advanced > summary {

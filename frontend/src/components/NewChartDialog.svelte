@@ -5,16 +5,33 @@
   import { STATUS_HINT, STATUS_LABEL, SUPPORT_NOTES } from '../lib/contract';
   import { reducedMotion } from '../lib/press';
   import { byteOffsetToIndex } from '../lib/text';
-  import { records, sourceHeading } from '../state/records.svelte';
+  import {
+    WIKI_TYPE_LABEL,
+    recordDate,
+    records,
+    sourceHeading,
+    wikiDifficultyLabel,
+    type ChartRecord,
+  } from '../state/records.svelte';
+  import { errorLog } from '../state/errorLog.svelte';
   import { session } from '../state/session.svelte';
   import type { AnalyzeResponse, AnalyzeStatus, Diagnostic } from '../lib/types';
   import type { AnalyzeFailure } from '../state/session.svelte';
 
   interface Props {
     open: boolean;
+    /** 指定時以編輯模式打開這筆紀錄；關閉後自動歸零。 */
+    editing?: ChartRecord | null;
   }
 
-  let { open = $bindable() }: Props = $props();
+  let { open = $bindable(), editing = $bindable(null) }: Props = $props();
+
+  /** 打開當下決定的模式；關閉動畫期間維持不變，畫面不會中途換標題。 */
+  let mode = $state<'new' | 'edit'>('new');
+  let editId = $state<string | null>(null);
+  /** 進入編輯前的新增草稿，離開編輯時放回去。 */
+  let stashedDraft = '';
+  let stashedName = '';
 
   let dialog: HTMLDialogElement | null = $state(null);
   let textarea: HTMLTextAreaElement | null = $state(null);
@@ -29,9 +46,19 @@
 
   const analyzing = $derived(session.phase === 'analyzing');
   const draftHeading = $derived(draft.trim().length > 0 ? sourceHeading(draft) : '');
-  const canGenerate = $derived(
+  const canAnalyze = $derived(
     session.desktop && !analyzing && draft.trim().length > 0 && session.configIssues.length === 0,
   );
+  /** 編輯中的紀錄；對話框開著時被刪掉會變成 null。 */
+  const record = $derived(mode === 'edit' ? records.get(editId) : null);
+  const sourceChanged = $derived(record !== null && draft !== record.source);
+  const nameChanged = $derived(record !== null && name.trim() !== (record.name?.trim() ?? ''));
+  const dirty = $derived(sourceChanged || nameChanged);
+  /** 只改名稱不必重跑核心；原文改了才要分析，而且要分析得過才存。 */
+  const canSave = $derived(
+    record !== null && dirty && !analyzing && (!sourceChanged || canAnalyze),
+  );
+  const canGenerate = $derived(mode === 'edit' ? canSave : canAnalyze);
   const rejectedStatus = $derived<AnalyzeStatus | null>(
     (rejected?.response.status as AnalyzeStatus) ?? null,
   );
@@ -52,8 +79,13 @@
       clearTimeout(closeTimer);
       closing = false;
       if (!dialog.open) {
+        enterMode();
         dialog.showModal();
         textarea?.focus();
+        if (mode === 'edit' && textarea) {
+          textarea.setSelectionRange(0, 0);
+          textarea.scrollTop = 0;
+        }
       }
     } else if (dialog.open && !closing) {
       if (reducedMotion()) {
@@ -65,6 +97,35 @@
       closeTimer = setTimeout(finishClose, CLOSE_MS);
     }
   });
+
+  function enterMode() {
+    rejected = null;
+    failed = null;
+    if (editing) {
+      if (mode === 'new') {
+        stashedDraft = draft;
+        stashedName = name;
+      }
+      mode = 'edit';
+      editId = editing.id;
+      draft = editing.source;
+      name = editing.name ?? '';
+    } else if (mode === 'edit') {
+      leaveEdit();
+    }
+  }
+
+  /** 對話框真正關上後：編輯模式放棄未儲存的修改，放回新增草稿。 */
+  function leaveEdit() {
+    if (mode !== 'edit') return;
+    mode = 'new';
+    editId = null;
+    editing = null;
+    draft = stashedDraft;
+    name = stashedName;
+    rejected = null;
+    failed = null;
+  }
 
   function finishClose() {
     closing = false;
@@ -86,22 +147,70 @@
     return response.chart !== null && response.status !== 'invalid' && response.status !== 'unsupported';
   }
 
-  async function generate() {
-    if (!canGenerate) return;
-    const source = draft;
+  function logFailure(source: string, response: AnalyzeResponse | null, failure: AnalyzeFailure | null) {
+    const origin = mode === 'edit' ? '編輯譜面' : '新增譜面';
+    const status = response?.status as AnalyzeStatus | undefined;
+    void errorLog.record({
+      kind: response ? 'rejected' : 'analysis',
+      origin,
+      title: name.trim() || sourceHeading(source),
+      summary: response
+        ? `${(status && STATUS_LABEL[status]) ?? response.status}：${response.diagnostics[0]?.message ?? '沒有診斷'}`
+        : (failure?.message ?? '呼叫核心失敗'),
+      debug: $state.snapshot({
+        context: origin,
+        source,
+        config: failure?.request.solverConfig ?? session.requestConfig,
+        firstSeconds: failure?.request.firstSeconds ?? session.firstSeconds,
+        requestId: failure?.request.requestId ?? null,
+        response,
+        error: failure?.message ?? null,
+      }),
+    });
+  }
+
+  /** 送核心分析；不可用時留下診斷並回傳 false。 */
+  async function analyzeDraft(source: string): Promise<boolean> {
     failed = null;
     const response = await session.analyze(source, usable);
     if (!response) {
       if (session.lastFailure?.request.source === source) {
         failed = session.lastFailure;
         rejected = null;
+        logFailure(source, null, failed);
       }
-      return;
+      return false;
     }
     if (!usable(response)) {
       rejected = { response, source };
+      logFailure(source, response, null);
+      return false;
+    }
+    return true;
+  }
+
+  async function save() {
+    const target = record;
+    if (!canSave || !target) return;
+    const source = draft;
+    const changed = sourceChanged;
+    if (changed && !(await analyzeDraft(source))) return;
+    const saved = await records.update(target.id, { name, source });
+    // 分析結果已經套到盤面，紀錄清單跟著指到這一筆。
+    if (saved && changed) records.activeId = saved.id;
+    rejected = null;
+    failed = null;
+    open = false;
+  }
+
+  async function generate() {
+    if (mode === 'edit') {
+      await save();
       return;
     }
+    if (!canGenerate) return;
+    const source = draft;
+    if (!(await analyzeDraft(source))) return;
     await records.add(source, { name });
     draft = '';
     name = '';
@@ -140,7 +249,10 @@
   class="dialog"
   class:is-closing={closing}
   aria-labelledby="new-chart-title"
-  onclose={() => (open = false)}
+  onclose={() => {
+    open = false;
+    leaveEdit();
+  }}
   oncancel={(event) => {
     event.preventDefault();
     open = false;
@@ -153,7 +265,10 @@
   }}
 >
   <header class="dialog-head">
-    <h2 id="new-chart-title">新增譜面</h2>
+    <h2 id="new-chart-title">{mode === 'edit' ? '編輯譜面' : '新增譜面'}</h2>
+    {#if mode === 'edit' && dirty}
+      <span class="badge badge--quiet">未儲存</span>
+    {/if}
     <span class="spacer"></span>
     <button class="btn btn--icon" onclick={() => (open = false)} aria-label="關閉">
       <Icon name="x" />
@@ -162,6 +277,35 @@
 
   <div class="dialog-body">
     <div class="editor">
+      {#if mode === 'edit'}
+        {#if record}
+          <dl class="meta">
+            <dt>新增時間</dt>
+            <dd class="mono">{recordDate(record)}</dd>
+            <dt>來源</dt>
+            {#if record.majdata}
+              <dd>Majdata・{record.majdata.title} <span class="muted">{record.majdata.designer}</span></dd>
+            {:else if record.wiki}
+              <dd>
+                simai Wiki・{record.wiki.title}
+                <span class="muted">
+                  {WIKI_TYPE_LABEL[record.wiki.chartType] ?? record.wiki.chartType}
+                  {wikiDifficultyLabel(record.wiki.difficulty)}
+                </span>
+              </dd>
+            {:else}
+              <dd>手動貼上</dd>
+            {/if}
+          </dl>
+          {#if sourceChanged && (record.majdata || record.wiki)}
+            <p class="field-hint">
+              來源資訊會保留，但原文已和來源不同；之後從搜尋匯入同一張會直接開啟這筆修改過的紀錄。
+            </p>
+          {/if}
+        {:else}
+          <p class="field-error">這筆紀錄已被刪除，修改無法儲存。</p>
+        {/if}
+      {/if}
       <label class="field-label" for="new-chart-name">名稱（選填）</label>
       <input
         id="new-chart-name"
@@ -185,9 +329,16 @@
       ></textarea>
 
       {#if !session.desktop}
-        <p class="field-error">瀏覽器預覽沒有 Rust 核心，無法生成。請改用桌面版。</p>
+        <p class="field-error">
+          {mode === 'edit'
+            ? '瀏覽器預覽沒有 Rust 核心：可以查看原文與修改名稱，但改過的原文無法儲存。'
+            : '瀏覽器預覽沒有 Rust 核心，無法生成。請改用桌面版。'}
+        </p>
       {:else if session.configIssues.length > 0}
         <p class="field-error">「參數」分頁有超出範圍的數值，修正後才能生成。</p>
+      {/if}
+      {#if mode === 'edit' && record && session.desktop}
+        <p class="field-hint">只改名稱會直接儲存；原文改了要先通過核心分析才會儲存，失敗時紀錄維持原狀。</p>
       {/if}
 
       {#if failed}
@@ -200,7 +351,7 @@
           <div class="row row-wrap">
             <CopyDebugButton
               input={() => ({
-                context: '新增譜面（呼叫核心失敗）',
+                context: `${mode === 'edit' ? '編輯譜面' : '新增譜面'}（呼叫核心失敗）`,
                 source: failed?.request.source ?? draft,
                 config: failed?.request.solverConfig ?? null,
                 firstSeconds: failed?.request.firstSeconds ?? null,
@@ -233,7 +384,7 @@
           <div class="row row-wrap">
             <CopyDebugButton
               input={() => ({
-                context: '新增譜面',
+                context: mode === 'edit' ? '編輯譜面' : '新增譜面',
                 source: rejected?.source ?? draft,
                 config: session.requestConfig,
                 firstSeconds: session.firstSeconds,
@@ -258,14 +409,19 @@
 
   <footer class="dialog-foot">
     <span class="muted xsmall mono">{draft.length} 字元</span>
-    <span class="muted xsmall">Ctrl + Enter 生成</span>
+    <span class="muted xsmall">Ctrl + Enter {mode === 'edit' ? '儲存' : '生成'}</span>
     <span class="spacer"></span>
     <button class="btn" onclick={() => (open = false)}>
-      <Icon name="x" />取消
+      <Icon name="x" />{mode === 'edit' && !dirty ? '關閉' : '取消'}
     </button>
     <button class="btn btn--primary" onclick={generate} disabled={!canGenerate}>
-      <Icon name={analyzing ? 'loader' : 'zap'} spin={analyzing} />
-      {analyzing ? '分析中' : '生成並新增'}
+      {#if mode === 'edit'}
+        <Icon name={analyzing ? 'loader' : sourceChanged ? 'zap' : 'check'} spin={analyzing} />
+        {analyzing ? '分析中' : sourceChanged ? '重新分析並儲存' : '儲存'}
+      {:else}
+        <Icon name={analyzing ? 'loader' : 'zap'} spin={analyzing} />
+        {analyzing ? '分析中' : '生成並新增'}
+      {/if}
     </button>
   </footer>
 </dialog>
@@ -347,6 +503,24 @@
     gap: var(--space-2);
     min-width: 0;
     padding: var(--space-4);
+  }
+
+  .meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-1) var(--space-3);
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-sm);
+  }
+
+  .meta dt {
+    color: var(--c-text-dim);
+  }
+
+  .meta dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .name-gap {

@@ -275,6 +275,37 @@ export class Records {
     void dbPut(STORE_RECORDS, $state.snapshot(next));
   }
 
+  /**
+   * 編輯既有紀錄的名稱與原文。來源資訊（Majdata／Wiki）保留；
+   * 原文改變時換掉雜湊，舊原文若沒有其他紀錄使用，一併清掉它的分析快取。
+   */
+  async update(id: string, changes: { name: string; source: string }): Promise<ChartRecord | null> {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return null;
+    const current = this.items[index];
+    const name = changes.name.trim();
+    const next: ChartRecord = { ...current, source: changes.source };
+    if (name) next.name = name;
+    else delete next.name;
+    const oldHash = current.sourceHash;
+    if (changes.source !== current.source) next.sourceHash = await hashText(changes.source);
+    // 雜湊計算期間紀錄可能被刪掉。
+    const latest = this.items.findIndex((item) => item.id === id);
+    if (latest < 0) return null;
+    this.items[latest] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
+    if (oldHash && oldHash !== next.sourceHash && !this.items.some((item) => item.sourceHash === oldHash)) {
+      void dbDeleteAnalysesBySource(oldHash);
+    }
+    return next;
+  }
+
+  /** 清除使用者資料後呼叫：只清記憶體，資料庫由呼叫端清空。 */
+  reset(): void {
+    this.items = [];
+    this.activeId = null;
+  }
+
   remove(id: string): void {
     const target = this.get(id);
     this.items = this.items.filter((item) => item.id !== id);

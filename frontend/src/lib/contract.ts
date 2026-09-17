@@ -33,6 +33,23 @@ export const SCORING_LABEL: Record<ScoringModel, string> = {
   'legacy-v1': '舊版比較',
 };
 
+export interface ScoringModelInfo {
+  id: ScoringModel;
+  /** 簡短版本標記，介面上與名稱並列。 */
+  version: string;
+  hint: string;
+}
+
+/**
+ * 可選的評分方式，依介面顯示順序（新的在前）。
+ * 新增一版時在 types.ts 的 ScoringModel、SCHEMA_VERSION、SCORING_LABEL 與這裡各加一筆，
+ * 參數頁的選單會自動列出。
+ */
+export const SCORING_MODELS: ScoringModelInfo[] = [
+  { id: SCORING_V2, version: 'v2', hint: '先維持左右分工，再看動作負擔' },
+  { id: SCORING_V1, version: 'v1', hint: '六項成本加總，供對照' },
+];
+
 /** 與 src/model.rs 的 SolverConfig::default() 一致的共用欄位。 */
 export const DEFAULT_BASE: BaseSolverConfig = {
   beamWidth: 128,

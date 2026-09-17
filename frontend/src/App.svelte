@@ -10,11 +10,14 @@
   import RecordsPanel from './components/RecordsPanel.svelte';
   import NewChartDialog from './components/NewChartDialog.svelte';
   import SearchDialog from './components/SearchDialog.svelte';
+  import SettingsDialog from './components/SettingsDialog.svelte';
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
   import { reducedMotion, squash } from './lib/press';
   import { playback } from './state/playback.svelte';
+  import { errorLog } from './state/errorLog.svelte';
+  import type { ChartRecord } from './state/records.svelte';
   import { session } from './state/session.svelte';
   import { toasts } from './state/toasts.svelte';
 
@@ -58,6 +61,19 @@
   let tab = $state<Tab>('solution');
   let dialogOpen = $state(false);
   let searchOpen = $state(false);
+  let settingsOpen = $state(false);
+  /** 指定時新增視窗以編輯模式打開這筆紀錄。 */
+  let editingRecord = $state<ChartRecord | null>(null);
+
+  function editRecord(record: ChartRecord) {
+    editingRecord = record;
+    dialogOpen = true;
+  }
+
+  function createRecord() {
+    editingRecord = null;
+    dialogOpen = true;
+  }
   let innerWidth = $state(1280);
   let leftWidth = $state(savedPanes.left);
   let rightWidth = $state(savedPanes.right);
@@ -143,7 +159,7 @@
   }
 
   function onKeydown(event: KeyboardEvent) {
-    if (dialogOpen || searchOpen) return;
+    if (dialogOpen || searchOpen || settingsOpen) return;
     if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
     switch (event.key) {
       case ' ':
@@ -197,7 +213,7 @@
           </button>
           <button
             class="capsule-btn"
-            onclick={() => (dialogOpen = true)}
+            onclick={createRecord}
             aria-label="新增譜面"
             title="新增譜面"
           >
@@ -211,6 +227,16 @@
           >
             <Icon name="search" size={16} />
           </button>
+          <span class="capsule-rule" aria-hidden="true"></span>
+          <button
+            class="capsule-btn"
+            class:has-errors={errorLog.entries.length > 0}
+            onclick={() => (settingsOpen = true)}
+            aria-label={errorLog.entries.length > 0 ? `設定（${errorLog.entries.length} 筆錯誤紀錄）` : '設定'}
+            title="設定"
+          >
+            <Icon name="settings" size={16} />
+          </button>
         </nav>
       {:else}
         <div
@@ -221,7 +247,9 @@
         >
           <aside class="pane records-pane" aria-label="譜面紀錄">
             <RecordsPanel
-              onCreate={() => (dialogOpen = true)}
+              onCreate={createRecord}
+              onEdit={editRecord}
+              onSettings={() => (settingsOpen = true)}
               onSearch={() => (searchOpen = true)}
               onCollapse={() => setCollapsed(true)}
             />
@@ -289,8 +317,9 @@
     </div>
   </main>
 
-  <NewChartDialog bind:open={dialogOpen} />
+  <NewChartDialog bind:open={dialogOpen} bind:editing={editingRecord} />
   <SearchDialog bind:open={searchOpen} />
+  <SettingsDialog bind:open={settingsOpen} />
   <Toaster />
 </div>
 
@@ -371,6 +400,29 @@
   .capsule-btn:hover {
     color: var(--c-text);
     background: var(--c-control-hover);
+  }
+
+  .capsule-rule {
+    width: 20px;
+    height: 1px;
+    background: var(--c-border);
+  }
+
+  /* 有未回報的錯誤：圖示右上角一個實心點，另有 aria-label 說明筆數。 */
+  .capsule-btn.has-errors {
+    position: relative;
+  }
+
+  .capsule-btn.has-errors::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    background: var(--c-danger);
+    border: 1px solid var(--c-panel);
+    border-radius: 999px;
   }
 
   .pane {
@@ -461,6 +513,11 @@
     .capsule {
       flex-direction: row;
       width: auto;
+    }
+
+    .capsule-rule {
+      width: 1px;
+      height: 20px;
     }
 
     .stage-column {

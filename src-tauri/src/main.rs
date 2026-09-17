@@ -95,6 +95,21 @@ async fn wiki_fetch_chart(
     wiki::fetch_chart(&app, &state, page_id, chart_type, difficulty).await
 }
 
+/// simai Wiki 磁碟快取（索引＋歌曲頁）的用量。
+#[tauri::command]
+fn wiki_cache_info(app: tauri::AppHandle) -> wiki::WikiCacheInfo {
+    wiki::cache_info(&app)
+}
+
+/// 清除 simai Wiki 磁碟快取與記憶體索引；回傳清除前的用量。
+#[tauri::command]
+fn wiki_clear_cache(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, wiki::WikiState>,
+) -> Result<wiki::WikiCacheInfo, String> {
+    wiki::clear_cache(&app, &state)
+}
+
 fn main() {
     let majdata_client = majdata::build_client().expect("Failed to initialize Majdata HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
@@ -109,7 +124,9 @@ fn main() {
             fetch_majdata_chart,
             wiki_refresh_index,
             wiki_search_songs,
-            wiki_fetch_chart
+            wiki_fetch_chart,
+            wiki_cache_info,
+            wiki_clear_cache
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run MaiMotionDemo");

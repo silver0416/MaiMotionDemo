@@ -7,8 +7,9 @@
 //! 搜尋只查本機 index，不在每次按鍵時打 Wiki；選中歌曲才 GET 該頁。
 
 use super::cache::{
-    index_cache_path, is_fresh, load_index_cache, load_song_html, now_unix_seconds,
-    save_index_cache, save_song_html, song_cache_path, MIN_SONGS_PER_INDEX,
+    cache_usage, clear_cache as clear_disk_cache, index_cache_path, is_fresh, load_index_cache,
+    load_song_html, now_unix_seconds, save_index_cache, save_song_html, song_cache_path,
+    CacheUsage, MIN_SONGS_PER_INDEX,
 };
 use super::client::{fetch_deluxe_index_html, fetch_song_html, fetch_standard_index_html};
 use super::index_parser::parse_index_html;
@@ -67,6 +68,42 @@ pub struct WikiChartPayload {
     pub page_url: String,
     pub difficulty: Difficulty,
     pub chart_type: ChartType,
+}
+
+/// Wiki 快取用量，給設定頁顯示。
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiCacheInfo {
+    pub files: u64,
+    pub bytes: u64,
+}
+
+impl From<CacheUsage> for WikiCacheInfo {
+    fn from(usage: CacheUsage) -> Self {
+        Self {
+            files: usage.files,
+            bytes: usage.bytes,
+        }
+    }
+}
+
+/// 目前磁碟上的 Wiki 快取用量。
+pub fn cache_info(app: &AppHandle) -> WikiCacheInfo {
+    cache_usage(&cache_base(app)).into()
+}
+
+/// 清除 Wiki 快取：刪除磁碟上的索引與歌曲頁，並清掉記憶體中的索引，
+/// 下次搜尋會重新向 Wiki 下載。回傳清除前的用量。
+pub fn clear_cache(app: &AppHandle, state: &WikiState) -> Result<WikiCacheInfo, String> {
+    if let Ok(mut index) = state.index.write() {
+        index.clear();
+    }
+    if let Ok(mut at) = state.fetched_at.write() {
+        *at = None;
+    }
+    clear_disk_cache(&cache_base(app))
+        .map(Into::into)
+        .map_err(|error| error.to_string())
 }
 
 /// 快取根目錄：Tauri 快取目錄；取不到時退回系統暫存（測試與例外狀況）。

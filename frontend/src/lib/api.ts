@@ -60,6 +60,23 @@ export async function fetchWikiChart(
   return await invoke<WikiChartPayload>('wiki_fetch_chart', { pageId, chartType, difficulty });
 }
 
+export interface WikiCacheInfo {
+  files: number;
+  bytes: number;
+}
+
+/** simai Wiki 磁碟快取（索引＋歌曲頁）的用量。只有桌面版可用。 */
+export async function wikiCacheInfo(): Promise<WikiCacheInfo> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<WikiCacheInfo>('wiki_cache_info');
+}
+
+/** 清除 simai Wiki 磁碟快取與 Rust 記憶體中的索引；回傳清除前的用量。 */
+export async function clearWikiCache(): Promise<WikiCacheInfo> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<WikiCacheInfo>('wiki_clear_cache');
+}
+
 /**
  * 用系統預設瀏覽器開啟外部連結。
  * 桌面版經 opener plugin 開啟（不會讓 WebView 跳頁）；瀏覽器預覽用 window.open。
