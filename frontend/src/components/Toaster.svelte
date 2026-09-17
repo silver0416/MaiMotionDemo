@@ -34,7 +34,7 @@
         {#if toast.action}
           {@const action = toast.action}
           <button class="btn toast-action" onclick={() => action.run()}>
-            <Icon name="refresh-cw" />{action.label}
+            <Icon name={action.icon ?? 'refresh-cw'} />{action.label}
           </button>
         {/if}
       </div>

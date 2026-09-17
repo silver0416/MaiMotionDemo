@@ -17,6 +17,7 @@
   import { reducedMotion, squash } from './lib/press';
   import { playback } from './state/playback.svelte';
   import { errorLog } from './state/errorLog.svelte';
+  import { markers } from './state/markers.svelte';
   import type { ChartRecord } from './state/records.svelte';
   import { session } from './state/session.svelte';
   import { toasts } from './state/toasts.svelte';
@@ -183,6 +184,35 @@
         event.preventDefault();
         playback.setLoop(!playback.loopEnabled);
         break;
+      case 'i':
+      case 'I':
+        if (!session.result) break;
+        event.preventDefault();
+        playback.setLoopStart(playback.time);
+        if (!playback.loopEnabled) playback.setLoop(true);
+        break;
+      case 'o':
+      case 'O':
+        if (!session.result) break;
+        event.preventDefault();
+        playback.setLoopEnd(playback.time);
+        if (!playback.loopEnabled) playback.setLoop(true);
+        break;
+      case 'm':
+      case 'M':
+        if (!markers.available) break;
+        event.preventDefault();
+        markers.add(Math.round(playback.time * 1000) / 1000);
+        break;
+      case '[':
+      case ']': {
+        const target =
+          event.key === '[' ? markers.previous(playback.time) : markers.next(playback.time);
+        if (!target) break;
+        event.preventDefault();
+        playback.seek(target.time);
+        break;
+      }
       default:
         break;
     }

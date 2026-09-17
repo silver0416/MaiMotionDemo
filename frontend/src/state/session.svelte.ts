@@ -290,12 +290,19 @@ export class Session {
   }
 
   #applyResult(bundle: ResultBundle): void {
+    // 同一份原文只是換參數重新生成：保留播放時間與循環範圍，方便在同一段對照前後差異。
+    const sameChart = this.result !== null && this.result.source === bundle.source;
+    const previousNote = this.selectedNoteId;
     this.result = bundle;
     this.solutionIndex = 0;
-    this.selectedNoteId = null;
+    this.selectedNoteId =
+      sameChart && previousNote && bundle.response.chart?.notes.some((note) => note.id === previousNote)
+        ? previousNote
+        : null;
     this.phase = 'ready';
     const bounds = this.computeBounds();
-    playback.resetRange(bounds.start, bounds.end);
+    if (sameChart) playback.setRange(bounds.start, bounds.end);
+    else playback.resetRange(bounds.start, bounds.end);
   }
 
   /**

@@ -1,7 +1,11 @@
+import type { IconName } from '../components/Icon.svelte';
+
 export type ToastTone = 'busy' | 'ok' | 'warn' | 'error' | 'info';
 
 export interface ToastAction {
   label: string;
+  /** 預設是重新整理圖示。 */
+  icon?: IconName;
   run: () => void;
 }
 

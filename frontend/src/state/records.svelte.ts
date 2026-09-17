@@ -60,6 +60,30 @@ export interface ChartRecord {
   majdata?: MajdataOrigin;
   /** 舊紀錄沒有這個欄位。 */
   wiki?: WikiOrigin;
+  /** 使用者在時間軸上加的標籤，依時間排序。 */
+  markers?: TimelineMarker[];
+}
+
+export interface TimelineMarker {
+  id: string;
+  /** 譜面時間（秒）。 */
+  time: number;
+  label: string;
+}
+
+/** 讀回資料庫時過濾掉格式不對的標籤。 */
+export function cleanMarkers(value: unknown): TimelineMarker[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (item): item is TimelineMarker =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as TimelineMarker).id === 'string' &&
+        typeof (item as TimelineMarker).label === 'string' &&
+        Number.isFinite((item as TimelineMarker).time),
+    )
+    .sort((a, b) => a.time - b.time);
 }
 
 const LEGACY_STORAGE_KEY = 'maimotion.records.v1';
@@ -304,6 +328,16 @@ export class Records {
   reset(): void {
     this.items = [];
     this.activeId = null;
+  }
+
+  /** 取代某筆紀錄的時間軸標籤並寫回資料庫。 */
+  setMarkers(id: string, markers: TimelineMarker[]): void {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const sorted = [...markers].sort((a, b) => a.time - b.time);
+    const next = { ...this.items[index], markers: sorted };
+    this.items[index] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
   }
 
   remove(id: string): void {

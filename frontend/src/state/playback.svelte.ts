@@ -31,17 +31,38 @@ export class Playback {
     return this.endSeconds > this.startSeconds;
   }
 
+  /** 片段範圍是否就是整段（沒有另外設起點或終點）。 */
+  get rangeIsFull(): boolean {
+    return (
+      Math.abs(this.loopStart - this.startSeconds) < 1e-6 && Math.abs(this.loopEnd - this.endSeconds) < 1e-6
+    );
+  }
+
+  /**
+   * 換成新的時間範圍但保留播放位置與片段（例如同一份譜面換參數重新生成）。
+   * 原本片段貼齊頭尾的那一端跟著新範圍延伸，使用者自己設的點維持原值。
+   */
   setRange(start: number, end: number): void {
     const safeEnd = end > start ? end : start + 1;
+    const startWasEdge = Math.abs(this.loopStart - this.startSeconds) < 1e-6;
+    const endWasEdge = Math.abs(this.loopEnd - this.endSeconds) < 1e-6;
     this.startSeconds = start;
     this.endSeconds = safeEnd;
-    this.loopStart = Math.min(Math.max(this.loopStart, start), safeEnd);
-    this.loopEnd = Math.min(Math.max(this.loopEnd, this.loopStart), safeEnd);
+    this.loopStart = startWasEdge ? start : Math.min(Math.max(this.loopStart, start), safeEnd);
+    this.loopEnd = endWasEdge ? safeEnd : Math.min(Math.max(this.loopEnd, this.loopStart), safeEnd);
     if (this.loopEnd - this.loopStart < 0.05) {
       this.loopStart = start;
       this.loopEnd = safeEnd;
     }
     this.seek(Math.min(Math.max(this.time, start), safeEnd));
+  }
+
+  /** 片段回到整段並關閉循環。 */
+  clearLoopRange(): void {
+    this.loopStart = this.startSeconds;
+    this.loopEnd = this.endSeconds;
+    this.loopEnabled = false;
+    this.#anchor(typeof performance === 'undefined' ? 0 : performance.now());
   }
 
   resetRange(start: number, end: number): void {
