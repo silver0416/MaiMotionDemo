@@ -27,6 +27,7 @@ fn initial() -> State {
         active_palms: [None, None],
         held_touch: [None, None],
         owners: Default::default(),
+        wifi_pairs: Default::default(),
         engaged: Default::default(),
         pending: 0.,
         deposit: Default::default(),
@@ -36,6 +37,31 @@ fn initial() -> State {
         finished: Default::default(),
         used_early_slide: false,
         used_touch_group: false,
+    }
+}
+#[test]
+fn slide_handover_remains_available_before_another_contact() {
+    let c = SolverConfig::v3();
+    for (source, allowed) in [
+        ("(120){4}1-5[4:2],E", false),
+        ("(120){4}1-5[4:2],{8},8,E", true),
+    ] {
+        let chart = parse_chart(source, 0.0).unwrap().chart;
+        let ts = tasks(&chart, &c).unwrap();
+        let mut slide = ts.iter().filter(|t| t.mode == "slide");
+        let first = slide.next().unwrap();
+        let second = slide.next().unwrap();
+        let old = assign(&initial(), first, Hand::R, &chart, &c, false).remove(0);
+        let switched = assign(&old, second, Hand::L, &chart, &c, false);
+        assert_eq!(!switched.is_empty(), allowed);
+        if allowed {
+            let next = &switched[0];
+            let h = next.handovers.last().unwrap();
+            assert_eq!(h.from, Hand::R);
+            assert_eq!(h.to, Hand::L);
+            assert!((h.end_seconds - h.start_seconds - c.handover_seconds).abs() < EPS);
+            assert_eq!(next.arms[Hand::R.index()].free, h.end_seconds);
+        }
     }
 }
 #[test]

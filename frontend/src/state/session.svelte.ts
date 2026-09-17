@@ -82,8 +82,9 @@ function stableJson(value: unknown): string {
  * judgment-1：依判定規則加入滑移最短一幀、Hold 結尾提早放手、Touch 晚接與順帶碰觸。
  * judgment-2：Touch Group 過半判定、Slide 進入最後判定區後可離手；s/z 方向與 pp/qq 形狀修正。
  * judgment-3：Touch 感應區代表點依盤面配置圖重新量測（A 0.80、B 0.465、D 0.87、E 0.645），順帶碰觸距離 0.2 → 0.28。
+ * slide-wifi-4：WiFi 三線同時滑行由兩手 2+1 分擔；一般 Slide 除非別的音符需要，否則維持原手。
  */
-export const SOLVER_REVISION = 'judgment-3';
+export const SOLVER_REVISION = 'slide-wifi-4';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。

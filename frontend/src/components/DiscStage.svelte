@@ -18,6 +18,7 @@
     noteVisual,
     pathLength,
     scalePoint,
+    simultaneousSlideHands,
     touchGather,
     type NoteVisual,
   } from '../lib/notes';
@@ -228,27 +229,33 @@
     });
   });
 
-  function tagFor(noteId: string): { text: string; hand: Hand; handover: boolean } | null {
+  function tagFor(
+    noteId: string,
+  ): { text: string; hand: Hand; handover: boolean; dual: boolean } | null {
     const list = session.assignmentsByNote.get(noteId) ?? [];
     if (list.length === 0) return null;
     const handovers = session.handoversByNote.get(noteId) ?? [];
     if (handovers.length > 0) {
       const first = handovers[0];
       const last = handovers[handovers.length - 1];
-      return { text: `${first.from}→${last.to}`, hand: first.from, handover: true };
+      return { text: `${first.from}→${last.to}`, hand: first.from, handover: true, dual: false };
+    }
+    // 兩手同時各滑一段（WiFi 2+1）：標成 L+R 滑，兩個字母各用自己的手色。
+    if (simultaneousSlideHands(list).length > 0) {
+      return { text: 'L+R滑', hand: 'L', handover: false, dual: true };
     }
     // Touch Group 連帶判定沒有實際接觸，標籤要和真的按下去的區分開。
     if (list.every((item) => item.part === 'group')) {
-      return { text: `${list[0].hand}連帶`, hand: list[0].hand, handover: false };
+      return { text: `${list[0].hand}連帶`, hand: list[0].hand, handover: false, dual: false };
     }
     const head = list.find((item) => item.part === 'head' || item.part === 'contact');
     const slide = list.find((item) => item.part === 'slide');
     // 起點與軌道分屬不同手（且沒有交接段）時要講清楚，不能只寫其中一隻手。
     if (head && slide && head.hand !== slide.hand) {
-      return { text: `${head.hand}起${slide.hand}滑`, hand: head.hand, handover: false };
+      return { text: `${head.hand}起${slide.hand}滑`, hand: head.hand, handover: false, dual: false };
     }
     const hands = [...new Set(list.map((item) => item.hand))];
-    return { text: hands.join('/'), hand: hands[0], handover: false };
+    return { text: hands.join('/'), hand: hands[0], handover: false, dual: false };
   }
 
   function px(point: Point): Point {
@@ -528,6 +535,10 @@
                   {/each}
                   <path class="slide-path-base" d={polylinePath(path.samples, calibration)} />
                   {#if visual.slideU > 0}
+                    <!-- WiFi 三條線共用同一個 slideU，進度同步推進 -->
+                    {#each path.branches as branch, index (index)}
+                      <path class="slide-path-done" d={partialPath(branch, visual.slideU)} />
+                    {/each}
                     <path class="slide-path-done" d={partialPath(path.samples, visual.slideU)} />
                   {/if}
                   {#each arrows as arrow, index (index)}
@@ -623,6 +634,13 @@
                   {#if visual.slideU > 0 && visual.slideU < 1 && note.pathId}
                     {@const path = session.pathById.get(note.pathId)}
                     {#if path}
+                      <!-- WiFi 側線的導引星與中央同一個 slideU，三顆星同時抵達 -->
+                      {#each path.branches as branch, index (index)}
+                        <path
+                          class="note-star is-moving"
+                          d={starPath(pointOnSamples(branch, visual.slideU), 0.085, 0.038)}
+                        />
+                      {/each}
                       <path
                         class="note-star is-moving"
                         d={starPath(pointOnSamples(path.samples, visual.slideU), 0.085, 0.038)}
@@ -646,7 +664,13 @@
                     text-anchor="middle"
                     dominant-baseline="central"
                   >
-                    {tag.text}
+                    {#if tag.dual}
+                      <tspan class="tag-left">L</tspan><tspan class="tag-plain">+</tspan><tspan
+                        class="tag-right">R</tspan
+                      ><tspan class="tag-plain">滑</tspan>
+                    {:else}
+                      {tag.text}
+                    {/if}
                   </text>
                 {/if}
               </g>
@@ -1068,6 +1092,19 @@
 
   .note-tag.is-handover {
     fill: var(--c-accent);
+  }
+
+  /* 兩手同時滑行：字母各用自己的手色，連接字用中性白 */
+  .note-tag .tag-left {
+    fill: var(--c-left);
+  }
+
+  .note-tag .tag-right {
+    fill: var(--c-right);
+  }
+
+  .note-tag .tag-plain {
+    fill: #eef2f8;
   }
 
   .track {

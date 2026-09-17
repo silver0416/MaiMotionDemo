@@ -1,0 +1,1228 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "v3-slide-palm",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "glideDistance": 0.8,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWillingness": 40.0,
+      "homePreference": 60.0,
+      "jackTolerance": 60.0,
+      "palmRadius": 0.5,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "scoringModel": "human-motion-v3",
+      "slidePickupSeconds": 0.12,
+      "topK": 3,
+      "travelComfort": 90.0
+    },
+    "source": "(120){4}1-5[4:1]/8h[4:3],{16},B2,E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 1.5,
+      "notes": [
+        {
+          "button": 1,
+          "endSeconds": 1.0,
+          "hasHead": true,
+          "id": "n0",
+          "kind": "slide",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": 1.0,
+          "motionStart": 0.5,
+          "pathId": "p0",
+          "position": {
+            "x": 0.38268343236508984,
+            "y": -0.9238795325112867
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 16,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        },
+        {
+          "button": 8,
+          "endSeconds": 1.5,
+          "hasHead": true,
+          "id": "n1",
+          "kind": "hold",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.38268343236509034,
+            "y": -0.9238795325112865
+          },
+          "sourceSpan": {
+            "column": 18,
+            "end": 24,
+            "line": 1,
+            "start": 17
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        },
+        {
+          "button": 2,
+          "endSeconds": 0.625,
+          "hasHead": true,
+          "id": "n2",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.42960398261774835,
+            "y": -0.17794779604976677
+          },
+          "sourceSpan": {
+            "column": 31,
+            "end": 32,
+            "line": 1,
+            "start": 30
+          },
+          "timeSeconds": 0.625,
+          "touchArea": "B"
+        }
+      ],
+      "paths": [
+        {
+          "branches": [],
+          "endButton": 5,
+          "id": "p0",
+          "judgeProgress": 0.848,
+          "samples": [
+            {
+              "u": 0.0,
+              "x": 0.38268343236508984,
+              "y": -0.9238795325112867
+            },
+            {
+              "u": 1.0,
+              "x": -0.3826834323650897,
+              "y": 0.9238795325112867
+            }
+          ],
+          "shape": "-",
+          "startButton": 1
+        }
+      ],
+      "touchSensors": [
+        {
+          "area": "A",
+          "index": 1,
+          "position": {
+            "x": 0.3061467458920719,
+            "y": -0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 2,
+          "position": {
+            "x": 0.7391036260090295,
+            "y": -0.30614674589207186
+          }
+        },
+        {
+          "area": "A",
+          "index": 3,
+          "position": {
+            "x": 0.7391036260090295,
+            "y": 0.30614674589207186
+          }
+        },
+        {
+          "area": "A",
+          "index": 4,
+          "position": {
+            "x": 0.3061467458920719,
+            "y": 0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 5,
+          "position": {
+            "x": -0.3061467458920718,
+            "y": 0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 6,
+          "position": {
+            "x": -0.7391036260090295,
+            "y": 0.3061467458920719
+          }
+        },
+        {
+          "area": "A",
+          "index": 7,
+          "position": {
+            "x": -0.7391036260090296,
+            "y": -0.30614674589207175
+          }
+        },
+        {
+          "area": "A",
+          "index": 8,
+          "position": {
+            "x": -0.3061467458920723,
+            "y": -0.7391036260090292
+          }
+        },
+        {
+          "area": "B",
+          "index": 1,
+          "position": {
+            "x": 0.1779477960497668,
+            "y": -0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 2,
+          "position": {
+            "x": 0.42960398261774835,
+            "y": -0.17794779604976677
+          }
+        },
+        {
+          "area": "B",
+          "index": 3,
+          "position": {
+            "x": 0.42960398261774835,
+            "y": 0.17794779604976677
+          }
+        },
+        {
+          "area": "B",
+          "index": 4,
+          "position": {
+            "x": 0.1779477960497668,
+            "y": 0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 5,
+          "position": {
+            "x": -0.17794779604976674,
+            "y": 0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 6,
+          "position": {
+            "x": -0.42960398261774835,
+            "y": 0.17794779604976682
+          }
+        },
+        {
+          "area": "B",
+          "index": 7,
+          "position": {
+            "x": -0.4296039826177484,
+            "y": -0.1779477960497667
+          }
+        },
+        {
+          "area": "B",
+          "index": 8,
+          "position": {
+            "x": -0.17794779604976702,
+            "y": -0.42960398261774824
+          }
+        },
+        {
+          "area": "D",
+          "index": 1,
+          "position": {
+            "x": 5.3272135762909864e-17,
+            "y": -0.87
+          }
+        },
+        {
+          "area": "D",
+          "index": 2,
+          "position": {
+            "x": 0.6151828996322963,
+            "y": -0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 3,
+          "position": {
+            "x": 0.87,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "D",
+          "index": 4,
+          "position": {
+            "x": 0.6151828996322963,
+            "y": 0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 5,
+          "position": {
+            "x": 5.3272135762909864e-17,
+            "y": 0.87
+          }
+        },
+        {
+          "area": "D",
+          "index": 6,
+          "position": {
+            "x": -0.6151828996322963,
+            "y": 0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 7,
+          "position": {
+            "x": -0.87,
+            "y": 1.0654427152581973e-16
+          }
+        },
+        {
+          "area": "D",
+          "index": 8,
+          "position": {
+            "x": -0.6151828996322967,
+            "y": -0.615182899632296
+          }
+        },
+        {
+          "area": "E",
+          "index": 1,
+          "position": {
+            "x": 3.949485927250214e-17,
+            "y": -0.645
+          }
+        },
+        {
+          "area": "E",
+          "index": 2,
+          "position": {
+            "x": 0.4560838738653232,
+            "y": -0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 3,
+          "position": {
+            "x": 0.645,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "E",
+          "index": 4,
+          "position": {
+            "x": 0.4560838738653232,
+            "y": 0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 5,
+          "position": {
+            "x": 3.949485927250214e-17,
+            "y": 0.645
+          }
+        },
+        {
+          "area": "E",
+          "index": 6,
+          "position": {
+            "x": -0.4560838738653231,
+            "y": 0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 7,
+          "position": {
+            "x": -0.645,
+            "y": 7.898971854500428e-17
+          }
+        },
+        {
+          "area": "E",
+          "index": 8,
+          "position": {
+            "x": -0.4560838738653234,
+            "y": -0.4560838738653229
+          }
+        },
+        {
+          "area": "C",
+          "index": 0,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          }
+        }
+      ]
+    },
+    "diagnostics": [],
+    "requestId": "v3-slide-palm",
+    "schemaVersion": 4,
+    "solutions": [
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.5,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.6416666666666667,
+            "hand": "R",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.625
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 60.0,
+          "jackTolerance": 60.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "human-motion-v3",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 90.0
+        },
+        "handovers": [],
+        "id": "solution-1",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "hold",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.0
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.625,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.625,
+                "x": 0.19134171618254495,
+                "y": -0.46193976625564337
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.625,
+                "x": 0.19134171618254495,
+                "y": -0.46193976625564337
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.625
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.9239999999999999,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.9239999999999999,
+                "x": -0.2663476689261023,
+                "y": 0.6430201546278553
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9239999999999999,
+                "x": -0.2663476689261023,
+                "y": 0.6430201546278553
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9239999999999999
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.0
+          }
+        ],
+        "score": {
+          "fatigue": 0.0,
+          "movement": 0.2755320713028645,
+          "posture": 0.04518968393421062,
+          "total": 0.32072175523707513
+        },
+        "scoreBreakdown": {
+          "compressionStrain": 0.0,
+          "crossExposure": 0.0,
+          "excursion": 0.04518968393421062,
+          "handover": 0.0,
+          "jackFatigue": 0.0,
+          "reversal": 0.0,
+          "speedStrain": 0.0,
+          "travel": 0.2755320713028645,
+          "workload": 0.0
+        },
+        "scoringModel": "human-motion-v3",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "head",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 1.0,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 1.5,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.6416666666666667,
+            "hand": "L",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.625
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 60.0,
+          "jackTolerance": 60.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "human-motion-v3",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 90.0
+        },
+        "handovers": [],
+        "id": "solution-2",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.03
+          },
+          {
+            "endSeconds": 0.55,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.5,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              }
+            ],
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.6,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.55,
+                "x": 0.3061467458920718,
+                "y": -0.7391036260090292
+              },
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.55
+          },
+          {
+            "endSeconds": 0.625,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6,
+                "x": 0.22961005941905396,
+                "y": -0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.625,
+                "x": 0.19134171618254495,
+                "y": -0.46193976625564337
+              }
+            ],
+            "startSeconds": 0.6
+          },
+          {
+            "endSeconds": 0.65,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.625,
+                "x": 0.19134171618254495,
+                "y": -0.46193976625564337
+              },
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.625
+          },
+          {
+            "endSeconds": 0.7,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.65,
+                "x": 0.15307337294603593,
+                "y": -0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              }
+            ],
+            "startSeconds": 0.65
+          },
+          {
+            "endSeconds": 0.75,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.7,
+                "x": 0.07653668647301809,
+                "y": -0.1847759065022575
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.7
+          },
+          {
+            "endSeconds": 0.8,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 5.551115123125783e-17,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 0.85,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.8,
+                "x": -0.07653668647301798,
+                "y": 0.18477590650225761
+              },
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              }
+            ],
+            "startSeconds": 0.8
+          },
+          {
+            "endSeconds": 0.9,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.85,
+                "x": -0.15307337294603585,
+                "y": 0.36955181300451456
+              },
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              }
+            ],
+            "startSeconds": 0.85
+          },
+          {
+            "endSeconds": 0.9239999999999999,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9,
+                "x": -0.22961005941905388,
+                "y": 0.5543277195067722
+              },
+              {
+                "timeSeconds": 0.9239999999999999,
+                "x": -0.2663476689261023,
+                "y": 0.6430201546278553
+              }
+            ],
+            "startSeconds": 0.9
+          },
+          {
+            "endSeconds": 0.95,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.9239999999999999,
+                "x": -0.2663476689261023,
+                "y": 0.6430201546278553
+              },
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              }
+            ],
+            "startSeconds": 0.9239999999999999
+          },
+          {
+            "endSeconds": 1.0,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.95,
+                "x": -0.3061467458920717,
+                "y": 0.7391036260090291
+              },
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.95
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 1.0,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.3826834323650897,
+                "y": 0.9238795325112867
+              }
+            ],
+            "startSeconds": 1.0
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "hold",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": -0.38268343236509034,
+                "y": -0.9238795325112865
+              }
+            ],
+            "startSeconds": 0.0
+          }
+        ],
+        "score": {
+          "fatigue": 0.0,
+          "movement": 0.5091168824543142,
+          "posture": 0.1256969957672236,
+          "total": 0.6348138782215378
+        },
+        "scoreBreakdown": {
+          "compressionStrain": 0.0,
+          "crossExposure": 0.028801166516656235,
+          "excursion": 0.09689582925056736,
+          "handover": 0.0,
+          "jackFatigue": 0.0,
+          "reversal": 0.0,
+          "speedStrain": 0.0,
+          "travel": 0.5091168824543142,
+          "workload": 0.0
+        },
+        "scoringModel": "human-motion-v3",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。"
+        ]
+      }
+    ],
+    "status": "ok"
+  }
+}

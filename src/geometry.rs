@@ -318,7 +318,7 @@ fn judge_const(segment: &Segment) -> f64 {
     }
 }
 
-/// Wifi 的兩條側線；主線仍是中央那條，手的移動以主線為準。
+/// Wifi 的兩條側線；與中央線共用進度，求解器以雙手 2+1 覆蓋。
 fn wifi_branches(segment: &Segment) -> Vec<Vec<PathSample>> {
     let mut out = vec![];
     for offset in [-1, 1] {
@@ -360,6 +360,9 @@ fn resample(points: &[Point]) -> Result<Vec<PathSample>, String> {
 pub fn build_path(id: String, segments: &[Segment]) -> Result<SlidePath, String> {
     if segments.is_empty() {
         return Err("Slide 缺少形狀".into());
+    }
+    if segments.len() > 1 && segments.iter().any(|s| s.shape == Shape::Wifi) {
+        return Err("WiFi 暫不支援與其他形狀共用一段時間；請使用各段獨立時間的接續寫法".into());
     }
     let mut points: Vec<Point> = vec![];
     let mut shape = String::new();

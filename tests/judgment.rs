@@ -163,9 +163,15 @@ fn tracking_hand_brushes_touch_on_its_path() {
         let center = note(&r, |n| n.kind == "touch");
         let hit = contacts(&r, &center.id)[0];
         assert_eq!(hit.hand, owner);
-        // 隔一區的 B2 離路徑 0.329，超出順帶碰觸範圍。
+        // B2 離路徑 0.329，在預設滑行手掌 0.5 內；縮小到 0.28 才不可達。
+        let wider = ok("(120){4}1-5[4:1]/8h[4:3],{16},B2,E", c.clone());
+        let touch = note(&wider, |n| n.kind == "touch");
+        assert_eq!(contacts(&wider, &touch.id)[0].hand, owner);
+        assert!((contacts(&wider, &touch.id)[0].start_seconds - touch.time_seconds).abs() < 1e-8);
+        let mut narrow = c.clone();
+        narrow.palm_radius = 0.28;
         assert_eq!(
-            run("(120){4}1-5[4:1]/8h[4:3],{16},B2,E", c.clone()).status,
+            run("(120){4}1-5[4:1]/8h[4:3],{16},B2,E", narrow).status,
             "no_solution"
         );
         // 路徑外的 Touch 不會被順帶完成。

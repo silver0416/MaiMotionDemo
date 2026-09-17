@@ -158,6 +158,8 @@ struct State {
     held_touch: [Option<usize>; 2],
     /// 只保留還在進行中的 Slide；結束的項目每個時間點清掉，複製成本才不會隨譜面長度成長。
     owners: BTreeMap<usize, Hand>,
+    /// WiFi: owner covers the center plus this side; the other hand covers the other side.
+    wifi_pairs: BTreeMap<usize, usize>,
     /// 每條進行中的 Slide 實際被接上的時間；手晚接上時，剩下的路徑就壓縮在剩餘時間內走完。
     engaged: BTreeMap<usize, f64>,
     /// 尚未接上的 Slide 已累積多少「遲早要付」的移動量。延後接上本身不花成本，
@@ -742,7 +744,7 @@ fn arm_point_at(arm: &Arm, time: f64) -> Point {
 /// 兩手在同一點碰頭時，原地互換各自要追的 Slide。兩手位置相同，交換之後軌跡仍然連續，
 /// 因此不需要任何移動 —— 這正是玩家在對穿的 Slide 上避免手臂交叉的作法。
 fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<State> {
-    if !c.allow_handover {
+    if !c.allow_handover || !state.wifi_pairs.is_empty() {
         return None;
     }
     let [left, right] = &state.arms;
@@ -760,6 +762,13 @@ fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<
     let (&first, &first_hand) = pairs.next()?;
     let (&second, &second_hand) = pairs.next()?;
     if first_hand == second_hand {
+        return None;
+    }
+    if c.is_v3()
+        && ![first, second]
+            .iter()
+            .any(|note| has_upcoming_contact(chart, *note, time))
+    {
         return None;
     }
     for note in [first, second] {
@@ -808,6 +817,13 @@ fn assign(
     c: &SolverConfig,
     late: bool,
 ) -> Vec<State> {
+    if task.mode == "slide" && chart.paths[task.path].branches.len() == 2 {
+        return if late {
+            vec![]
+        } else {
+            assign_wifi(state, task, hand, chart, c)
+        };
+    }
     let mut out: Vec<State> = if late {
         vec![]
     } else {
@@ -841,6 +857,142 @@ fn assign(
         out.extend(assign_once(&relief.state, task, hand, chart, c, contact));
     }
     out
+}
+
+/// Atomic two-hand WiFi assignment. Both tracks use one pickup clock and keep
+/// their split for the whole slide. A circular palm follows the midpoint of
+/// two adjacent branches; a single hand must never stand in for all three.
+fn assign_wifi(
+    state: &State,
+    task: &Task,
+    paired: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Vec<State> {
+    let mut bases = vec![state.clone()];
+    if !state.engaged.contains_key(&task.note) {
+        for hand in [Hand::L, Hand::R] {
+            let relieved: Vec<_> = bases
+                .iter()
+                .flat_map(|base| {
+                    relieve(
+                        base,
+                        hand.index(),
+                        hand,
+                        task.start,
+                        None,
+                        false,
+                        false,
+                        chart,
+                        c,
+                    )
+                    .into_iter()
+                    .map(|relief| relief.state)
+                })
+                .collect();
+            bases.extend(relieved);
+        }
+    }
+    bases
+        .iter()
+        .flat_map(|base| assign_wifi_once(base, task, paired, chart, c))
+        .collect()
+}
+
+fn assign_wifi_once(
+    state: &State,
+    task: &Task,
+    paired: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Vec<State> {
+    if state
+        .owners
+        .get(&task.note)
+        .is_some_and(|owner| *owner != paired)
+    {
+        return vec![];
+    }
+    let note = &chart.notes[task.note];
+    let path = &chart.paths[task.path];
+    let nominal_end = note.motion_end.unwrap();
+    let pickup = state
+        .engaged
+        .get(&task.note)
+        .copied()
+        .unwrap_or_else(|| task.start.max(state.arms[0].free).max(state.arms[1].free));
+    if pickup > note.motion_start.unwrap() + c.slide_pickup_seconds + EPS {
+        return vec![];
+    }
+    let begin = task.start.max(pickup);
+    let end = if task.release_early {
+        task.end - c.slide_pickup_seconds.min((task.end - task.start) * 0.5)
+    } else {
+        task.end
+    };
+    if begin >= end - EPS {
+        return vec![];
+    }
+    let u0 = (begin - pickup) / (nominal_end - pickup);
+    let u1 = if task.release_early {
+        1.0
+    } else {
+        (end - pickup) / (nominal_end - pickup)
+    };
+    let other = if paired == Hand::L { Hand::R } else { Hand::L };
+    let mut out = vec![];
+    for side in 0..2 {
+        if state.wifi_pairs.get(&task.note).is_some_and(|s| *s != side) {
+            continue;
+        }
+        let side_end = |s: usize| {
+            let p = path.branches[s].last().unwrap();
+            Point { x: p.x, y: p.y }
+        };
+        let center_end = path.at(1.0);
+        // Maximum separation occurs at the fan's endpoint.
+        if center_end.distance(side_end(side)) * 0.5 > c.palm_radius + EPS {
+            continue;
+        }
+        let ends = [center_end.lerp(side_end(side), 0.5), side_end(1 - side)];
+        let mut next = state.clone();
+        next.pending -= next.deposit.remove(&task.note).unwrap_or(0.0);
+        next.engaged.insert(task.note, pickup);
+        let mut valid = true;
+        for (hand, endpoint) in [paired, other].into_iter().zip(ends) {
+            next.owners.insert(task.note, hand);
+            let mut track = task.clone();
+            track.samples = vec![
+                MotionSample::new(begin, path.at(0.0).lerp(endpoint, u0)),
+                MotionSample::new(end, path.at(0.0).lerp(endpoint, u1)),
+            ];
+            if let Some(assigned) = assign_once(&next, &track, hand, chart, c, None) {
+                next = assigned;
+            } else {
+                valid = false;
+                break;
+            }
+        }
+        if valid {
+            next.owners.insert(task.note, paired);
+            next.wifi_pairs.insert(task.note, side);
+            out.push(next);
+        }
+    }
+    out
+}
+
+fn has_upcoming_contact(chart: &Chart, note: usize, time: f64) -> bool {
+    let end = chart.notes[note].motion_end.unwrap();
+    chart.notes.iter().enumerate().any(|(i, other)| {
+        i != note
+            && ((other.has_head
+                && other.time_seconds > time + EPS
+                && other.time_seconds < end - EPS)
+                || other
+                    .motion_start
+                    .is_some_and(|t| t > time + EPS && t < end - EPS))
+    })
 }
 
 /// contact 指定非 Slide 任務的實際接觸開始時間，以及是否已由上一個接觸滑過來。
@@ -891,24 +1043,28 @@ fn assign_once(
     if shifted && task_end <= begin + EPS {
         return None;
     }
-    let samples = match (pickup, early_finish) {
-        (Some(pickup), Some(finish)) => {
-            let nominal_end = n.motion_end.unwrap();
-            let u0 = (begin - pickup) / (nominal_end - pickup);
-            path_samples_range(&chart.paths[task.path], u0, 1.0, begin, finish)
+    let samples = if task.mode == "slide" && !task.samples.is_empty() {
+        task.samples.clone()
+    } else {
+        match (pickup, early_finish) {
+            (Some(pickup), Some(finish)) => {
+                let nominal_end = n.motion_end.unwrap();
+                let u0 = (begin - pickup) / (nominal_end - pickup);
+                path_samples_range(&chart.paths[task.path], u0, 1.0, begin, finish)
+            }
+            (Some(pickup), None) => path_samples(
+                &chart.paths[task.path],
+                pickup,
+                n.motion_end.unwrap(),
+                begin,
+                task_end,
+            ),
+            (None, _) if shifted => vec![
+                MotionSample::new(begin, n.position),
+                MotionSample::new(task_end, n.position),
+            ],
+            (None, _) => task.samples.clone(),
         }
-        (Some(pickup), None) => path_samples(
-            &chart.paths[task.path],
-            pickup,
-            n.motion_end.unwrap(),
-            begin,
-            task_end,
-        ),
-        (None, _) if shifted => vec![
-            MotionSample::new(begin, n.position),
-            MotionSample::new(task_end, n.position),
-        ],
-        (None, _) => task.samples.clone(),
     };
     let start = samples[0].point();
 
@@ -935,6 +1091,11 @@ fn assign_once(
     let old = state.owners.get(&task.note).copied();
     let switching = engaged.is_some() && old != Some(hand);
     if switching {
+        // V3 keeps ownership unless another contact is due before this slide ends.
+        // Look ahead so the hand can overlap and travel before the actual conflict.
+        if c.is_v3() && !has_upcoming_contact(chart, task.note, task.start) {
+            return None;
+        }
         if !c.allow_handover || task_end - task.start + EPS < c.handover_seconds {
             return None;
         }
@@ -1388,7 +1549,6 @@ fn brush_touch(
     if note.kind != "touch" || task.mode != "tap" || c.palm_radius <= 0.0 {
         return None;
     }
-    let radius = TOUCH_BRUSH_RADIUS.min(c.palm_radius);
     let window = TOUCH_LATE_FRAMES * JUDGE_FRAME;
     let (lo, hi) = (task.start - window, task.start + window);
     let target = note.position;
@@ -1411,6 +1571,11 @@ fn brush_touch(
         // 外圈按鍵在螢幕外；按住或滑過按鍵的手不會碰到螢幕上的感應區。
         let on_screen = |p: Point| p.x.hypot(p.y) < SCREEN_EDGE;
         let tracking = matches!(segment.mode.as_str(), "slide" | "handover");
+        let radius = if tracking {
+            c.palm_radius
+        } else {
+            TOUCH_BRUSH_RADIUS.min(c.palm_radius)
+        };
         for pair in segment.samples.windows(2) {
             let (t0, t1) = (pair[0].time_seconds, pair[1].time_seconds);
             let (a, b) = (pair[0].point(), pair[1].point());
@@ -1418,7 +1583,7 @@ fn brush_touch(
                 continue;
             }
             let (from, to) = (t0.max(lo), t1.min(hi));
-            if to < from - EPS {
+            if to < from {
                 continue;
             }
             let at = |t: f64| {
@@ -1431,14 +1596,40 @@ fn brush_touch(
             let (p, q) = (at(from), at(to));
             let (dx, dy) = (q.x - p.x, q.y - p.y);
             let length = dx * dx + dy * dy;
-            let u = if length <= EPS {
-                0.0
+            let (enter, exit) = if length <= EPS {
+                if p.distance(target) > radius + EPS {
+                    continue;
+                }
+                (from, to)
             } else {
-                (((target.x - p.x) * dx + (target.y - p.y) * dy) / length).clamp(0.0, 1.0)
+                let projection = ((target.x - p.x) * dx + (target.y - p.y) * dy) / length;
+                let closest = Point {
+                    x: p.x + projection * dx,
+                    y: p.y + projection * dy,
+                };
+                let perpendicular = closest.distance(target);
+                if perpendicular > radius + EPS {
+                    continue;
+                }
+                let half =
+                    ((radius * radius - perpendicular * perpendicular).max(0.0) / length).sqrt();
+                let (low, high) = ((projection - half).max(0.0), (projection + half).min(1.0));
+                if low > high {
+                    continue;
+                }
+                (from + (to - from) * low, from + (to - from) * high)
             };
-            let time = from + (to - from) * u;
-            let distance = p.lerp(q, u).distance(target);
-            if distance <= radius + EPS && best.is_none_or(|(d, _)| distance < d - EPS) {
+            // Prefer the nominal Touch time when already inside the moving palm,
+            // rather than delaying to the geometric closest point/checkpoint.
+            let time = task.start.clamp(enter, exit);
+            let distance = at(time).distance(target);
+            if distance <= radius + EPS
+                && best.is_none_or(|(d, t)| {
+                    (time - task.start).abs() < (t - task.start).abs() - EPS
+                        || ((time - task.start).abs() - (t - task.start).abs()).abs() <= EPS
+                            && distance < d - EPS
+                })
+            {
                 best = Some((distance, time));
             }
         }
@@ -1924,6 +2115,7 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         active_palms: [None, None],
         held_touch: [None, None],
         owners: BTreeMap::new(),
+        wifi_pairs: BTreeMap::new(),
         engaged: BTreeMap::new(),
         pending: 0.0,
         deposit: BTreeMap::new(),
@@ -1966,6 +2158,7 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
             let live =
                 |note: &usize| chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= time - EPS;
             state.owners.retain(|note, _| live(note));
+            state.wifi_pairs.retain(|note, _| live(note));
             state.engaged.retain(|note, _| live(note));
             state.finished.retain(&live);
             state.last_handover.retain(|note, _| live(note));
@@ -2321,6 +2514,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         }
         if c.is_v3() {
             warnings[1] = "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。".into();
+        }
+        if chart.paths.iter().any(|path| path.branches.len() == 2) {
+            warnings.push("WiFi 以雙手同步 2+1 覆蓋近似：一手沿中央與相鄰側線的中點移動，另一手沿剩餘側線；手掌半徑沿用設定值。".into());
         }
         if used_touch_sweep {
             warnings.push(

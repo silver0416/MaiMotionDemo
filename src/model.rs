@@ -71,7 +71,7 @@ pub struct SlidePath {
     pub start_button: u8,
     pub end_button: u8,
     pub samples: Vec<PathSample>,
-    /// Wifi 的兩條側線；其餘形狀為空。手的移動一律以 samples 為準。
+    /// Wifi 的兩條側線；其餘形狀為空。Wifi 雙手以中央＋側線的中點及另一側線同步追蹤。
     pub branches: Vec<Vec<PathSample>>,
     /// 引導星星進入最後一個判定區時的弧長比例 u（Slide 尾判的正解位置）。
     pub judge_progress: f64,

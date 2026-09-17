@@ -21,6 +21,8 @@ fn main() {
         ("v3-jack", "(240){24}1,1,1,1,E"),
         ("v3-abab", "(240){24}1,2,1,2,1,2,E"),
         ("v3-palm", "(120){4}C/B1/E1/7,E"),
+        ("v3-wifi", "(120){4}1w5[4:2],{8},C,E"),
+        ("v3-slide-palm", "(120){4}1-5[4:1]/8h[4:3],{16},B2,E"),
     ] {
         let mut config = SolverConfig::default();
         if name.starts_with("v2-") {

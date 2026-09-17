@@ -1,4 +1,21 @@
-import type { Note, PathSample, Point } from './types';
+import type { Assignment, Hand, Note, PathSample, Point } from './types';
+
+/**
+ * 同一顆 Slide 由兩手「同時」各滑一段（例如 WiFi 2+1）時回傳兩手，否則回傳空陣列。
+ * 只看 Rust 的指派區間是否重疊，不從軌道形狀推測哪隻手蓋到哪條線。
+ * 呼叫端須先排除交接：交接的重疊期間也是兩手同在軌道上，但意義不同。
+ */
+export function simultaneousSlideHands(list: Assignment[]): Hand[] {
+  const slides = list.filter((item) => item.part === 'slide');
+  for (const a of slides) {
+    for (const b of slides) {
+      if (a.hand === 'L' && b.hand === 'R' && a.startSeconds < b.endSeconds && b.startSeconds < a.endSeconds) {
+        return ['L', 'R'];
+      }
+    }
+  }
+  return [];
+}
 
 /** 音符落點的簡短寫法：外圈鍵為 `3`，Touch 為 `B5` 或 `C`。 */
 export function noteTarget(note: Note): string {

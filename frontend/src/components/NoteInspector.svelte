@@ -9,7 +9,7 @@
     isV3Solution,
     shapeLabel,
   } from '../lib/contract';
-  import { noteBadges, noteTarget } from '../lib/notes';
+  import { noteBadges, noteTarget, simultaneousSlideHands } from '../lib/notes';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { TOUCH_AREA_PLACE } from '../lib/touch';
   import { formatClock, formatDelta, formatNumber } from '../lib/format';
@@ -35,6 +35,7 @@
     if (handover.length > 0) {
       return `${handover[0].from}→${handover[handover.length - 1].to}`;
     }
+    if (simultaneousSlideHands(list).length > 0) return 'L+R';
     const hands = [...new Set(list.map((item) => item.hand))] as Hand[];
     return hands.join('/');
   }
@@ -72,6 +73,8 @@
   const badges = $derived(note ? noteBadges(note) : []);
   const assignments = $derived(note ? (session.assignmentsByNote.get(note.id) ?? []) : []);
   const handovers = $derived(note ? (session.handoversByNote.get(note.id) ?? []) : []);
+  /** 兩手同時各滑一段（WiFi 2+1）；有交接時不算，交接另有說明。 */
+  const dualSlide = $derived(handovers.length === 0 && simultaneousSlideHands(assignments).length > 0);
   /** 覆蓋這顆音符的手掌動作，直接取核心結果，不在前端重算覆蓋組。 */
   const palm = $derived(note ? (session.palmByNoteId.get(note.id) ?? null) : null);
 </script>
@@ -204,6 +207,12 @@
             {/each}
           </tbody>
         </table>
+      {/if}
+
+      {#if dualSlide}
+        <p class="small" style="margin-top: var(--space-3)">
+          L 與 R 同時各滑一段，軌道進度同步；兩手位置各自取自核心輸出的軌跡。
+        </p>
       {/if}
 
       {#if handovers.length > 0}

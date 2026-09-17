@@ -502,7 +502,7 @@ fn checkpoints_do_not_multiply_cost_and_late_pickup_keeps_compression() {
 }
 
 #[test]
-fn handover_has_a_floor_but_meeting_swap_is_free() {
+fn handover_has_a_floor_and_v3_keeps_crossing_slide_owners() {
     let willing = ScoringV3::new(PreferenceConfigV3 {
         handover_willingness: 100.,
         ..Default::default()
@@ -513,7 +513,7 @@ fn handover_has_a_floor_but_meeting_swap_is_free() {
     let r = ok("(120){4}1-5[4:1]/5-1[4:1],E");
     assert_eq!(
         r.solutions[0].handovers.iter().filter(|h| h.swap).count(),
-        2
+        0
     );
     near(
         r.solutions[0]
