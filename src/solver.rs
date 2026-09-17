@@ -35,8 +35,9 @@ const HOLD_TAIL_FRAMES: f64 = 12.0;
 const HOLD_HEAD_FRAMES: f64 = 6.0;
 const TOUCH_HOLD_HEAD_FRAMES: f64 = 15.0;
 /// 貼著面板移動或按住的手順帶碰到 Touch 的距離。約為相鄰內圈感應區代表點的間距
-/// （B5–E6 為 0.16），是 Demo 假設，不是實機感應區面積。
-const TOUCH_BRUSH_RADIUS: f64 = 0.2;
+/// （B5–E6 為 0.279）：經過鄰區中心會碰到，但不會跨到 B–B（0.356）或 A–D（0.333）
+/// 的下一區。是 Demo 假設，不是實機感應區面積。
+const TOUCH_BRUSH_RADIUS: f64 = 0.28;
 /// Slide 尾判 Critical Perfect 的基本半寬與最大半寬（幀）；中央區間向兩側各擴展
 /// 「引導星星在最後判定區停留時間 / 4」，另有 −17～−14 幀的 Critical Perfect。
 const SLIDE_CRITICAL_FRAMES: f64 = 14.0;

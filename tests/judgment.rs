@@ -147,7 +147,7 @@ fn touch_may_be_hit_late_inside_critical_perfect() {
 #[test]
 fn tracking_hand_brushes_touch_on_its_path() {
     for c in configs() {
-        // 1-5 約在 0.645 秒經過 B1，E2 在其旁 0.16，不在路徑上；另一手按住 8 到 1.5 秒。
+        // 1-5 約在 0.634 秒經過 B1，E2 在其旁 0.247，不在路徑上但在順帶碰觸範圍內；另一手按住 8 到 1.5 秒。
         let r = ok("(120){4}1-5[4:1]/8h[4:3],{16},E2,E", c.clone());
         let slide = note(&r, |n| n.kind == "slide");
         let owner = r.solutions[0]
@@ -159,6 +159,11 @@ fn tracking_hand_brushes_touch_on_its_path() {
         let center = note(&r, |n| n.kind == "touch");
         let hit = contacts(&r, &center.id)[0];
         assert_eq!(hit.hand, owner);
+        // 隔一區的 B2 離路徑 0.329，超出順帶碰觸範圍。
+        assert_eq!(
+            run("(120){4}1-5[4:1]/8h[4:3],{16},B2,E", c.clone()).status,
+            "no_solution"
+        );
         // 路徑外的 Touch 不會被順帶完成。
         assert_eq!(
             run("(120){4}1-5[4:1]/8h[4:3],{16},A3,E", c.clone()).status,
@@ -172,16 +177,17 @@ fn tracking_hand_brushes_touch_on_its_path() {
 #[test]
 fn touch_group_majority_judges_the_rest() {
     for c in configs() {
-        // 一手按住 8；A1 D2 A2 D3 A3 彼此相鄰成 5 顆的 Group，一掌只蓋得到 3 顆（過半）。
+        // 一手按住 8；A1 D2 A2 D3 A3 彼此相鄰成 5 顆的 Group，一掌蓋不完全部，
+        // 只要實際接觸過半（至少 3 顆），其餘由 Group 連帶判定。
         let r = ok("(120){4}8h[4:3]/A1/D2/A2/D3/A3,E", c.clone());
         let grouped: Vec<_> = r.solutions[0]
             .assignments
             .iter()
             .filter(|a| a.part == "group")
             .collect();
-        assert_eq!(grouped.len(), 2);
         let palm = &r.solutions[0].palm_placements[0];
-        assert_eq!(palm.covered_note_ids.len(), 3);
+        assert!((3..5).contains(&palm.covered_note_ids.len()));
+        assert_eq!(grouped.len(), 5 - palm.covered_note_ids.len());
         assert!(grouped.iter().all(|a| a.hand == palm.hand));
         assert!(r.solutions[0]
             .warnings
@@ -192,9 +198,9 @@ fn touch_group_majority_judges_the_rest() {
             run("(120){4}8h[4:3]/A1/A2/A3/A4/A5,E", c.clone()).status,
             "no_solution"
         );
-        // 7 顆的 Group 需要 4 顆實際接觸，一掌做不到。
+        // 9 顆的 Group 需要 5 顆實際接觸；相連 5 顆橫跨 90°，一掌（半徑 0.5）蓋不到。
         assert_eq!(
-            run("(120){4}8h[4:3]/A1/D2/A2/D3/A3/D4/A4,E", c).status,
+            run("(120){4}8h[4:3]/A1/D2/A2/D3/A3/D4/A4/D5/A5,E", c).status,
             "no_solution"
         );
     }

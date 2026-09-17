@@ -17,17 +17,20 @@ fn polar(theta: f64, r: f64) -> Point {
     }
 }
 
-/// Touch 感應區半徑。A/D 在外圈、B/E 在內圈、C 在中心；
-/// D 與 E 相對於 A 與 B 旋轉半格（22.5°）。這組半徑是 Demo 假設，不是實機尺寸。
-pub const TOUCH_OUTER: f64 = 0.90;
-pub const TOUCH_INNER: f64 = 0.42;
+/// Touch 感應區代表點的半徑，依盤面感應區配置圖（resource/maimai.png）量測各區中心：
+/// A 在鍵位方向外圈、D 在兩鍵之間的外緣窄楔形、E 在兩鍵之間（比 B 外圈）、B 在鍵位方向內圈、C 在中心。
+/// D 與 E 相對於 A 與 B 旋轉半格（22.5°）。代表點是 Demo 近似，不是實機判定輪廓。
+pub const TOUCH_A: f64 = 0.80;
+pub const TOUCH_B: f64 = 0.465;
+pub const TOUCH_D: f64 = 0.87;
+pub const TOUCH_E: f64 = 0.645;
 
 pub fn touch(area: char, index: u8) -> Point {
     match area {
-        'A' => polar(angle(index), TOUCH_OUTER),
-        'B' => polar(angle(index), TOUCH_INNER),
-        'D' => polar(angle(index) - PI / 8.0, TOUCH_OUTER),
-        'E' => polar(angle(index) - PI / 8.0, TOUCH_INNER),
+        'A' => polar(angle(index), TOUCH_A),
+        'B' => polar(angle(index), TOUCH_B),
+        'D' => polar(angle(index) - PI / 8.0, TOUCH_D),
+        'E' => polar(angle(index) - PI / 8.0, TOUCH_E),
         _ => Point { x: 0.0, y: 0.0 },
     }
 }
