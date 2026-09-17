@@ -1,6 +1,6 @@
 # MaiMotionDemo 使用手冊
 
-本手冊描述 v0.2.2 的預設參數。
+本手冊描述 v0.2.3 的預設參數。
 
 ## 參數
 
@@ -27,7 +27,7 @@
 
 ### 已建置的執行檔
 
-從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.2/MaiMotionDemo-v0.2.2-windows-x64.exe) 下載 `MaiMotionDemo-v0.2.2-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。
+從 [GitHub Release](https://github.com/silver0416/MaiMotionDemo/releases/download/v0.2.3/MaiMotionDemo-v0.2.3-windows-x64.exe) 下載 `MaiMotionDemo-v0.2.3-windows-x64.exe` 後直接開啟；從原始碼建置的檔案位於 `src-tauri/target/release/mai-motion-demo.exe`。正式版本內嵌前端，不需要 Node.js 或 Vite 伺服器；Windows 仍需 WebView2 Runtime。
 
 ### 從原始碼執行
 
@@ -164,7 +164,7 @@ Tap 與 Slide 將每手簡化成單一接觸點；也可用一隻圓形手掌覆
 - 滑向下一個相鄰目標時，上一個 Tap 或 Touch 手掌只需停留一幀，不必停滿「敲擊接觸時間」。例如一手按住長條、另一手在 48 分音間隔內連續擦過好幾組 Touch。
 - Hold 與 Touch Hold 結尾 12 幀（0.2 秒）不檢查按壓，需要時可提早放手；很短的 Hold 只看頭判。
 - Touch 沒有 Fast 判定，正解後 9 幀（0.15 秒）內接觸仍是 Critical Perfect。只有整組無法準時完成時才會晚接；若全譜因此無解，會允許晚接重跑一次，方案說明會註明。
-- 追 Slide 或按著螢幕的手在 Touch 判定區間內經過落點附近（0.2 以內）時，這個 Touch 直接算完成，不另外移動。外圈按鍵在螢幕外，按住按鍵不會碰到 A 區。
+- 追 Slide 或按著螢幕的手在 Touch 判定區間內經過落點附近（0.28 以內）時，這個 Touch 直接算完成，不另外移動。外圈按鍵在螢幕外，按住按鍵不會碰到 A 區。
 
 - 同一時刻、判定區相鄰的 Touch 會組成 Touch Group：實際碰到超過半數時，剩下的會連帶判定。只有手真的接不到時才這樣安排，方案會註明，音符明細標示「Group 連帶判定」。
 - Slide 的尾判看的是手何時進入最後一個判定區，正解時刻與 Critical Perfect 寬度會隨形狀與 Slide 長度改變（例如 `1-5` 在移動時長的 84.8% 進入 A5）。若 Slide 結束前還有別的音符需要這隻手，手可以在進入最後判定區後就離開，不追到終點；方案會註明。
