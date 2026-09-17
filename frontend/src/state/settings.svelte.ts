@@ -1,4 +1,4 @@
-import { DEFAULT_DRAFT } from '../lib/contract';
+import { migrateDraft } from '../lib/contract';
 import { STORE_SETTINGS, dbGet, dbPut } from '../lib/db';
 import type { ConfigDraft } from '../lib/types';
 import { session } from './session.svelte';
@@ -68,12 +68,8 @@ function apply(stored: StoredSettings): void {
     if (value !== undefined && sameShape(value, target[key])) target[key] = value;
   }
   if (stored.config && typeof stored.config === 'object') {
-    const next = { ...session.config } as unknown as Record<string, unknown>;
-    const defaults = DEFAULT_DRAFT as unknown as Record<string, unknown>;
-    for (const [key, value] of Object.entries(stored.config)) {
-      if (key in defaults && sameShape(value, defaults[key])) next[key] = value;
-    }
-    session.config = next as unknown as ConfigDraft;
+    // 逐欄合併並補上加入 V3 前沒有的 v3 欄位；已選的評分方式與各版數值原樣保留。
+    session.config = migrateDraft(stored.config, session.config);
   }
   if (typeof stored.firstSeconds === 'number' && Number.isFinite(stored.firstSeconds)) {
     session.firstSeconds = stored.firstSeconds;

@@ -1,0 +1,838 @@
+{
+  "request": {
+    "firstSeconds": 0.0,
+    "requestId": "v3-palm",
+    "solverConfig": {
+      "allowHandover": true,
+      "beamWidth": 128,
+      "checkpointSeconds": 0.05,
+      "contactSeconds": 0.03,
+      "glideDistance": 0.8,
+      "handoverCooldown": 0.2,
+      "handoverSeconds": 0.04,
+      "handoverWillingness": 40.0,
+      "homePreference": 60.0,
+      "jackTolerance": 60.0,
+      "palmRadius": 0.5,
+      "preparationSeconds": 1.0,
+      "repetitionSeconds": 0.15,
+      "scoringModel": "human-motion-v3",
+      "slidePickupSeconds": 0.12,
+      "topK": 3,
+      "travelComfort": 90.0
+    },
+    "source": "(120){4}C/B1/E1/7,E"
+  },
+  "response": {
+    "chart": {
+      "durationSeconds": 0.5,
+      "notes": [
+        {
+          "button": 0,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n0",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "sourceSpan": {
+            "column": 9,
+            "end": 9,
+            "line": 1,
+            "start": 8
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "C"
+        },
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n1",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 0.1779477960497668,
+            "y": -0.42960398261774835
+          },
+          "sourceSpan": {
+            "column": 11,
+            "end": 12,
+            "line": 1,
+            "start": 10
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "B"
+        },
+        {
+          "button": 1,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n2",
+          "kind": "touch",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": 3.949485927250214e-17,
+            "y": -0.645
+          },
+          "sourceSpan": {
+            "column": 14,
+            "end": 15,
+            "line": 1,
+            "start": 13
+          },
+          "timeSeconds": 0.0,
+          "touchArea": "E"
+        },
+        {
+          "button": 7,
+          "endSeconds": 0.0,
+          "hasHead": true,
+          "id": "n3",
+          "kind": "tap",
+          "modifiers": {
+            "breakNote": false,
+            "breakSlide": false,
+            "ex": false,
+            "exSlide": false,
+            "fireworks": false,
+            "spinStar": false,
+            "star": false
+          },
+          "motionEnd": null,
+          "motionStart": null,
+          "pathId": null,
+          "position": {
+            "x": -0.9238795325112868,
+            "y": -0.38268343236508967
+          },
+          "sourceSpan": {
+            "column": 17,
+            "end": 17,
+            "line": 1,
+            "start": 16
+          },
+          "timeSeconds": 0.0,
+          "touchArea": null
+        }
+      ],
+      "paths": [],
+      "touchSensors": [
+        {
+          "area": "A",
+          "index": 1,
+          "position": {
+            "x": 0.3061467458920719,
+            "y": -0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 2,
+          "position": {
+            "x": 0.7391036260090295,
+            "y": -0.30614674589207186
+          }
+        },
+        {
+          "area": "A",
+          "index": 3,
+          "position": {
+            "x": 0.7391036260090295,
+            "y": 0.30614674589207186
+          }
+        },
+        {
+          "area": "A",
+          "index": 4,
+          "position": {
+            "x": 0.3061467458920719,
+            "y": 0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 5,
+          "position": {
+            "x": -0.3061467458920718,
+            "y": 0.7391036260090295
+          }
+        },
+        {
+          "area": "A",
+          "index": 6,
+          "position": {
+            "x": -0.7391036260090295,
+            "y": 0.3061467458920719
+          }
+        },
+        {
+          "area": "A",
+          "index": 7,
+          "position": {
+            "x": -0.7391036260090296,
+            "y": -0.30614674589207175
+          }
+        },
+        {
+          "area": "A",
+          "index": 8,
+          "position": {
+            "x": -0.3061467458920723,
+            "y": -0.7391036260090292
+          }
+        },
+        {
+          "area": "B",
+          "index": 1,
+          "position": {
+            "x": 0.1779477960497668,
+            "y": -0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 2,
+          "position": {
+            "x": 0.42960398261774835,
+            "y": -0.17794779604976677
+          }
+        },
+        {
+          "area": "B",
+          "index": 3,
+          "position": {
+            "x": 0.42960398261774835,
+            "y": 0.17794779604976677
+          }
+        },
+        {
+          "area": "B",
+          "index": 4,
+          "position": {
+            "x": 0.1779477960497668,
+            "y": 0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 5,
+          "position": {
+            "x": -0.17794779604976674,
+            "y": 0.42960398261774835
+          }
+        },
+        {
+          "area": "B",
+          "index": 6,
+          "position": {
+            "x": -0.42960398261774835,
+            "y": 0.17794779604976682
+          }
+        },
+        {
+          "area": "B",
+          "index": 7,
+          "position": {
+            "x": -0.4296039826177484,
+            "y": -0.1779477960497667
+          }
+        },
+        {
+          "area": "B",
+          "index": 8,
+          "position": {
+            "x": -0.17794779604976702,
+            "y": -0.42960398261774824
+          }
+        },
+        {
+          "area": "D",
+          "index": 1,
+          "position": {
+            "x": 5.3272135762909864e-17,
+            "y": -0.87
+          }
+        },
+        {
+          "area": "D",
+          "index": 2,
+          "position": {
+            "x": 0.6151828996322963,
+            "y": -0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 3,
+          "position": {
+            "x": 0.87,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "D",
+          "index": 4,
+          "position": {
+            "x": 0.6151828996322963,
+            "y": 0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 5,
+          "position": {
+            "x": 5.3272135762909864e-17,
+            "y": 0.87
+          }
+        },
+        {
+          "area": "D",
+          "index": 6,
+          "position": {
+            "x": -0.6151828996322963,
+            "y": 0.6151828996322963
+          }
+        },
+        {
+          "area": "D",
+          "index": 7,
+          "position": {
+            "x": -0.87,
+            "y": 1.0654427152581973e-16
+          }
+        },
+        {
+          "area": "D",
+          "index": 8,
+          "position": {
+            "x": -0.6151828996322967,
+            "y": -0.615182899632296
+          }
+        },
+        {
+          "area": "E",
+          "index": 1,
+          "position": {
+            "x": 3.949485927250214e-17,
+            "y": -0.645
+          }
+        },
+        {
+          "area": "E",
+          "index": 2,
+          "position": {
+            "x": 0.4560838738653232,
+            "y": -0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 3,
+          "position": {
+            "x": 0.645,
+            "y": 0.0
+          }
+        },
+        {
+          "area": "E",
+          "index": 4,
+          "position": {
+            "x": 0.4560838738653232,
+            "y": 0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 5,
+          "position": {
+            "x": 3.949485927250214e-17,
+            "y": 0.645
+          }
+        },
+        {
+          "area": "E",
+          "index": 6,
+          "position": {
+            "x": -0.4560838738653231,
+            "y": 0.4560838738653232
+          }
+        },
+        {
+          "area": "E",
+          "index": 7,
+          "position": {
+            "x": -0.645,
+            "y": 7.898971854500428e-17
+          }
+        },
+        {
+          "area": "E",
+          "index": 8,
+          "position": {
+            "x": -0.4560838738653234,
+            "y": -0.4560838738653229
+          }
+        },
+        {
+          "area": "C",
+          "index": 0,
+          "position": {
+            "x": 0.0,
+            "y": 0.0
+          }
+        }
+      ]
+    },
+    "diagnostics": [],
+    "requestId": "v3-palm",
+    "schemaVersion": 4,
+    "solutions": [
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 0.0
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 60.0,
+          "jackTolerance": 60.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "human-motion-v3",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 90.0
+        },
+        "handovers": [],
+        "id": "solution-1",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.03
+          }
+        ],
+        "palmPlacements": [
+          {
+            "center": {
+              "x": 0.1779477960497668,
+              "y": -0.42960398261774835
+            },
+            "coveredNoteIds": [
+              "n0",
+              "n1",
+              "n2"
+            ],
+            "endSeconds": 0.03,
+            "hand": "R",
+            "radius": 0.5,
+            "startSeconds": 0.0
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": 0.1779477960497668,
+                "y": -0.42960398261774835
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "palm",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": 0.1779477960497668,
+                "y": -0.42960398261774835
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": 0.1779477960497668,
+                "y": -0.42960398261774835
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": 0.1779477960497668,
+                "y": -0.42960398261774835
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": 0.1779477960497668,
+                "y": -0.42960398261774835
+              }
+            ],
+            "startSeconds": 0.03
+          }
+        ],
+        "score": {
+          "fatigue": 0.0,
+          "movement": 0.13453307574454298,
+          "posture": 0.0,
+          "total": 0.13453307574454298
+        },
+        "scoreBreakdown": {
+          "compressionStrain": 0.0,
+          "crossExposure": 0.0,
+          "excursion": 0.0,
+          "handover": 0.0,
+          "jackFatigue": 0.0,
+          "reversal": 0.0,
+          "speedStrain": 0.0,
+          "travel": 0.13453307574454298,
+          "workload": 0.0
+        },
+        "scoringModel": "human-motion-v3",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。"
+        ]
+      },
+      {
+        "assignments": [
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n0",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n1",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "L",
+            "noteId": "n2",
+            "part": "contact",
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.03,
+            "hand": "R",
+            "noteId": "n3",
+            "part": "contact",
+            "startSeconds": 0.0
+          }
+        ],
+        "configSnapshot": {
+          "allowHandover": true,
+          "beamWidth": 128,
+          "checkpointSeconds": 0.05,
+          "contactSeconds": 0.03,
+          "glideDistance": 0.8,
+          "handoverCooldown": 0.2,
+          "handoverSeconds": 0.04,
+          "handoverWillingness": 40.0,
+          "homePreference": 60.0,
+          "jackTolerance": 60.0,
+          "palmRadius": 0.5,
+          "preparationSeconds": 1.0,
+          "repetitionSeconds": 0.15,
+          "scoringModel": "human-motion-v3",
+          "slidePickupSeconds": 0.12,
+          "topK": 3,
+          "travelComfort": 90.0
+        },
+        "handovers": [],
+        "id": "solution-2",
+        "leftSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.17103209519780796,
+                "y": -0.32249999999999995
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "palm",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.17103209519780796,
+                "y": -0.32249999999999995
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.17103209519780796,
+                "y": -0.32249999999999995
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.17103209519780796,
+                "y": -0.32249999999999995
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.17103209519780796,
+                "y": -0.32249999999999995
+              }
+            ],
+            "startSeconds": 0.03
+          }
+        ],
+        "palmPlacements": [
+          {
+            "center": {
+              "x": -0.17103209519780796,
+              "y": -0.32249999999999995
+            },
+            "coveredNoteIds": [
+              "n0",
+              "n1",
+              "n2"
+            ],
+            "endSeconds": 0.03,
+            "hand": "L",
+            "radius": 0.5,
+            "startSeconds": 0.0
+          }
+        ],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.03,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 0.0,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.0
+          },
+          {
+            "endSeconds": 0.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.03,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.5,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
+              }
+            ],
+            "startSeconds": 0.03
+          }
+        ],
+        "score": {
+          "fatigue": 0.0,
+          "movement": 0.4685414823773535,
+          "posture": 0.5015985517509003,
+          "total": 0.9701400341282538
+        },
+        "scoreBreakdown": {
+          "compressionStrain": 0.0,
+          "crossExposure": 0.004250844479021044,
+          "excursion": 0.49734770727187927,
+          "handover": 0.0,
+          "jackFatigue": 0.0,
+          "reversal": 0.0,
+          "speedStrain": 0.0,
+          "travel": 0.4685414823773535,
+          "workload": 0.0
+        },
+        "scoringModel": "human-motion-v3",
+        "warnings": [
+          "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
+          "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。"
+        ]
+      }
+    ],
+    "status": "ok"
+  }
+}

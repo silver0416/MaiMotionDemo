@@ -292,8 +292,8 @@ fn v2_corpus_preserves_feasibility_continuity_and_wire_contract() {
         for solution in &r.solutions {
             continuity(&solution.left_segments);
             continuity(&solution.right_segments);
-            let p = solution.score_breakdown.as_ref().unwrap();
-            let score = solution.score.as_ref().unwrap();
+            let p = solution.score_breakdown.as_ref().unwrap().as_v2().unwrap();
+            let score = solution.score.as_ref().unwrap().as_v2().unwrap();
             near(
                 score.intuition(),
                 p.assignment_affinity + p.side_exposure + p.cross_exposure + p.handover,
@@ -366,7 +366,13 @@ fn uncontested_pickup_is_on_time_and_meeting_swap_is_free() {
         2
     );
     near(
-        r.solutions[0].score_breakdown.as_ref().unwrap().handover,
+        r.solutions[0]
+            .score_breakdown
+            .as_ref()
+            .unwrap()
+            .as_v2()
+            .unwrap()
+            .handover,
         0.0,
     );
     let r = run(
@@ -385,8 +391,20 @@ fn simultaneous_order_and_repeated_runs_preserve_scores() {
     let a = ok("(120){4}C/B1/E1/7,E");
     let b = ok("(120){4}7/E1/B1/C,E");
     near(
-        a.solutions[0].score.as_ref().unwrap().ranking_value(),
-        b.solutions[0].score.as_ref().unwrap().ranking_value(),
+        a.solutions[0]
+            .score
+            .as_ref()
+            .unwrap()
+            .as_v2()
+            .unwrap()
+            .ranking_value(),
+        b.solutions[0]
+            .score
+            .as_ref()
+            .unwrap()
+            .as_v2()
+            .unwrap()
+            .ranking_value(),
     );
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
@@ -451,7 +469,7 @@ fn small_tap_search_matches_exhaustive_assignment_oracle() {
                 best = Some(score);
             }
         }
-        let actual = r.solutions[0].score.as_ref().unwrap();
+        let actual = r.solutions[0].score.as_ref().unwrap().as_v2().unwrap();
         near(
             actual.ranking_value(),
             best.as_ref().unwrap().ranking_value(),
@@ -484,8 +502,20 @@ fn sweep_and_checkpoint_refinement_keep_v2_accounting_consistent() {
     );
     assert_eq!(b.status, "ok");
     near(
-        a.solutions[0].score.as_ref().unwrap().ranking_value(),
-        b.solutions[0].score.as_ref().unwrap().ranking_value(),
+        a.solutions[0]
+            .score
+            .as_ref()
+            .unwrap()
+            .as_v2()
+            .unwrap()
+            .ranking_value(),
+        b.solutions[0]
+            .score
+            .as_ref()
+            .unwrap()
+            .as_v2()
+            .unwrap()
+            .ranking_value(),
     );
 }
 
@@ -503,6 +533,8 @@ fn late_pickup_retains_compression_burden() {
         r.solutions[0]
             .score_breakdown
             .as_ref()
+            .unwrap()
+            .as_v2()
             .unwrap()
             .compression_strain
             > 0.0

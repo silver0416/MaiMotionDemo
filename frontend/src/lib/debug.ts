@@ -1,7 +1,16 @@
-import { STATUS_LABEL } from './contract';
+import {
+  SCHEMA_VERSION,
+  SCORING_LABEL,
+  SCORING_V1,
+  STATUS_LABEL,
+  isLegacySolution,
+  isV2Solution,
+  isV3Solution,
+  requestModelOf,
+} from './contract';
 import { formatClock } from './format';
 import { byteOffsetToIndex } from './text';
-import type { AnalyzeResponse, AnalyzeStatus, Diagnostic, Note, SolverConfig } from './types';
+import type { AnalyzeResponse, AnalyzeStatus, Diagnostic, Note, Solution, SolverConfig } from './types';
 
 export interface DebugInput {
   /** 在哪裡發生，例如「方案分頁」「新增譜面」「Majdata 匯入」。 */
@@ -57,6 +66,18 @@ function noteLine(note: Note): string {
   return `  - ${note.id}（${note.kind}，${where}）${formatClock(note.timeSeconds)}${duration}・${span}`;
 }
 
+/** 依方案實際的 scoringModel 取出對應的分數欄位，不用欄位是否存在來猜版本。 */
+function scoreEntry(solution: Solution): Record<string, unknown> {
+  const base = { id: solution.id, scoringModel: solution.scoringModel ?? SCORING_V1 };
+  if (isV3Solution(solution) || isV2Solution(solution)) {
+    return { ...base, score: solution.score, scoreBreakdown: solution.scoreBreakdown };
+  }
+  if (isLegacySolution(solution)) {
+    return { ...base, totalCost: solution.totalCost, costBreakdown: solution.costBreakdown };
+  }
+  return { ...base, note: '無法辨識的 scoringModel' };
+}
+
 function fence(text: string, lang = ''): string {
   // 原文裡若有 ``` 就加長圍欄，避免貼到 Markdown 時被截斷。
   let ticks = '```';
@@ -76,6 +97,10 @@ export function buildDebugReport(input: DebugInput): string {
     `- 位置：${input.context}`,
   ];
   if (status) meta.push(`- 狀態：${status}（${STATUS_LABEL[status] ?? '未知狀態'}）`);
+  if (input.config) {
+    const model = requestModelOf(input.config);
+    meta.push(`- 評分方式：${SCORING_LABEL[model]}（${model}，預期 schemaVersion ${SCHEMA_VERSION[model]}）`);
+  }
   if (response) meta.push(`- schemaVersion：${response.schemaVersion}`);
   const requestId = response?.requestId ?? input.requestId;
   if (requestId) meta.push(`- requestId：${requestId}`);
@@ -133,6 +158,12 @@ export function buildDebugReport(input: DebugInput): string {
 
   if (input.config) {
     parts.push(`## 參數 solverConfig\n\n${fence(JSON.stringify(input.config, null, 2), 'json')}`);
+  }
+
+  const scores = (response?.solutions ?? []).map(scoreEntry);
+  if (scores.length > 0) {
+    // 只輸出評分與分項，不含動作段；V3 需要完整九項才看得出為什麼選這個打法。
+    parts.push(`## 候選評分（依核心排序）\n\n${fence(JSON.stringify(scores, null, 2), 'json')}`);
   }
 
   if (diagnostics.length > 0) {

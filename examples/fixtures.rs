@@ -18,10 +18,16 @@ fn main() {
         ("v2-home", "(120){4}1,8,2,7,3,6,4,5,E"),
         ("v2-palm", "(120){4}C/B1/E1/7,E"),
         ("v2-swap", "(120){4}1-5[4:1]/5-1[4:1],E"),
+        ("v3-jack", "(240){24}1,1,1,1,E"),
+        ("v3-abab", "(240){24}1,2,1,2,1,2,E"),
+        ("v3-palm", "(120){4}C/B1/E1/7,E"),
     ] {
         let mut config = SolverConfig::default();
         if name.starts_with("v2-") {
             config = SolverConfig::v2();
+        }
+        if name.starts_with("v3-") {
+            config = SolverConfig::v3();
         }
         if name == "handover" {
             config.handover_weight = 0.05;

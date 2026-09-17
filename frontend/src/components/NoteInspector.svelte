@@ -6,6 +6,7 @@
     PART_LABEL,
     isLegacySolution,
     isV2Solution,
+    isV3Solution,
     shapeLabel,
   } from '../lib/contract';
   import { noteBadges, noteTarget } from '../lib/notes';
@@ -17,8 +18,15 @@
   import type { Hand, Note, Solution } from '../lib/types';
 
   const note = $derived<Note | null>(session.selectedNote);
-  /** V2 方案沒有總成本，改列分工與姿態／動作負擔，不算與第一名的差值。 */
-  const v2Ranked = $derived(session.solutions.length > 0 && isV2Solution(session.solutions[0]));
+  /** 依第一名的評分版本決定比較欄；V2／V3 沒有總成本，不算與第一名的差值。 */
+  const firstSolution = $derived<Solution | null>(session.solutions[0] ?? null);
+  const compareHeader = $derived(
+    !firstSolution || isLegacySolution(firstSolution)
+      ? '總成本'
+      : isV3Solution(firstSolution)
+        ? '效率／姿態／負荷'
+        : '分工／負擔',
+  );
 
   function handsOf(solution: Solution, noteId: string): string {
     const list = solution.assignments.filter((item) => item.noteId === noteId);
@@ -263,7 +271,7 @@
             <tr>
               <th>候選</th>
               <th>這顆音符</th>
-              <th>{v2Ranked ? '分工／負擔' : '總成本'}</th>
+              <th>{compareHeader}</th>
             </tr>
           </thead>
           <tbody>
@@ -274,7 +282,12 @@
                 </td>
                 <td class="mono">{handsOf(item, note.id)}</td>
                 <td class="mono xsmall">
-                  {#if isV2Solution(item)}
+                  {#if isV3Solution(item)}
+                    {formatNumber(item.score.movement, 2)}／{formatNumber(item.score.posture, 2)}／{formatNumber(
+                      item.score.fatigue,
+                      2,
+                    )}
+                  {:else if isV2Solution(item)}
                     {formatNumber(item.score.intuition, 2)}／{formatNumber(item.score.strain, 2)}
                   {:else if isLegacySolution(item) && isLegacySolution(session.solutions[0])}
                     {formatNumber(item.totalCost)}

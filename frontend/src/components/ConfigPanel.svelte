@@ -9,10 +9,11 @@
     SCORING_LABEL,
     SCORING_MODELS,
     SCORING_V2,
+    SCORING_V3,
   } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
-  import type { ConfigDraft } from '../lib/types';
+  import type { ConfigDraft, V3PreferenceControls } from '../lib/types';
 
   const issues = $derived(session.configIssues);
 
@@ -24,8 +25,13 @@
     session.config = { ...session.config, [key]: value };
   }
 
+  /** V3 的四個控制與 V2 同名但分開保存，改 V3 不會動到 V2 的數值。 */
+  function setV3<K extends keyof V3PreferenceControls>(key: K, value: V3PreferenceControls[K]) {
+    session.config = { ...session.config, v3: { ...session.config.v3, [key]: value } };
+  }
+
   const config = $derived(session.config);
-  const isV2 = $derived(config.scoringModel === SCORING_V2);
+  const activeModel = $derived(config.scoringModel);
   const R = CONFIG_RANGE;
 
   /** 目前結果用的評分方式與選取的不同時，在該列標示「目前結果」。 */
@@ -93,7 +99,69 @@
     </p>
   </section>
 
-  {#if isV2}
+  {#if activeModel === SCORING_V3}
+    <section class="section">
+      <div class="section-title"><span>打法偏好</span></div>
+      <div class="stack">
+        <NumberField
+          label="左右分工傾向"
+          hint="越高越偏好左手留在左側、右手留在右側。仍允許在較自然時由另一隻手跨區幫忙。"
+          value={config.v3.homePreference}
+          min={R.homePreference.min}
+          max={R.homePreference.max}
+          step={1}
+          error={errorOf('homePreference')}
+          onValue={(value) => setV3('homePreference', value)}
+        />
+        <NumberField
+          label="快速移動容忍"
+          hint="超過這個速度後才增加額外高速負擔。即使低於此速度，移動距離本身仍會計入。"
+          value={config.v3.travelComfort}
+          min={R.travelComfort.min}
+          max={R.travelComfort.max}
+          step={1}
+          unit="半徑/秒"
+          error={errorOf('travelComfort')}
+          onValue={(value) => setV3('travelComfort', value)}
+        />
+        <NumberField
+          label="同點連打容忍"
+          hint="越高越能接受同一隻手高速重複敲同一位置。一兩顆一般不會因此被強制換手。"
+          value={config.v3.jackTolerance}
+          min={R.jackTolerance.min}
+          max={R.jackTolerance.max}
+          step={1}
+          error={errorOf('jackTolerance')}
+          onValue={(value) => setV3('jackTolerance', value)}
+        />
+        <NumberField
+          label="Slide 換手意願"
+          hint="越高越願意在 Slide 中途交給另一隻手；最高也不會鼓勵反覆換手。"
+          value={config.v3.handoverWillingness}
+          min={R.handoverWillingness.min}
+          max={R.handoverWillingness.max}
+          step={1}
+          error={errorOf('handoverWillingness')}
+          onValue={(value) => setV3('handoverWillingness', value)}
+        />
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={config.allowHandover}
+            onchange={(event) => set('allowHandover', event.currentTarget.checked)}
+          />
+          <span>
+            允許 Slide 中途換手
+            <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
+          </span>
+        </label>
+      </div>
+      <p class="field-hint" style="margin-top: var(--space-3)">
+        數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；
+        偏好與預設值是本 Demo 的起點，尚未經玩家校準，不代表官方判定或人體能力。
+      </p>
+    </section>
+  {:else if activeModel === SCORING_V2}
     <section class="section">
       <div class="section-title"><span>打法偏好</span></div>
       <div class="stack">

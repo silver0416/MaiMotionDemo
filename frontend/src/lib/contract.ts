@@ -14,22 +14,33 @@ import type {
   SolverConfig,
   V2Solution,
   V2SolverConfig,
+  V3PreferenceControls,
+  V3ScoreBreakdown,
+  V3Solution,
+  V3SolverConfig,
 } from './types';
 
-export const SCORING_V1: ScoringModel = 'legacy-v1';
-export const SCORING_V2: ScoringModel = 'hand-affinity-v2';
+export const SCORING_V1 = 'legacy-v1' satisfies ScoringModel;
+export const SCORING_V2 = 'hand-affinity-v2' satisfies ScoringModel;
+export const SCORING_V3 = 'human-motion-v3' satisfies ScoringModel;
 
-/** 產品預設評分方式。 */
-export const DEFAULT_SCORING_MODEL: ScoringModel = SCORING_V2;
+/**
+ * 產品預設評分方式：人類動作 V3。
+ * 只影響第一次啟動或沒有保存值的使用者；已保存的評分方式照舊保留（見 migrateDraft）。
+ */
+export const DEFAULT_SCORING_MODEL: ScoringModel = SCORING_V3;
 
 /** 各評分方式對應的 response schemaVersion。 */
 export const SCHEMA_VERSION: Record<ScoringModel, number> = {
   'legacy-v1': 2,
   'hand-affinity-v2': 3,
+  'human-motion-v3': 4,
 };
 
+/** 介面名稱；版本標記（v1／v2／v3）另外並列顯示。 */
 export const SCORING_LABEL: Record<ScoringModel, string> = {
-  'hand-affinity-v2': '直覺優先',
+  'human-motion-v3': '人類動作',
+  'hand-affinity-v2': '分工優先',
   'legacy-v1': '舊版比較',
 };
 
@@ -46,9 +57,14 @@ export interface ScoringModelInfo {
  * 參數頁的選單會自動列出。
  */
 export const SCORING_MODELS: ScoringModelInfo[] = [
-  { id: SCORING_V2, version: 'v2', hint: '先維持左右分工，再看動作負擔' },
-  { id: SCORING_V1, version: 'v1', hint: '六項成本加總，供對照' },
+  { id: SCORING_V3, version: 'v3', hint: '兼顧少移動、左右分工、折返與短時間手部負荷' },
+  { id: SCORING_V2, version: 'v2', hint: '優先維持左右分工，再比較動作負擔' },
+  { id: SCORING_V1, version: 'v1', hint: '六項舊成本直接加總，供比較' },
 ];
+
+export function isScoringModel(value: unknown): value is ScoringModel {
+  return value === SCORING_V1 || value === SCORING_V2 || value === SCORING_V3;
+}
 
 /** 與 src/model.rs 的 SolverConfig::default() 一致的共用欄位。 */
 export const DEFAULT_BASE: BaseSolverConfig = {
@@ -85,46 +101,175 @@ export const DEFAULT_PREFERENCES: PreferenceControls = {
   handoverWillingness: 40,
 };
 
+/** 與 src/scoring_v3.rs 的 PreferenceConfigV3::default() 一致。 */
+export const DEFAULT_V3_PREFERENCES: V3PreferenceControls = {
+  homePreference: 60,
+  travelComfort: 90,
+  jackTolerance: 60,
+  handoverWillingness: 40,
+};
+
 export const DEFAULT_DRAFT: ConfigDraft = {
   scoringModel: DEFAULT_SCORING_MODEL,
   ...DEFAULT_BASE,
   ...DEFAULT_LEGACY,
   ...DEFAULT_PREFERENCES,
+  v3: { ...DEFAULT_V3_PREFERENCES },
 };
 
 export const BASE_KEYS = Object.keys(DEFAULT_BASE) as (keyof BaseSolverConfig)[];
 export const LEGACY_KEYS = Object.keys(DEFAULT_LEGACY) as (keyof LegacyWeights)[];
 export const PREFERENCE_KEYS = Object.keys(DEFAULT_PREFERENCES) as (keyof PreferenceControls)[];
+export const V3_PREFERENCE_KEYS = Object.keys(DEFAULT_V3_PREFERENCES) as (keyof V3PreferenceControls)[];
 
 /**
  * 依評分版本精確投影成送給 Rust 的 solverConfig：
- * V2 只帶共用欄位與四個行為控制；V1 只帶共用欄位、速度基準與六個權重。
+ * V3 只帶共用欄位與 V3 四個控制（jackTolerance，不帶 repeatTolerance）；
+ * V2 只帶共用欄位與 V2 四個控制；V1 只帶共用欄位、速度基準與六個權重。
  */
 export function projectConfig(draft: ConfigDraft): SolverConfig {
   const base = {} as Record<string, unknown>;
   for (const key of BASE_KEYS) base[key] = draft[key];
-  if (draft.scoringModel === 'hand-affinity-v2') {
-    for (const key of PREFERENCE_KEYS) base[key] = draft[key];
-    return { scoringModel: 'hand-affinity-v2', ...base } as unknown as V2SolverConfig;
+  switch (draft.scoringModel) {
+    case 'human-motion-v3':
+      for (const key of V3_PREFERENCE_KEYS) base[key] = draft.v3[key];
+      return { scoringModel: 'human-motion-v3', ...base } as unknown as V3SolverConfig;
+    case 'hand-affinity-v2':
+      for (const key of PREFERENCE_KEYS) base[key] = draft[key];
+      return { scoringModel: 'hand-affinity-v2', ...base } as unknown as V2SolverConfig;
+    case 'legacy-v1':
+      for (const key of LEGACY_KEYS) base[key] = draft[key];
+      return { scoringModel: 'legacy-v1', ...base } as unknown as LegacySolverConfig;
   }
-  for (const key of LEGACY_KEYS) base[key] = draft[key];
-  return { scoringModel: 'legacy-v1', ...base } as unknown as LegacySolverConfig;
 }
 
-/** 設定或快照的評分版本；沒有 scoringModel 的舊資料視為 legacy-v1。 */
-export function scoringModelOf(config: { scoringModel?: string }): ScoringModel {
-  return config.scoringModel === 'hand-affinity-v2' ? 'hand-affinity-v2' : 'legacy-v1';
+function finiteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
+/**
+ * 把資料庫讀回的參數合併到目前草稿，逐欄檢查型別，損壞或不認得的值保留目前值。
+ * 加入 V3 前保存的資料沒有 `v3`，使用 V3 預設；頂層的 V2／V1 數值與已選的評分方式照舊，
+ * 各版之間不互相換算。
+ */
+export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft {
+  const next = cloneDraft(current);
+  if (!stored || typeof stored !== 'object') return next;
+  const raw = stored as Record<string, unknown>;
+  const target = next as unknown as Record<string, unknown>;
+  for (const key of [...BASE_KEYS, ...LEGACY_KEYS, ...PREFERENCE_KEYS]) {
+    const value = raw[key];
+    const reference = target[key];
+    if (typeof reference === 'number' ? finiteNumber(value) : typeof value === typeof reference) {
+      target[key] = value;
+    }
+  }
+  if (isScoringModel(raw.scoringModel)) next.scoringModel = raw.scoringModel;
+  const v3 = raw.v3;
+  if (v3 && typeof v3 === 'object') {
+    for (const key of V3_PREFERENCE_KEYS) {
+      const value = (v3 as Record<string, unknown>)[key];
+      if (finiteNumber(value)) next.v3[key] = value;
+    }
+  }
+  return next;
+}
+
+/**
+ * 設定或快照的評分版本；沒有 scoringModel 的舊資料視為 legacy-v1。
+ * 不認得的字串回傳 null，呼叫端不可把它當成任何一版。
+ */
+export function scoringModelOf(config: { scoringModel?: string }): ScoringModel | null {
+  if (config.scoringModel === undefined) return SCORING_V1;
+  return isScoringModel(config.scoringModel) ? config.scoringModel : null;
+}
+
+/** 已投影設定的評分版本；型別保證只有三種，省略時為 legacy-v1。 */
+export function requestModelOf(config: SolverConfig): ScoringModel {
+  return config.scoringModel ?? SCORING_V1;
+}
+
+/** 只看 scoringModel 判別；V2 與 V3 都有 score，不可用欄位存在與否判斷版本。 */
 export function isV2Solution(solution: Solution): solution is V2Solution {
-  return solution.scoringModel === 'hand-affinity-v2' || 'score' in solution;
+  return solution.scoringModel === SCORING_V2;
 }
 
+export function isV3Solution(solution: Solution): solution is V3Solution {
+  return solution.scoringModel === SCORING_V3;
+}
+
+/** Rust 序列化 legacy 方案時不輸出 scoringModel。 */
 export function isLegacySolution(solution: Solution): solution is LegacySolution {
-  return !isV2Solution(solution);
+  return solution.scoringModel === undefined || solution.scoringModel === SCORING_V1;
 }
 
-/** λ = 2^(4 − 8·homePreference/100)：動作負擔換算成排序值時的係數。 */
+/** 方案實際的評分版本；不認得的 scoringModel 回傳 null。 */
+export function solutionModelOf(solution: Solution): ScoringModel | null {
+  if (isV3Solution(solution)) return SCORING_V3;
+  if (isV2Solution(solution)) return SCORING_V2;
+  if (isLegacySolution(solution)) return SCORING_V1;
+  return null;
+}
+
+/** 每個欄位都必須是有限數值；NaN、Infinity 或字串代表資料損壞。 */
+function numbersAt(value: unknown, keys: readonly string[]): boolean {
+  if (!value || typeof value !== 'object') return false;
+  return keys.every((key) => finiteNumber((value as Record<string, unknown>)[key]));
+}
+
+/** V2 scoreBreakdown 的八個欄位，自 v0.2.0 起即為固定形狀。 */
+const V2_BREAKDOWN_KEYS: (keyof ScoreBreakdown)[] = [
+  'assignmentAffinity',
+  'sideExposure',
+  'crossExposure',
+  'handover',
+  'travelStrain',
+  'compressionStrain',
+  'repetition',
+  'freeDistance',
+];
+
+/** 確認分數欄位真的是該版的形狀，避免畫面讀到 undefined。 */
+function hasScoreShape(solution: Solution): boolean {
+  if (isV3Solution(solution)) {
+    return (
+      numbersAt(solution.score, ['movement', 'posture', 'fatigue', 'total']) &&
+      numbersAt(solution.scoreBreakdown, V3_BREAKDOWN_KEYS)
+    );
+  }
+  if (isV2Solution(solution)) {
+    return (
+      numbersAt(solution.score, ['intuition', 'strain', 'efficiency', 'rankingValue']) &&
+      numbersAt(solution.scoreBreakdown, V2_BREAKDOWN_KEYS)
+    );
+  }
+  return numbersAt(solution, ['totalCost']) && numbersAt(solution.costBreakdown, COST_KEYS);
+}
+
+/**
+ * 檢查回應是否屬於請求的評分版本：schemaVersion 對得上，
+ * 而且每個方案的 scoringModel 與分數欄位都是同一版。
+ * 一致時回傳 null，否則回傳給使用者看的原因。新結果與快取都要經過這一關。
+ */
+export function responseMismatch(
+  response: { schemaVersion: number; solutions: Solution[] },
+  model: ScoringModel,
+): string | null {
+  if (response.schemaVersion !== SCHEMA_VERSION[model]) {
+    return (
+      `核心回傳 schemaVersion ${response.schemaVersion}，與「${SCORING_LABEL[model]}」需要的 ` +
+      `${SCHEMA_VERSION[model]} 不符；核心可能尚未支援這個評分方式，結果未套用。`
+    );
+  }
+  for (const solution of response.solutions ?? []) {
+    if (solutionModelOf(solution) !== model || !hasScoreShape(solution)) {
+      return `核心回傳的方案 ${solution.id} 不是「${SCORING_LABEL[model]}」的評分格式，結果未套用。`;
+    }
+  }
+  return null;
+}
+
+/** λ = 2^(4 − 8·homePreference/100)：V2 動作負擔換算成排序值時的係數；V3 不使用。 */
 export function strainFactor(homePreference: number): number {
   return 2 ** (4 - 8 * (homePreference / 100));
 }
@@ -176,6 +321,62 @@ export const SCORE_GROUPS: ScoreGroup[] = [
     items: [],
   },
 ];
+
+export interface V3ScoreItem {
+  key: keyof V3ScoreBreakdown;
+  label: string;
+  hint: string;
+}
+
+export interface V3ScoreGroup {
+  id: 'movement' | 'posture' | 'fatigue';
+  label: string;
+  /** 候選摘要用的短名稱 */
+  short: string;
+  hint: string;
+  items: V3ScoreItem[];
+}
+
+/** V3 方案面板的三群分數與九個分項，依 Rust 的 ScoreBreakdownV3 欄位。 */
+export const V3_SCORE_GROUPS: V3ScoreGroup[] = [
+  {
+    id: 'movement',
+    label: '動作效率',
+    short: '動作效率',
+    hint: '移動距離、超過容忍速度的部分與 Slide 趕接；越低越省力。',
+    items: [
+      { key: 'travel', label: '移動距離', hint: '接觸之間的移動長度；低速移動也會計入。' },
+      { key: 'speedStrain', label: '高速移動', hint: '移動速度超過「快速移動容忍」的額外負擔。' },
+      { key: 'compressionStrain', label: 'Slide 趕接', hint: '晚接或提早掃完造成比原定更快的追蹤。' },
+    ],
+  },
+  {
+    id: 'posture',
+    label: '姿態與分工',
+    short: '姿態',
+    hint: '手離開本側、雙手交叉與 Slide 中途換手；越低越自然。',
+    items: [
+      { key: 'excursion', label: '跨區', hint: '手到另一側的程度與停留時間，由「左右分工傾向」控制。' },
+      { key: 'crossExposure', label: '雙手交叉', hint: '左手位於右手右邊的程度；平面代理，不是手臂碰撞。' },
+      { key: 'handover', label: 'Slide 換手', hint: 'Slide 中途交給另一隻手的附加費。' },
+    ],
+  },
+  {
+    id: 'fatigue',
+    label: '短期負荷',
+    short: '短期負荷',
+    hint: '同點高速連打、來回折返與短時間集中在同一隻手；越低越輕鬆。',
+    items: [
+      { key: 'jackFatigue', label: '同點高速連打', hint: '同一隻手高速重複敲同一位置，由「同點連打容忍」控制。' },
+      { key: 'reversal', label: '反覆折返', hint: '同一隻手短時間內來回改變移動方向。' },
+      { key: 'workload', label: '單手集中負荷', hint: '短時間內動作集中在同一隻手；不懲罰另一隻手閒置。' },
+    ],
+  },
+];
+
+export const V3_BREAKDOWN_KEYS: (keyof V3ScoreBreakdown)[] = V3_SCORE_GROUPS.flatMap((group) =>
+  group.items.map((item) => item.key),
+);
 
 export const WEIGHT_KEYS = [
   'distanceWeight',
@@ -303,8 +504,9 @@ export interface ConfigIssue {
 }
 
 /**
- * 參數欄位的合法範圍，與 src/model.rs SolverConfig::validate() 及
- * src/scoring.rs PreferenceConfig::validate() 一致（含端點）。
+ * 參數欄位的合法範圍，與 src/model.rs SolverConfig::validate()、
+ * src/scoring.rs PreferenceConfig::validate() 及 src/scoring_v3.rs PreferenceConfigV3::validate()
+ * 一致（含端點）。V2 與 V3 同名的 homePreference／travelComfort／handoverWillingness 範圍相同。
  */
 export const CONFIG_RANGE = {
   beamWidth: { min: 1, max: 256 },
@@ -323,6 +525,7 @@ export const CONFIG_RANGE = {
   homePreference: { min: 0, max: 100 },
   travelComfort: { min: 1, max: 200 },
   repeatTolerance: { min: 0, max: 100 },
+  jackTolerance: { min: 0, max: 100 },
   handoverWillingness: { min: 0, max: 100 },
   firstSeconds: { min: 0, max: 120 },
 } as const;
@@ -350,6 +553,7 @@ export const FIELD_LABEL: Record<string, string> = {
   homePreference: '左右分工傾向',
   travelComfort: '快速移動容忍',
   repeatTolerance: '同手連打容忍',
+  jackTolerance: '同點連打容忍',
   handoverWillingness: 'Slide 換手意願',
   firstSeconds: '起始秒數',
 };
@@ -460,10 +664,18 @@ export function validateConfig(config: ConfigDraft, firstSeconds: number): Confi
         issues.push({ field: key, message: '成本權重必須是 0–100 的有限數值' });
       }
     }
-  } else {
+  } else if (config.scoringModel === 'hand-affinity-v2') {
     for (const key of PREFERENCE_KEYS) {
       const range = R[key];
       if (outside(config[key], range)) {
+        issues.push({ field: key, message: `必須是 ${range.min}–${range.max} 的有限數值` });
+      }
+    }
+  } else {
+    // V3 的欄位名稱與 V2 部分相同，但數值存在 config.v3；錯誤仍以 wire 欄位名稱回報。
+    for (const key of V3_PREFERENCE_KEYS) {
+      const range = R[key];
+      if (outside(config.v3[key], range)) {
         issues.push({ field: key, message: `必須是 ${range.min}–${range.max} 的有限數值` });
       }
     }
@@ -488,7 +700,7 @@ export function configEquals(a: SolverConfig, b: SolverConfig): boolean {
 }
 
 export function cloneDraft(draft: ConfigDraft): ConfigDraft {
-  return { ...draft };
+  return { ...draft, v3: { ...draft.v3 } };
 }
 
 /** V1 成本拆解總和（乘權重後）應等於 totalCost，容許浮點誤差；只用於 legacy 方案的自我檢查。 */

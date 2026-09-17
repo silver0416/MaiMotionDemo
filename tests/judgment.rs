@@ -11,8 +11,12 @@ fn run(source: &str, solver_config: SolverConfig) -> AnalyzeResponse {
         solver_config,
     })
 }
-fn configs() -> [SolverConfig; 2] {
-    [SolverConfig::default(), SolverConfig::v2()]
+fn configs() -> [SolverConfig; 3] {
+    [
+        SolverConfig::default(),
+        SolverConfig::v2(),
+        SolverConfig::v3(),
+    ]
 }
 fn ok(source: &str, c: SolverConfig) -> AnalyzeResponse {
     let r = run(source, c);

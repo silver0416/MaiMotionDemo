@@ -153,6 +153,7 @@ pub struct SolverConfig {
     pub home_preference: f64,
     pub travel_comfort: f64,
     pub repeat_tolerance: f64,
+    pub jack_tolerance: f64,
     pub handover_willingness: f64,
     pub beam_width: usize,
     pub top_k: usize,
@@ -185,6 +186,7 @@ struct SolverConfigWire {
     home_preference: f64,
     travel_comfort: f64,
     repeat_tolerance: f64,
+    jack_tolerance: f64,
     handover_willingness: f64,
     beam_width: usize,
     top_k: usize,
@@ -218,6 +220,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             home_preference: c.home_preference,
             travel_comfort: c.travel_comfort,
             repeat_tolerance: c.repeat_tolerance,
+            jack_tolerance: c.jack_tolerance,
             handover_willingness: c.handover_willingness,
             beam_width: c.beam_width,
             top_k: c.top_k,
@@ -248,6 +251,7 @@ impl From<SolverConfigWire> for SolverConfig {
             home_preference: c.home_preference,
             travel_comfort: c.travel_comfort,
             repeat_tolerance: c.repeat_tolerance,
+            jack_tolerance: c.jack_tolerance,
             handover_willingness: c.handover_willingness,
             beam_width: c.beam_width,
             top_k: c.top_k,
@@ -289,23 +293,30 @@ const V2_KEYS: [&str; 4] = [
 ];
 impl<'de> Deserialize<'de> for SolverConfig {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(deserializer)?;
+        let mut value = serde_json::Value::deserialize(deserializer)?;
         let model = value
             .get("scoringModel")
             .and_then(|v| v.as_str())
             .unwrap_or("legacy-v1");
-        if !matches!(model, "legacy-v1" | "hand-affinity-v2") {
+        if !matches!(model, "legacy-v1" | "hand-affinity-v2" | "human-motion-v3") {
             return Err(serde::de::Error::custom("未知 scoringModel"));
         }
-        let forbidden: &[&str] = if model == "hand-affinity-v2" {
-            &LEGACY_KEYS
-        } else {
-            &V2_KEYS
+        let forbidden: Vec<&str> = match model {
+            "human-motion-v3" => LEGACY_KEYS.into_iter().chain(["repeatTolerance"]).collect(),
+            "hand-affinity-v2" => LEGACY_KEYS.into_iter().chain(["jackTolerance"]).collect(),
+            _ => V2_KEYS.into_iter().chain(["jackTolerance"]).collect(),
         };
         if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
             return Err(serde::de::Error::custom(format!(
                 "{model} 不接受 {key}，請勿混用版本參數"
             )));
+        }
+        if model == "human-motion-v3" {
+            let map = value
+                .as_object_mut()
+                .ok_or_else(|| serde::de::Error::custom("設定需為物件"))?;
+            map.entry("homePreference").or_insert(60.0.into());
+            map.entry("travelComfort").or_insert(90.0.into());
         }
         serde_json::from_value::<SolverConfigWire>(value)
             .map(Self::from)
@@ -317,7 +328,12 @@ impl Serialize for SolverConfig {
         let mut value = serde_json::to_value(SolverConfigWire::from(self))
             .map_err(serde::ser::Error::custom)?;
         let map = value.as_object_mut().unwrap();
-        if self.is_v2() {
+        if !self.is_legacy() {
+            map.remove(if self.is_v3() {
+                "repeatTolerance"
+            } else {
+                "jackTolerance"
+            });
             for key in LEGACY_KEYS {
                 map.remove(key);
             }
@@ -326,6 +342,7 @@ impl Serialize for SolverConfig {
                 map.remove(key);
             }
             map.remove("scoringModel");
+            map.remove("jackTolerance");
         }
         value.serialize(serializer)
     }
@@ -337,6 +354,7 @@ impl Default for SolverConfig {
             home_preference: 80.0,
             travel_comfort: 30.0,
             repeat_tolerance: 60.0,
+            jack_tolerance: 60.0,
             handover_willingness: 40.0,
             beam_width: 128,
             top_k: 3,
@@ -361,6 +379,29 @@ impl Default for SolverConfig {
     }
 }
 impl SolverConfig {
+    pub fn v3() -> Self {
+        Self {
+            scoring_model: crate::scoring_v3::SCORING_MODEL_V3.into(),
+            home_preference: 60.0,
+            travel_comfort: 90.0,
+            ..Self::default()
+        }
+    }
+    pub fn is_v3(&self) -> bool {
+        self.scoring_model == crate::scoring_v3::SCORING_MODEL_V3
+    }
+    pub fn is_legacy(&self) -> bool {
+        self.scoring_model == "legacy-v1"
+    }
+    pub fn preferences_v3(&self) -> crate::scoring_v3::PreferenceConfigV3 {
+        crate::scoring_v3::PreferenceConfigV3 {
+            home_preference: self.home_preference,
+            travel_comfort: self.travel_comfort,
+            jack_tolerance: self.jack_tolerance,
+            handover_willingness: self.handover_willingness,
+        }
+    }
+
     pub fn v2() -> Self {
         Self {
             scoring_model: crate::scoring::SCORING_MODEL.into(),
@@ -381,12 +422,16 @@ impl SolverConfig {
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(
             self.scoring_model.as_str(),
-            "legacy-v1" | "hand-affinity-v2"
+            "legacy-v1" | "hand-affinity-v2" | "human-motion-v3"
         ) {
             return Err("未知 scoringModel".into());
         }
-        if self.is_v2() {
-            self.preferences().validate()?;
+        if !self.is_legacy() {
+            if self.is_v3() {
+                self.preferences_v3().validate()?;
+            } else {
+                self.preferences().validate()?;
+            }
             if [
                 self.distance_weight,
                 self.speed_weight,
@@ -399,7 +444,7 @@ impl SolverConfig {
             .any(|v| *v != 1.0)
                 || self.speed_reference != 4.0
             {
-                return Err("V2 不接受 Legacy 權重".into());
+                return Err("V2/V3 不接受 Legacy 權重".into());
             }
         }
         let values = [
@@ -583,8 +628,8 @@ pub struct Solution {
     pub total_cost: f64,
     #[serde(default)]
     pub cost_breakdown: CostBreakdown,
-    pub score: Option<crate::scoring::Score>,
-    pub score_breakdown: Option<crate::scoring::ScoreBreakdown>,
+    pub score: Option<SolutionScore>,
+    pub score_breakdown: Option<SolutionScoreBreakdown>,
     pub scoring_model: Option<String>,
     pub assignments: Vec<Assignment>,
     pub handovers: Vec<Handover>,
@@ -616,5 +661,51 @@ impl Serialize for Solution {
         map.serialize_entry("configSnapshot", &self.config_snapshot)?;
         map.serialize_entry("warnings", &self.warnings)?;
         map.end()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SolutionScore {
+    V2(crate::scoring::Score),
+    V3(crate::scoring_v3::ScoreV3),
+}
+impl SolutionScore {
+    pub fn as_v2(&self) -> Option<&crate::scoring::Score> {
+        if let Self::V2(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+    pub fn as_v3(&self) -> Option<&crate::scoring_v3::ScoreV3> {
+        if let Self::V3(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum SolutionScoreBreakdown {
+    V2(crate::scoring::ScoreBreakdown),
+    V3(crate::scoring_v3::ScoreBreakdownV3),
+}
+impl SolutionScoreBreakdown {
+    pub fn as_v2(&self) -> Option<&crate::scoring::ScoreBreakdown> {
+        if let Self::V2(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+    pub fn as_v3(&self) -> Option<&crate::scoring_v3::ScoreBreakdownV3> {
+        if let Self::V3(v) = self {
+            Some(v)
+        } else {
+            None
+        }
     }
 }

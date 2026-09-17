@@ -9,11 +9,14 @@
     SCORE_GROUPS,
     SCORING_LABEL,
     STATUS_LABEL,
+    V3_BREAKDOWN_KEYS,
+    V3_SCORE_GROUPS,
     WEIGHT_OF_COST,
     costSum,
     isLegacySolution,
     isV2Solution,
-    scoringModelOf,
+    isV3Solution,
+    solutionModelOf,
     strainFactor,
     type ScoreGroup,
   } from '../lib/contract';
@@ -21,17 +24,18 @@
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import type { AnalyzeStatus, Hand, PalmPlacement, Solution, V2Solution } from '../lib/types';
+  import type { AnalyzeStatus, Hand, PalmPlacement, Solution, V2Solution, V3Solution } from '../lib/types';
 
   const solutions = $derived<Solution[]>(session.solutions);
   const solution = $derived<Solution | null>(session.solution);
   const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
   const diagnostics = $derived(session.response?.diagnostics ?? []);
-  // 只有舊版方案有 totalCost；V2 不顯示與第一名的差值，順序照 Rust 回傳。
+  // 只有舊版方案有 totalCost；V2／V3 不顯示與第一名的差值，順序照 Rust 回傳。
   const best = $derived<number>(
     solutions.length > 0 && isLegacySolution(solutions[0]) ? solutions[0].totalCost : 0,
   );
-  const isV2 = $derived(solution !== null && isV2Solution(solution));
+  const scored = $derived(solution !== null && !isLegacySolution(solution));
+  const snapshotModel = $derived(solution ? solutionModelOf(solution) : null);
 
   interface SolutionStats {
     /** 接觸音符：Tap、Hold、Touch、Touch Hold 與有起點的 Slide 起點（part = contact / head） */
@@ -144,6 +148,16 @@
     ).join('・');
   }
 
+  /** V3 候選清單的一行分數摘要：動作效率 X・姿態 Y・短期負荷 Z。 */
+  function v3ScoreLine(item: V3Solution): string {
+    return V3_SCORE_GROUPS.map((group) => `${group.short} ${formatNumber(item.score[group.id], 2)}`).join('・');
+  }
+
+  /** V3 九項同單位直接加總，長條用九項中的最大值當共同基準，各群之間可以直接比長短。 */
+  function v3Peak(item: V3Solution): number {
+    return maxOf(V3_BREAKDOWN_KEYS.map((key) => item.scoreBreakdown[key]));
+  }
+
   function maxOf(values: number[]): number {
     return Math.max(...values, 1e-6);
   }
@@ -211,9 +225,9 @@
       <div class="section-title">
         <span>候選方案</span>
         <span class="muted xsmall">
-          {solutions.length > 0 && isV2Solution(solutions[0])
-            ? '依核心排序，越前面越符合目前偏好'
-            : '成本越低越偏好'}
+          {solutions.length > 0 && isLegacySolution(solutions[0])
+            ? '成本越低越偏好'
+            : '依核心排序，越前面越符合目前偏好'}
         </span>
       </div>
       <div class="candidates" role="radiogroup" aria-label="候選方案">
@@ -234,10 +248,13 @@
                 <span class="xsmall muted">第 {index + 1} 名</span>
               {/if}
             </span>
-            {#if isV2Solution(item)}
+            {#if isV3Solution(item)}
+              <span class="xsmall mono">{v3ScoreLine(item)}</span>
+              <span class="xsmall muted">{summaryOf(stats)}</span>
+            {:else if isV2Solution(item)}
               <span class="xsmall mono">{scoreLine(item)}</span>
               <span class="xsmall muted">{summaryOf(stats)}</span>
-            {:else}
+            {:else if isLegacySolution(item)}
               <span class="xsmall muted">
                 {formatDelta(item.totalCost - best)}・{summaryOf(stats)}
               </span>
@@ -297,11 +314,76 @@
             「一掌覆蓋」是同一隻手掌一次蓋住的 Touch 顆數與動作次數，這幾顆已計入該手的接觸音符，
             不是多隻手分別觸碰。
           {/if}
-          {isV2 ? '評分' : '成本'}與覆蓋都是本 Demo 的啟發式規則，不是官方判定或人體模型。
+          {scored ? '評分' : '成本'}與覆蓋都是本 Demo 的啟發式規則，不是官方判定或人體模型。
         </p>
       </section>
 
-      {#if isV2Solution(solution)}
+      {#if isV3Solution(solution)}
+        {@const v3 = solution}
+        {@const peak = v3Peak(v3)}
+        <section class="section">
+          <div class="section-title">
+            <span>評分</span>
+            <span class="muted xsmall mono">總分 {formatNumber(v3.score.total)}</span>
+          </div>
+          <div class="score-groups">
+            {#each V3_SCORE_GROUPS as group (group.id)}
+              <div class="score-group">
+                <div class="score-head">
+                  <span class="score-label">{group.label}</span>
+                  <span class="mono score-value">{formatNumber(v3.score[group.id])}</span>
+                </div>
+                <p class="field-hint">{group.hint}</p>
+                <details class="score-details">
+                  <summary>分項</summary>
+                  <table class="table">
+                    <tbody>
+                      {#each group.items as entry (entry.key)}
+                        {@const value = v3.scoreBreakdown[entry.key]}
+                        <tr>
+                          <td style="width: 42%">
+                            <div>{entry.label}</div>
+                            <div class="xsmall muted">{entry.hint}</div>
+                          </td>
+                          <td class="mono" style="width: 22%">{formatNumber(value)}</td>
+                          <td>
+                            <div class="bar-track">
+                              <div class="bar-fill" style={`width:${Math.max(0, value / peak) * 100}%`}></div>
+                            </div>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </details>
+              </div>
+            {/each}
+          </div>
+          <details class="score-details" style="margin-top: var(--space-3)">
+            <summary>排序方式</summary>
+            <p class="field-hint">
+              核心把三群直接相加成總分，總分越低排越前面；沒有額外倍率。
+              分項長條以這個候選九項中的最大值為基準，可以跨群比較。
+            </p>
+          </details>
+          <p class="field-hint" style="margin-top: var(--space-3)">
+            分數是同一份譜面裡比較候選用的相對值，不是機率、百分比或玩家能力評估；
+            公式與預設值是本 Demo 的起點，尚未經玩家校準。
+          </p>
+          <div class="row row-wrap" style="margin-top: var(--space-3)">
+            <CopyDebugButton
+              label="複製評分明細"
+              input={() => ({
+                context: '方案分頁（人類動作 v3 評分）',
+                source: session.result?.source ?? '',
+                config: session.result?.config ?? null,
+                firstSeconds: session.result?.firstSeconds ?? null,
+                response: session.result?.response ?? null,
+              })}
+            />
+          </div>
+        </section>
+      {:else if isV2Solution(solution)}
         {@const v2 = solution}
         <section class="section">
           <div class="section-title">
@@ -532,8 +614,23 @@
           <summary>這份結果使用的參數</summary>
           <dl class="kv">
             <dt>評分方式</dt>
-            <dd>{SCORING_LABEL[scoringModelOf(solution.configSnapshot)]}</dd>
-            {#if isV2Solution(solution)}
+            <dd>
+              {#if snapshotModel}
+                {SCORING_LABEL[snapshotModel]} <span class="muted mono">{snapshotModel}</span>
+              {:else}
+                <span class="mono">{solution.scoringModel}</span>（無法辨識）
+              {/if}
+            </dd>
+            {#if isV3Solution(solution)}
+              <dt>左右分工傾向</dt>
+              <dd>{solution.configSnapshot.homePreference}</dd>
+              <dt>快速移動容忍</dt>
+              <dd>{solution.configSnapshot.travelComfort} 半徑/秒</dd>
+              <dt>同點連打容忍</dt>
+              <dd>{solution.configSnapshot.jackTolerance}</dd>
+              <dt>Slide 換手意願</dt>
+              <dd>{solution.configSnapshot.handoverWillingness}</dd>
+            {:else if isV2Solution(solution)}
               <dt>左右分工傾向</dt>
               <dd>{solution.configSnapshot.homePreference}</dd>
               <dt>快速移動容忍</dt>

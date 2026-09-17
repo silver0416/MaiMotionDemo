@@ -1,9 +1,12 @@
-//! Incremental V2 bookkeeping around the existing feasibility transitions.
+//! Incremental V3 bookkeeping around the existing feasibility transitions.
 use super::*;
-use crate::scoring::{Score, ScoreBreakdown, ScoringV2};
+use crate::scoring_v3::{
+    HandHistory, ScoreBreakdownV3 as ScoreBreakdown, ScoreV3 as Score, ScoringV3,
+};
 
 #[derive(Clone, Default)]
 pub(super) struct Data {
+    histories: [HandHistory; 2],
     pub parts: ScoreBreakdown,
     pub score: Option<Score>,
     pub rank_score: Option<Score>,
@@ -12,7 +15,8 @@ pub(super) struct Data {
 }
 
 pub(super) struct Context<'a> {
-    engine: ScoringV2,
+    engine: ScoringV3,
+    repetition_seconds: f64,
     notes: BTreeMap<&'a str, &'a Note>,
     // Nominal tracking strain per unit of path length.
     nominal: BTreeMap<&'a str, f64>,
@@ -24,7 +28,7 @@ fn error(message: String) -> Diagnostic {
 
 impl<'a> Context<'a> {
     pub fn new(chart: &'a Chart, c: &SolverConfig) -> Result<Self, Diagnostic> {
-        let engine = ScoringV2::new(c.preferences()).map_err(error)?;
+        let engine = ScoringV3::new(c.preferences_v3()).map_err(error)?;
         let mut nominal = BTreeMap::new();
         for note in &chart.notes {
             if let Some(id) = &note.path_id {
@@ -57,6 +61,7 @@ impl<'a> Context<'a> {
         }
         Ok(Self {
             engine,
+            repetition_seconds: c.repetition_seconds,
             notes: chart.notes.iter().map(|n| (n.id.as_str(), n)).collect(),
             nominal,
         })
@@ -73,9 +78,9 @@ impl<'a> Context<'a> {
             for (segments, sign) in [(&removed, -1.0), (&added, 1.0)] {
                 for segment in segments {
                     let terms = self.engine.motion_terms(segment, hand).map_err(error)?;
-                    next.v2.parts.side_exposure += sign * terms.side_exposure;
-                    next.v2.parts.travel_strain += sign * terms.travel_strain;
-                    next.v2.parts.free_distance += sign * terms.free_distance;
+                    next.v3.parts.excursion += sign * terms.excursion;
+                    next.v3.parts.speed_strain += sign * terms.speed_strain;
+                    next.v3.parts.travel += sign * terms.travel;
                     // The new owner carries mode=slide for the entire tracking
                     // interval. mode=handover is the duplicate old-hand overlap.
                     if segment.mode == "slide" {
@@ -85,7 +90,7 @@ impl<'a> Context<'a> {
                             .map(|p| p[0].point().distance(p[1].point()))
                             .sum();
                         let rate = self.nominal[segment.note_id.as_deref().unwrap()];
-                        next.v2.parts.compression_strain += sign
+                        next.v3.parts.compression_strain += sign
                             * self
                                 .engine
                                 .compression(terms.tracking_strain, rate * distance)
@@ -97,18 +102,18 @@ impl<'a> Context<'a> {
         }
         // new L x new R - old L x old R, without counting changed pairs twice.
         for segment in &diffs[0].0 {
-            next.v2.parts.cross_exposure -=
+            next.v3.parts.cross_exposure -=
                 self.cross_chain(segment, &old.arms[1].segments, true)?;
         }
         for segment in &diffs[0].1 {
-            next.v2.parts.cross_exposure +=
+            next.v3.parts.cross_exposure +=
                 self.cross_chain(segment, &next.arms[1].segments, true)?;
         }
         for segment in &diffs[1].0 {
-            next.v2.parts.cross_exposure -= self.cross_chain(segment, &diffs[0].2, false)?;
+            next.v3.parts.cross_exposure -= self.cross_chain(segment, &diffs[0].2, false)?;
         }
         for segment in &diffs[1].1 {
-            next.v2.parts.cross_exposure += self.cross_chain(segment, &diffs[0].2, false)?;
+            next.v3.parts.cross_exposure += self.cross_chain(segment, &diffs[0].2, false)?;
         }
 
         let mut fresh = Vec::new();
@@ -126,44 +131,34 @@ impl<'a> Context<'a> {
             }
             let note = self.notes[assignment.note_id.as_str()];
             // Use semantic chart time, not an early sweep's contact timestamp.
-            if next.v2.contacts_at != Some(note.time_seconds) {
-                next.v2.contacts_at = Some(note.time_seconds);
-                next.v2.contacts = [vec![], vec![]];
+            if next.v3.contacts_at != Some(note.time_seconds) {
+                next.v3.contacts_at = Some(note.time_seconds);
+                next.v3.contacts = [vec![], vec![]];
             }
-            let points = &mut next.v2.contacts[assignment.hand.index()];
-            let before = self.contact_cost(points, assignment.hand)?;
+            let points = &mut next.v3.contacts[assignment.hand.index()];
+
             let touch = matches!(note.kind.as_str(), "touch" | "touchHold");
             if !points.iter().any(|(p, _)| p.distance(note.position) <= EPS) {
                 points.push((note.position, touch));
             }
-            next.v2.parts.assignment_affinity +=
-                self.contact_cost(points, assignment.hand)? - before;
         }
-        // V2 configs require the legacy weights to stay at their internal unit
-        // defaults. These two accumulators are therefore raw event counts/costs.
-        next.v2.parts.repetition =
-            2.0 * (1.0 - self.engine.config().repeat_tolerance / 100.0) * next.cost.repetition;
-        next.v2.parts.handover = self.engine.handover(false) * next.cost.handover;
+        for event in fresh_values(&old.actions, &next.actions) {
+            let terms = self
+                .engine
+                .action(
+                    &mut next.v3.histories[event.hand.index()],
+                    event,
+                    self.repetition_seconds,
+                )
+                .map_err(error)?;
+            next.v3.parts.jack_fatigue += terms.jack_fatigue;
+            next.v3.parts.reversal += terms.reversal;
+            next.v3.parts.workload += terms.workload;
+        }
+        for handover in fresh_values(&old.handovers, &next.handovers) {
+            next.v3.parts.handover += self.engine.handover(handover.swap);
+        }
         self.refresh(next)
-    }
-
-    fn contact_cost(&self, points: &[(Point, bool)], hand: Hand) -> Result<f64, Diagnostic> {
-        let (mut other, mut touch, mut count) = (0.0, 0.0, 0);
-        for &(point, is_touch) in points {
-            let cost = self.engine.affinity(hand, point).map_err(error)?;
-            if is_touch {
-                touch += cost;
-                count += 1;
-            } else {
-                other += cost;
-            }
-        }
-        Ok(other
-            + if count == 0 {
-                0.0
-            } else {
-                touch / count as f64
-            })
     }
 
     fn cross_chain(
@@ -194,23 +189,22 @@ impl<'a> Context<'a> {
 
     pub fn refresh(&self, state: &mut State) -> Result<(), Diagnostic> {
         // Remove cancellation noise only. Real negative values remain errors.
-        let p = &mut state.v2.parts;
+        let p = &mut state.v3.parts;
         for v in [
-            &mut p.assignment_affinity,
-            &mut p.side_exposure,
+            &mut p.excursion,
             &mut p.cross_exposure,
-            &mut p.travel_strain,
+            &mut p.speed_strain,
             &mut p.compression_strain,
-            &mut p.free_distance,
+            &mut p.travel,
         ] {
             if *v < 0.0 && *v > -1e-9 {
                 *v = 0.0;
             }
         }
-        state.v2.score = Some(self.engine.score(p).map_err(error)?);
+        state.v3.score = Some(self.engine.score(p).map_err(error)?);
         let mut rank = p.clone();
-        rank.side_exposure += state.pending.max(0.0);
-        state.v2.rank_score = Some(self.engine.score(&rank).map_err(error)?);
+        rank.excursion += state.pending.max(0.0);
+        state.v3.rank_score = Some(self.engine.score(&rank).map_err(error)?);
         Ok(())
     }
 
@@ -236,18 +230,18 @@ impl<'a> Context<'a> {
             .engine
             .motion_terms(&segment, Hand::L)
             .map_err(error)?
-            .side_exposure;
+            .excursion;
         let right = self
             .engine
             .motion_terms(&segment, Hand::R)
             .map_err(error)?
-            .side_exposure;
+            .excursion;
         Ok(left.min(right))
     }
 
     /// Independent complete trajectory recomputation for the final candidates.
-    /// Event affinity/repetition are checked by behavioral tests; this verifies
-    /// all removable motion contributions and the incremental cross ledger.
+    /// Replays physical actions and handovers as well as removable motion terms,
+    /// so missing/duplicated incremental updates fail before publishing a score.
     pub fn verify(&self, state: &State) -> Result<(), Diagnostic> {
         let mut expected = ScoreBreakdown::default();
         let left = state.arms[0].segments.to_vec();
@@ -255,9 +249,9 @@ impl<'a> Context<'a> {
         for (segments, hand) in [(&left, Hand::L), (&right, Hand::R)] {
             for segment in segments {
                 let t = self.engine.motion_terms(segment, hand).map_err(error)?;
-                expected.side_exposure += t.side_exposure;
-                expected.travel_strain += t.travel_strain;
-                expected.free_distance += t.free_distance;
+                expected.excursion += t.excursion;
+                expected.speed_strain += t.speed_strain;
+                expected.travel += t.travel;
                 if segment.mode == "slide" {
                     let distance: f64 = segment
                         .samples
@@ -285,16 +279,27 @@ impl<'a> Context<'a> {
                 j += 1;
             }
         }
-        let actual = &state.v2.parts;
-        for (a, b) in [
-            (expected.side_exposure, actual.side_exposure),
-            (expected.cross_exposure, actual.cross_exposure),
-            (expected.travel_strain, actual.travel_strain),
-            (expected.free_distance, actual.free_distance),
-            (expected.compression_strain, actual.compression_strain),
-        ] {
+        let mut histories = [HandHistory::default(), HandHistory::default()];
+        for event in state.actions.to_vec() {
+            let terms = self
+                .engine
+                .action(
+                    &mut histories[event.hand.index()],
+                    &event,
+                    self.repetition_seconds,
+                )
+                .map_err(error)?;
+            expected.jack_fatigue += terms.jack_fatigue;
+            expected.reversal += terms.reversal;
+            expected.workload += terms.workload;
+        }
+        for handover in state.handovers.to_vec() {
+            expected.handover += self.engine.handover(handover.swap);
+        }
+        let actual = &state.v3.parts;
+        for (a, b) in expected.values().into_iter().zip(actual.values()) {
             if (a - b).abs() > 1e-7 * (1.0 + a.abs()) {
-                return Err(error(format!("V2 增量成本不一致：{a} / {b}")));
+                return Err(error(format!("V3 增量成本不一致：{a} / {b}")));
             }
         }
         Ok(())
@@ -332,7 +337,7 @@ fn changed<T: Clone>(old: &Chain<T>, new: &Chain<T>) -> (Vec<T>, Vec<T>, Chain<T
 pub(super) fn remove_unnecessary_deferrals(states: &mut Vec<State>) {
     let key = |s: &State| {
         let mut contacts: Vec<_> =
-            s.v2.contacts
+            s.v3.contacts
                 .iter()
                 .enumerate()
                 .flat_map(|(hand, points)| {
@@ -354,17 +359,29 @@ pub(super) fn remove_unnecessary_deferrals(states: &mut Vec<State>) {
 
 pub(super) fn compare(a: &State, b: &State, final_rank: bool) -> std::cmp::Ordering {
     let left = if final_rank {
-        &a.v2.score
+        &a.v3.score
     } else {
-        &a.v2.rank_score
+        &a.v3.rank_score
     };
     let right = if final_rank {
-        &b.v2.score
+        &b.v3.score
     } else {
-        &b.v2.rank_score
+        &b.v3.rank_score
     };
     left.as_ref()
         .unwrap()
         .compare(right.as_ref().unwrap())
         .then_with(|| a.deposit.len().cmp(&b.deposit.len()))
+}
+
+fn fresh_values<'a, T>(old: &Chain<T>, new: &'a Chain<T>) -> Vec<&'a T> {
+    let mut cursor = new;
+    let mut result = Vec::new();
+    while cursor.len > old.len {
+        let link = cursor.head.as_ref().unwrap();
+        result.push(&link.value);
+        cursor = &link.prev;
+    }
+    result.reverse();
+    result
 }

@@ -2,6 +2,7 @@ mod geometry;
 mod model;
 mod parser;
 pub mod scoring;
+pub mod scoring_v3;
 mod solver;
 
 pub use model::*;
@@ -9,7 +10,13 @@ pub use parser::{parse_chart, ParseOutput};
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {
-        schema_version: if request.solver_config.is_v2() { 3 } else { 2 },
+        schema_version: if request.solver_config.is_v3() {
+            4
+        } else if request.solver_config.is_v2() {
+            3
+        } else {
+            2
+        },
         request_id: request.request_id,
         status: "invalid".into(),
         diagnostics: vec![],

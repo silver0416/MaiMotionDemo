@@ -1,5 +1,9 @@
 mod v2;
+mod v3;
+#[cfg(test)]
+mod v3_tests;
 use crate::geometry::button;
+use crate::scoring_v3::{ActionEvent, ActionKind};
 use crate::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -140,6 +144,8 @@ struct Arm {
 #[derive(Clone)]
 struct State {
     v2: v2::Data,
+    v3: v3::Data,
+    actions: Chain<ActionEvent>,
     group_origin: usize,
     arms: [Arm; 2],
     cost: CostBreakdown,
@@ -1040,6 +1046,21 @@ fn assign_once(
         start_seconds: begin,
         end_seconds: task_end,
     });
+    if task.mode != "slide" {
+        record_action(
+            &mut next,
+            c,
+            hand,
+            start,
+            begin,
+            if glide || glided {
+                ActionKind::ContinuousContact
+            } else {
+                ActionKind::Strike
+            },
+            Some(n.id.clone()),
+        );
+    }
     if n.kind == "touchHold" {
         next.held_touch[idx] = Some(task.note);
     }
@@ -1222,6 +1243,21 @@ fn palm_once(
         note_ids.first().cloned(),
         &mut next.cost,
         c,
+    );
+    record_action(
+        &mut next,
+        c,
+        hand,
+        center,
+        start,
+        // A palm reached without lifting is still continuous contact, not a
+        // fresh placement. Charging a full placement biases dense wipes late.
+        if glided {
+            ActionKind::ContinuousContact
+        } else {
+            ActionKind::Palm
+        },
+        note_ids.first().cloned(),
     );
     for (i, note_id) in candidate.covered.iter().zip(&note_ids) {
         next.assignments = next.assignments.push(Assignment {
@@ -1700,6 +1736,15 @@ fn assign_touch_sweep(
         next.arms[idx].last_tap = Some(judgment);
         for (task_index, hit) in hits {
             let note = &chart.notes[group[task_index].note];
+            record_action(
+                &mut next,
+                c,
+                hand,
+                note.position,
+                hit,
+                ActionKind::ContinuousContact,
+                Some(note.id.clone()),
+            );
             next.assignments = next.assignments.push(Assignment {
                 note_id: note.id.clone(),
                 part: "contact".into(),
@@ -1861,8 +1906,15 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
     } else {
         None
     };
+    let v3_context = if c.is_v3() {
+        Some(v3::Context::new(chart, c)?)
+    } else {
+        None
+    };
     let mut beam = vec![State {
         v2: v2::Data::default(),
+        v3: v3::Data::default(),
+        actions: Chain::default(),
         group_origin: 0,
         arms,
         cost: CostBreakdown::default(),
@@ -1883,6 +1935,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         used_touch_group: false,
     }];
     if let Some(context) = &v2_context {
+        context.refresh(&mut beam[0])?;
+    }
+    if let Some(context) = &v3_context {
         context.refresh(&mut beam[0])?;
     }
     let tasks = tasks(chart, c)?;
@@ -1950,6 +2005,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                         if let Some(context) = &v2_context {
                             context.update(state, &mut result)?;
                         }
+                        if let Some(context) = &v3_context {
+                            context.update(state, &mut result)?;
+                        }
                         swept.push(result);
                     }
                 }
@@ -1995,6 +2053,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                 if let Some(context) = &v2_context {
                     context.refresh(&mut state)?;
                 }
+                if let Some(context) = &v3_context {
+                    context.refresh(&mut state)?;
+                }
                 next.push(state);
                 continue;
             };
@@ -2019,6 +2080,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                         if let Some(context) = &v2_context {
                             context.update(&state, &mut s)?;
                         }
+                        if let Some(context) = &v3_context {
+                            context.update(&state, &mut s)?;
+                        }
                         pending.push((s, after.clone(), auto.clone()));
                     }
                     if late {
@@ -2029,11 +2093,17 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                         if let Some(context) = &v2_context {
                             context.update(&state, &mut s)?;
                         }
+                        if let Some(context) = &v3_context {
+                            context.update(&state, &mut s)?;
+                        }
                         pending.push((s, after.clone(), auto.clone()));
                     }
                     expansions += 1;
                     if let Some(mut s) = brush_touch(&state, task, hand, chart, c) {
                         if let Some(context) = &v2_context {
+                            context.update(&state, &mut s)?;
+                        }
+                        if let Some(context) = &v3_context {
                             context.update(&state, &mut s)?;
                         }
                         pending.push((s, after.clone(), auto.clone()));
@@ -2053,7 +2123,7 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                         after_palm[*j] = false;
                     }
                     for hand in [Hand::L, Hand::R] {
-                        let variants: Vec<PalmCandidate> = if c.is_v2() {
+                        let variants: Vec<PalmCandidate> = if !c.is_legacy() {
                             candidate
                                 .centers
                                 .iter()
@@ -2075,6 +2145,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                                 if let Some(context) = &v2_context {
                                     context.update(&state, &mut s)?;
                                 }
+                                if let Some(context) = &v3_context {
+                                    context.update(&state, &mut s)?;
+                                }
                                 pending.push((s, after_palm.clone(), auto.clone()));
                             }
                         }
@@ -2089,7 +2162,7 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
             // Late pickup resolves an occupied hand or another simultaneous
             // contact. It is not a way to shorten an uncontested Slide's
             // opposite-side exposure for free below the comfort threshold.
-            let pickup_conflict = !c.is_v2()
+            let pickup_conflict = c.is_legacy()
                 || after
                     .iter()
                     .enumerate()
@@ -2101,6 +2174,8 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
                 let dt = task.end - task.start;
                 let span = task.span.max(EPS);
                 let share = if let Some(context) = &v2_context {
+                    context.deposit(task, chart)?
+                } else if let Some(context) = &v3_context {
                     context.deposit(task, chart)?
                 } else {
                     c.distance_weight * task.path_length * dt / span
@@ -2173,6 +2248,8 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         }
         if c.is_v2() {
             v2::remove_unnecessary_deferrals(&mut next);
+        } else if c.is_v3() {
+            v3::remove_unnecessary_deferrals(&mut next);
         }
         if !relaxed {
             // 逐顆判斷時，前面的手掌可能只覆蓋部分 Touch，把剩下的推成晚接觸或連帶判定。
@@ -2207,13 +2284,16 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         if let Some(context) = &v2_context {
             context.refresh(state)?;
             context.verify(state)?;
+        } else if let Some(context) = &v3_context {
+            context.refresh(state)?;
+            context.verify(state)?;
         } else {
             let left = state.arms[0].segments.to_vec();
             let right = state.arms[1].segments.to_vec();
             state.cost.cross = cross_cost(&left, &right, c);
         }
     }
-    beam.sort_by(|a, b| v2::compare(a, b, c.is_v2(), true));
+    beam.sort_by(|a, b| compare_states(a, b, c, true));
     let mut solutions = vec![];
     let mut signatures = std::collections::BTreeSet::new();
     for state in beam {
@@ -2239,6 +2319,9 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
         if c.is_v2() {
             warnings[1] = "直覺優先 V2：搜尋已包含活動接觸交叉；Beam Search 不保證全域最佳，分數不是人類使用機率。".into();
         }
+        if c.is_v3() {
+            warnings[1] = "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。".into();
+        }
         if used_touch_sweep {
             warnings.push(
                 "大型同時 Touch 以判定前 0.18 秒的雙手連續掃屏近似；這不是官方判定窗。".into(),
@@ -2258,13 +2341,19 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
             id: format!("solution-{}", solutions.len() + 1),
             total_cost: state.cost.total(),
             cost_breakdown: state.cost,
-            score: if c.is_v2() { state.v2.score } else { None },
-            score_breakdown: if c.is_v2() {
-                Some(state.v2.parts)
+            score: if c.is_v3() {
+                state.v3.score.map(SolutionScore::V3)
+            } else {
+                state.v2.score.map(SolutionScore::V2)
+            },
+            score_breakdown: if c.is_v3() {
+                Some(SolutionScoreBreakdown::V3(state.v3.parts))
+            } else if c.is_v2() {
+                Some(SolutionScoreBreakdown::V2(state.v2.parts))
             } else {
                 None
             },
-            scoring_model: if c.is_v2() {
+            scoring_model: if !c.is_legacy() {
                 Some(c.scoring_model.clone())
             } else {
                 None
@@ -2286,8 +2375,8 @@ fn solve_with(chart: &Chart, c: &SolverConfig, relaxed: bool) -> Result<Vec<Solu
 
 /// Preserve a few distinct active owner/deferred states within the same budget.
 fn prune(states: &mut Vec<State>, c: &SolverConfig) {
-    states.sort_by(|a, b| v2::compare(a, b, c.is_v2(), false));
-    if !c.is_v2() || states.len() <= c.beam_width || c.beam_width < 4 {
+    states.sort_by(|a, b| compare_states(a, b, c, false));
+    if c.is_legacy() || states.len() <= c.beam_width || c.beam_width < 4 {
         states.truncate(c.beam_width);
         return;
     }
@@ -2322,4 +2411,39 @@ fn prune(states: &mut Vec<State>, c: &SolverConfig) {
         index += 1;
         keep
     });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_action(
+    state: &mut State,
+    c: &SolverConfig,
+    hand: Hand,
+    point: Point,
+    time_seconds: f64,
+    kind: ActionKind,
+    note_id: Option<String>,
+) {
+    if c.is_v3() {
+        state.actions = state.actions.push(ActionEvent {
+            hand,
+            point,
+            time_seconds,
+            kind,
+            note_id,
+        });
+    }
+}
+fn compare_states(a: &State, b: &State, c: &SolverConfig, final_rank: bool) -> std::cmp::Ordering {
+    match c.scoring_model.as_str() {
+        "human-motion-v3" => v3::compare(a, b, final_rank),
+        "hand-affinity-v2" => v2::compare(a, b, final_rank),
+        "legacy-v1" => {
+            if final_rank {
+                a.cost.total().total_cmp(&b.cost.total())
+            } else {
+                a.rank().total_cmp(&b.rank())
+            }
+        }
+        _ => unreachable!("validated scoring model"),
+    }
 }

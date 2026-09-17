@@ -2,13 +2,13 @@ import { analyzeChart, appVersion, isDesktop, nextRequestId } from '../lib/api';
 import { STORE_ANALYSES, dbGet, dbPut, hashText } from '../lib/db';
 import {
   DEFAULT_DRAFT,
-  SCHEMA_VERSION,
-  SCORING_LABEL,
   STATUS_HINT,
   STATUS_LABEL,
   cloneDraft,
   configEquals,
   projectConfig,
+  requestModelOf,
+  responseMismatch,
   scoringModelOf,
   validateConfig,
 } from '../lib/contract';
@@ -85,6 +85,15 @@ function stableJson(value: unknown): string {
  */
 export const SOLVER_REVISION = 'judgment-3';
 
+/**
+ * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。
+ * V3 係數仍在校準；核心調整 V3 排序但 App 版本號沒變時遞增這裡。
+ * v3-1：human-motion-v3 首次接入（schemaVersion 4）。
+ */
+export const SCORING_REVISION: Partial<Record<ScoringModel, string>> = {
+  'human-motion-v3': 'v3-1',
+};
+
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(
   source: string,
@@ -92,8 +101,10 @@ async function cacheKey(
   config: SolverConfig,
 ): Promise<{ key: string; sourceHash: string }> {
   const [version, sourceHash] = await Promise.all([appVersion(), hashText(source)]);
+  const scoringRevision = SCORING_REVISION[requestModelOf(config)];
+  const revision = scoringRevision ? `${SOLVER_REVISION}+${scoringRevision}` : SOLVER_REVISION;
   return {
-    key: `${version}|${SOLVER_REVISION}|${sourceHash}|${firstSeconds}|${stableJson(config)}`,
+    key: `${version}|${revision}|${sourceHash}|${firstSeconds}|${stableJson(config)}`,
     sourceHash,
   };
 }
@@ -327,14 +338,11 @@ export class Session {
         this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`, request);
         return null;
       }
-      const model = scoringModelOf(request.solverConfig);
-      if (response.schemaVersion !== SCHEMA_VERSION[model]) {
+      // schemaVersion 與每個方案的 scoringModel、分數形狀都必須屬於這次請求的評分方式。
+      const mismatch = responseMismatch(response, requestModelOf(request.solverConfig));
+      if (mismatch) {
         this.phase = previousPhase;
-        this.#fail(
-          `核心回傳 schemaVersion ${response.schemaVersion}，與「${SCORING_LABEL[model]}」需要的 ` +
-            `${SCHEMA_VERSION[model]} 不符；核心可能尚未支援這個評分方式，結果未套用。`,
-          request,
-        );
+        this.#fail(mismatch, request);
         return null;
       }
       if (!accept(response)) {
@@ -376,7 +384,12 @@ export class Session {
       const { key } = await cacheKey(source, firstSeconds, config);
       const cached = await dbGet<CachedAnalysis>(STORE_ANALYSES, key);
       if (token !== this.#loadToken) return null;
-      if (cached && cached.response?.schemaVersion === SCHEMA_VERSION[scoringModelOf(config)]) {
+      // 快取也要通過版本檢查；舊格式或別版的資料一律重新分析，不嘗試轉換。
+      if (
+        cached?.response &&
+        scoringModelOf(cached.config ?? {}) === requestModelOf(config) &&
+        responseMismatch(cached.response, requestModelOf(config)) === null
+      ) {
         // 查詢期間不可有其他分析插隊。
         if (this.phase === 'analyzing') return null;
         this.#pendingRequestId = null;
