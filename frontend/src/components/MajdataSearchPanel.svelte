@@ -59,7 +59,7 @@
   let feedback: HTMLElement | null = $state(null);
 
   let search = $state<SearchState>({ kind: 'idle' });
-  /** 最後一次送出的關鍵字；本地紀錄即時依這個字篩選，刪改紀錄也會跟著更新。 */
+  /** 最後一次送出的關鍵字；本機紀錄即時依這個字篩選，刪改紀錄也會跟著更新。 */
   let submitted = $state('');
   /** 難度分類篩選：null 為全部，否則是 &inote_ 的索引（0 = Easy）。 */
   let levelFilter = $state<number | null>(null);
@@ -75,7 +75,7 @@
   const searching = $derived(search.kind === 'searching');
   const analyzing = $derived(session.phase === 'analyzing');
   const busy = $derived(searching || importing !== null);
-  // 本地搜尋不需要核心，瀏覽器預覽也能用；線上搜尋只在桌面版送出。
+  // 本機搜尋不需要核心，瀏覽器預覽也能用；線上搜尋只在桌面版送出。
   const canSearch = $derived(!busy && query.trim().length > 0);
   const canImport = $derived(
     session.desktop && !busy && !analyzing && session.configIssues.length === 0,
@@ -176,14 +176,14 @@
     };
   }
 
-  /** 關閉對話框並開啟本地紀錄；分析過就直接從資料庫載入。 */
+  /** 關閉對話框並開啟本機紀錄；分析過就直接從資料庫載入。 */
   async function openLocal(record: ChartRecord, reason?: string) {
     if (analyzing || importing !== null) return;
     failure = null;
     onClose();
     records.activeId = record.id;
     if (reason) {
-      toasts.show({ id: 'majdata-local', tone: 'info', title: '已在本地', body: reason });
+      toasts.show({ id: 'majdata-local', tone: 'info', title: '已在本機', body: reason });
     }
     await session.load(record.source);
   }
@@ -194,7 +194,7 @@
     // Majdata 的 song id 每次上傳都不同：同 id 必定是同一份，不必再下載。
     const known = records.findByMajdataId(chart.id);
     if (known) {
-      await openLocal(known, `「${recordTitle(known)}」已經匯入過，直接開啟本地紀錄。`);
+      await openLocal(known, `「${recordTitle(known)}」已經匯入過，直接開啟本機紀錄。`);
       return;
     }
     let source = downloaded.get(chart.id);
@@ -215,7 +215,7 @@
     if (same) {
       importing = null;
       if (!same.majdata) records.attachMajdata(same.id, originOf(chart));
-      await openLocal(same, `本地已有內容完全相同的譜面「${recordTitle(same)}」，直接開啟。`);
+      await openLocal(same, `本機已有內容完全相同的譜面「${recordTitle(same)}」，直接開啟。`);
       return;
     }
     importing = { id: chart.id, step: 'analyze' };
@@ -321,7 +321,7 @@
   </div>
 
   {#if !session.desktop}
-    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本地紀錄，無法搜尋 Majdata 或匯入。</p>
+    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本機紀錄，無法搜尋 Majdata 或匯入。</p>
   {:else if session.configIssues.length > 0}
     <p class="notice field-error">「參數」分頁有超出範圍的數值，修正後才能匯入。</p>
   {/if}
@@ -389,17 +389,17 @@
   <div class="results scroll" aria-live="polite">
     {#if submitted.length === 0}
       <p class="state small muted">
-        輸入關鍵字後按 Enter，會同時搜尋本地譜面紀錄與 Majdata。匯入會下載 maidata.txt，交給核心分析成功後才加入譜面紀錄；有多個難度時分析編號最大的那一個。已經匯入過的譜面不會重複下載，會直接開啟本地紀錄。
+        輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄與 Majdata。匯入會下載 maidata.txt，交給核心分析成功後才加入譜面紀錄；有多個難度時分析編號最大的那一個。已經匯入過的譜面不會重複下載，會直接開啟本機紀錄。
       </p>
     {:else}
       <section class="group" aria-labelledby="local-group-title">
         <h3 id="local-group-title" class="group-title">
-          <span>本地紀錄</span>
+          <span>本機紀錄</span>
           <span class="mono">{localMatches.length}</span>
         </h3>
         {#if localMatches.length === 0}
           <p class="group-empty small muted">
-            沒有符合「{submitted}」{levelFilter !== null ? `且有 ${LEVEL_NAMES[levelFilter]} 難度` : ''}的本地紀錄。
+            沒有符合「{submitted}」{levelFilter !== null ? `且有 ${LEVEL_NAMES[levelFilter]} 難度` : ''}的本機紀錄。
           </p>
         {:else}
           <ul class="list">
@@ -429,7 +429,7 @@
                   class="btn"
                   onclick={() => openLocal(record)}
                   disabled={analyzing || importing !== null || !session.desktop}
-                  aria-label={`開啟本地紀錄 ${recordTitle(record)}`}
+                  aria-label={`開啟本機紀錄 ${recordTitle(record)}`}
                 >
                   <Icon name="external-link" />開啟
                 </button>
@@ -484,7 +484,7 @@
                     <span class="title">
                       {orDash(chart.title)}
                       {#if local}
-                        <span class="badge badge--quiet local-badge">已在本地</span>
+                        <span class="badge badge--quiet local-badge">已在本機</span>
                       {/if}
                     </span>
                     <span class="small muted artist">{orDash(chart.artist)}</span>

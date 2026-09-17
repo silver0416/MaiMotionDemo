@@ -1,4 +1,4 @@
-//! 本地歌曲搜尋：只查記憶體／快取中的 `Vec<WikiSong>`，
+//! 本機歌曲搜尋：只查記憶體／快取中的 `Vec<WikiSong>`，
 //! 不在每次按鍵時請求 Wiki。
 
 use super::model::{ChartType, WikiSong};

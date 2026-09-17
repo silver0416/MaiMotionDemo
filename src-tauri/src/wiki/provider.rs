@@ -1,10 +1,10 @@
-//! 對 UI 暴露的高階 API：index 載入、本地搜尋、歌曲頁下載與譜面抽取。
+//! 對 UI 暴露的高階 API：index 載入、本機搜尋、歌曲頁下載與譜面抽取。
 //!
 //! 流程：
 //! ```text
 //! Wiki HTML → provider → raw simai text → 既有 mai-motion-core parser → Chart
 //! ```
-//! 搜尋只查本地 index，不在每次按鍵時打 Wiki；選中歌曲才 GET 該頁。
+//! 搜尋只查本機 index，不在每次按鍵時打 Wiki；選中歌曲才 GET 該頁。
 
 use super::cache::{
     index_cache_path, is_fresh, load_index_cache, load_song_html, now_unix_seconds,
@@ -182,7 +182,7 @@ fn store_memory(state: &WikiState, songs: &[WikiSong], fetched_at: u64) {
     }
 }
 
-/// 本地搜尋：只查記憶體／磁碟快取，不打 Wiki。
+/// 本機搜尋：只查記憶體／磁碟快取，不打 Wiki。
 pub fn search_cached(
     app: &AppHandle,
     state: &WikiState,

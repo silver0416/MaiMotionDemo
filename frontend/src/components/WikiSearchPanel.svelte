@@ -4,7 +4,7 @@
   import DiagnosticList from './DiagnosticList.svelte';
   import CopyDebugButton from './CopyDebugButton.svelte';
   import { STATUS_HINT, STATUS_LABEL } from '../lib/contract';
-  import { fetchWikiChart, refreshWikiIndex, searchWikiSongs } from '../lib/api';
+  import { fetchWikiChart, openExternalUrl, refreshWikiIndex, searchWikiSongs } from '../lib/api';
   import { hashText } from '../lib/db';
   import {
     WIKI_DIFFICULTIES,
@@ -98,7 +98,7 @@
 
   let typeFilter = $state<TypeFilter>('all');
   let search = $state<SearchState>({ kind: 'idle' });
-  /** 最後一次送出的關鍵字；本地紀錄即時依這個字篩選。 */
+  /** 最後一次送出的關鍵字；本機紀錄即時依這個字篩選。 */
   let submitted = $state('');
 
   let index = $state<IndexInfo | null>(null);
@@ -282,6 +282,17 @@
     }
   }
 
+  /** Page URL 用系統瀏覽器開啟；桌面版要擋掉 WebView 內導覽。 */
+  async function openPageUrl(event: MouseEvent, url: string) {
+    if (!session.desktop) return;
+    event.preventDefault();
+    try {
+      await openExternalUrl(url);
+    } catch (error) {
+      toasts.show({ id: 'wiki-open-url', tone: 'error', title: '無法開啟連結', body: messageOf(error) });
+    }
+  }
+
   function originOf(song: WikiSong, difficulty: Difficulty, payload: WikiChartPayload): WikiOrigin {
     return {
       pageId: song.pageId,
@@ -299,7 +310,7 @@
     onClose();
     records.activeId = record.id;
     if (reason) {
-      toasts.show({ id: 'wiki-local', tone: 'info', title: '已在本地', body: reason });
+      toasts.show({ id: 'wiki-local', tone: 'info', title: '已在本機', body: reason });
     }
     await session.load(record.source);
   }
@@ -309,7 +320,7 @@
     failure = null;
     const known = records.findByWiki(song.pageId, song.chartType, difficulty.key);
     if (known) {
-      await openLocal(known, `「${recordTitle(known)}」已經匯入過，直接開啟本地紀錄。`);
+      await openLocal(known, `「${recordTitle(known)}」已經匯入過，直接開啟本機紀錄。`);
       return;
     }
     const key = `${songKey(song)}:${difficulty.key}`;
@@ -331,7 +342,7 @@
     if (same) {
       importing = null;
       records.attachWiki(same.id, originOf(song, difficulty, payload));
-      await openLocal(same, `本地已有內容完全相同的譜面「${recordTitle(same)}」，直接開啟。`);
+      await openLocal(same, `本機已有內容完全相同的譜面「${recordTitle(same)}」，直接開啟。`);
       return;
     }
     importing = { key: songKey(song), difficulty, step: 'analyze' };
@@ -451,7 +462,7 @@
   </div>
 
   {#if !session.desktop}
-    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本地紀錄，無法搜尋 simai Wiki 或匯入。</p>
+    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本機紀錄，無法搜尋 simai Wiki 或匯入。</p>
   {:else if session.configIssues.length > 0}
     <p class="notice field-error">「參數」分頁有超出範圍的數值，修正後才能匯入。</p>
   {/if}
@@ -523,17 +534,17 @@
     <div class="results scroll" aria-live="polite">
       {#if submitted.length === 0}
         <p class="state small muted">
-          輸入關鍵字後按 Enter，會同時搜尋本地譜面紀錄與 simai Wiki 索引。選一首歌後在右側選難度載入：文字譜交給核心分析成功後才加入譜面紀錄。Standard 與 DX 是不同的譜面，分開列出。
+          輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄與 simai Wiki 索引。選一首歌後在右側選難度載入：文字譜交給核心分析成功後才加入譜面紀錄。Standard 與 DX 是不同的譜面，分開列出。
         </p>
       {:else}
         <section class="group" aria-labelledby="wiki-local-title">
           <h3 id="wiki-local-title" class="group-title">
-            <span>本地紀錄</span>
+            <span>本機紀錄</span>
             <span class="mono">{localMatches.length}</span>
           </h3>
           {#if localMatches.length === 0}
             <p class="group-empty small muted">
-              沒有符合「{submitted}」{typeFilter !== 'all' ? `的 ${typeLabel(typeFilter)} Wiki` : '的本地'}紀錄。
+              沒有符合「{submitted}」{typeFilter !== 'all' ? `的 ${typeLabel(typeFilter)} Wiki` : '的本機'}紀錄。
             </p>
           {:else}
             <ul class="list">
@@ -554,7 +565,7 @@
                     class="btn"
                     onclick={() => openLocal(record)}
                     disabled={analyzing || importing !== null || !session.desktop}
-                    aria-label={`開啟本地紀錄 ${recordTitle(record)}`}
+                    aria-label={`開啟本機紀錄 ${recordTitle(record)}`}
                   >
                     <Icon name="external-link" />開啟
                   </button>
@@ -659,7 +670,17 @@
               <dd>{song.section}</dd>
             {/if}
             <dt>Page URL</dt>
-            <dd class="mono xsmall url">{song.pageUrl}</dd>
+            <dd class="mono xsmall url">
+              <a
+                class="url-link"
+                href={song.pageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="在瀏覽器開啟 Wiki 歌曲頁"
+                onclick={(event) => void openPageUrl(event, song.pageUrl)}
+                >{song.pageUrl}</a
+              >
+            </dd>
           </dl>
           <table class="difficulties small">
             <thead>
@@ -907,7 +928,7 @@
     background: var(--c-control);
   }
 
-  /* 歌曲列整列可點，外觀與本地紀錄列一致。 */
+  /* 歌曲列整列可點，外觀與本機紀錄列一致。 */
   .song {
     width: 100%;
     color: inherit;
@@ -989,6 +1010,12 @@
 
   .url {
     user-select: text;
+  }
+
+  .url-link {
+    color: var(--c-right);
+    text-decoration: underline;
+    overflow-wrap: anywhere;
   }
 
   .difficulties {

@@ -41,7 +41,7 @@ export async function refreshWikiIndex(force: boolean): Promise<WikiIndexPayload
   return await invoke<WikiIndexPayload>('wiki_refresh_index', { force });
 }
 
-/** 在 Rust 已載入的 Wiki 索引中搜尋（本地，不連 Wiki）；索引未載入時 reject。 */
+/** 在 Rust 已載入的 Wiki 索引中搜尋（本機，不連 Wiki）；索引未載入時 reject。 */
 export async function searchWikiSongs(
   query: string,
   chartType: 'all' | WikiChartType = 'all',
@@ -58,6 +58,19 @@ export async function fetchWikiChart(
 ): Promise<WikiChartPayload> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<WikiChartPayload>('wiki_fetch_chart', { pageId, chartType, difficulty });
+}
+
+/**
+ * 用系統預設瀏覽器開啟外部連結。
+ * 桌面版經 opener plugin 開啟（不會讓 WebView 跳頁）；瀏覽器預覽用 window.open。
+ */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isDesktop()) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 let versionPromise: Promise<string> | null = null;

@@ -139,7 +139,7 @@ export function recordLevels(record: ChartRecord): (string | null)[] {
   });
 }
 
-/** 本地搜尋用的文字欄位。 */
+/** 本機搜尋用的文字欄位。 */
 export function recordSearchText(record: ChartRecord): string {
   return [
     record.name ?? '',

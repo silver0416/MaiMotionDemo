@@ -65,7 +65,7 @@ async fn wiki_refresh_index(
     wiki::refresh_index(&app, &state, force).await
 }
 
-/// 本地搜尋 Wiki 索引（不打 Wiki）。`chart_type` 為 `all`／`standard`／`deluxe`。
+/// 本機搜尋 Wiki 索引（不打 Wiki）。`chart_type` 為 `all`／`standard`／`deluxe`。
 #[tauri::command]
 async fn wiki_search_songs(
     app: tauri::AppHandle,
@@ -73,7 +73,7 @@ async fn wiki_search_songs(
     query: String,
     chart_type: Option<String>,
 ) -> Result<Vec<wiki::WikiSong>, String> {
-    // 搜尋本身是純本地計算；包成 async command 只是配合 invoke 簽名。
+    // 搜尋本身是純本機計算；包成 async command 只是配合 invoke 簽名。
     wiki::search_cached(&app, &state, &query, chart_type.as_deref())
 }
 
@@ -99,6 +99,7 @@ fn main() {
     let majdata_client = majdata::build_client().expect("Failed to initialize Majdata HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(AnalysisGate(Arc::new(AtomicBool::new(false))))
         .manage(MajdataClient(majdata_client))
         .manage(wiki::WikiState::new(wiki_client))
