@@ -421,3 +421,22 @@ export interface WikiChartPayload {
   difficulty: string;
   chartType: string;
 }
+
+/**
+ * 建置發佈通路（Rust app_distribution，camelCase 前後一致都用小寫字串）。
+ * - portable：免安裝單一 exe，只能導向 GitHub 下載
+ * - installed：未來的安裝版，保留給 updater 全自動更新用
+ * - dev：debug 建置；preview：瀏覽器預覽（沒有 Rust 核心）
+ */
+export type AppDistribution = 'portable' | 'installed' | 'dev' | 'preview';
+
+/** GitHub Releases 檢查結果（Rust check_update，camelCase）。 */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  hasUpdate: boolean;
+  url: string;
+  notes: string;
+  publishedAt: string;
+  distribution: string;
+}

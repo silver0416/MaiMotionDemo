@@ -1,7 +1,9 @@
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
+  AppDistribution,
   MajdataChartSummary,
+  UpdateInfo,
   WikiChartPayload,
   WikiChartType,
   WikiIndexPayload,
@@ -100,6 +102,38 @@ export function appVersion(): Promise<string> {
       : Promise.resolve('preview');
   }
   return versionPromise;
+}
+
+let distributionPromise: Promise<AppDistribution> | null = null;
+
+/**
+ * 目前這份建置的發佈通路。桌面版問 Rust（編譯期旗標）；瀏覽器預覽固定為 preview。
+ * dev 建置回 dev，不做更新提示。
+ */
+export function appDistribution(): Promise<AppDistribution> {
+  if (!distributionPromise) {
+    distributionPromise = (async () => {
+      if (!isDesktop()) return 'preview';
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const value = await invoke<string>('app_distribution');
+        if (value === 'installed' || value === 'portable' || value === 'dev') return value;
+        return 'portable';
+      } catch {
+        return 'portable';
+      }
+    })();
+  }
+  return distributionPromise;
+}
+
+/**
+ * 經由 Rust 檢查 GitHub Releases 是否有新版。只有桌面版可用。
+ * 離線、限流或還沒有正式版時 reject 可讀字串，呼叫端自行決定是否靜默忽略。
+ */
+export async function checkForUpdate(): Promise<UpdateInfo> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<UpdateInfo>('check_update');
 }
 
 let counter = 0;

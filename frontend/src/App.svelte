@@ -21,6 +21,7 @@
   import type { ChartRecord } from './state/records.svelte';
   import { session } from './state/session.svelte';
   import { toasts } from './state/toasts.svelte';
+  import { updateState } from './state/update.svelte';
 
   type Tab = 'solution' | 'note' | 'config' | 'view';
 
@@ -149,6 +150,30 @@
         toasts.dismiss('stale');
       }
     });
+  });
+
+  // 啟動時每天最多自動檢查一次更新；有新版才提示，失敗靜默忽略。
+  $effect(() => {
+    let cancelled = false;
+    (async () => {
+      await updateState.init();
+      if (cancelled || !updateState.shouldAutoCheck()) return;
+      const info = await updateState.check();
+      if (cancelled || !info?.hasUpdate) return;
+      toasts.show({
+        id: 'update-available',
+        tone: 'info',
+        title: `有新版本 v${info.latest}`,
+        body:
+          updateState.distribution === 'installed'
+            ? '請到 GitHub 下載新版安裝。'
+            : 'Portable 版請到 GitHub 下載新版 exe 取代舊檔。',
+        action: { label: '前往下載', icon: 'download', run: () => void updateState.openDownload() },
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
   });
 
   function isTyping(target: EventTarget | null): boolean {

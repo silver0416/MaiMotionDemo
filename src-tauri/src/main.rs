@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod majdata;
+mod update;
 mod wiki;
 
 use mai_motion_core::{AnalyzeRequest, AnalyzeResponse};
@@ -9,6 +10,7 @@ use std::sync::Arc;
 
 struct AnalysisGate(Arc<AtomicBool>);
 struct MajdataClient(reqwest::Client);
+struct UpdateClient(reqwest::Client);
 struct BusyGuard(Arc<AtomicBool>);
 impl Drop for BusyGuard {
     fn drop(&mut self) {
@@ -95,6 +97,18 @@ async fn wiki_fetch_chart(
     wiki::fetch_chart(&app, &state, page_id, chart_type, difficulty).await
 }
 
+/// 目前這份建置的發佈通路：portable／installed；debug 建置回 dev。
+#[tauri::command]
+fn app_distribution() -> String {
+    update::distribution().to_string()
+}
+
+/// 檢查 GitHub Releases 是否有新版。離線或限流時回 Err，前端靜默處理。
+#[tauri::command]
+async fn check_update(client: tauri::State<'_, UpdateClient>) -> Result<update::UpdateInfo, String> {
+    update::check(&client.0).await
+}
+
 /// simai Wiki 磁碟快取（索引＋歌曲頁）的用量。
 #[tauri::command]
 fn wiki_cache_info(app: tauri::AppHandle) -> wiki::WikiCacheInfo {
@@ -112,14 +126,18 @@ fn wiki_clear_cache(
 
 fn main() {
     let majdata_client = majdata::build_client().expect("Failed to initialize Majdata HTTP client");
+    let update_client = update::build_client().expect("Failed to initialize update HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AnalysisGate(Arc::new(AtomicBool::new(false))))
         .manage(MajdataClient(majdata_client))
+        .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
+            app_distribution,
+            check_update,
             search_majdata_charts,
             fetch_majdata_chart,
             wiki_refresh_index,

@@ -7,6 +7,7 @@
   import { copyText } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
   import { FAILURE_KIND_LABEL, errorLog } from '../state/errorLog.svelte';
+  import { DISTRIBUTION_LABEL, updateState } from '../state/update.svelte';
   import { cacheEvents } from '../state/cacheEvents.svelte';
   import { records } from '../state/records.svelte';
   import { SOLVER_REVISION, session } from '../state/session.svelte';
@@ -73,6 +74,7 @@
 
   async function refresh() {
     version = await appVersion();
+    await updateState.init();
     cacheCount = await dbCount(STORE_ANALYSES);
     wikiCache = session.desktop ? await wikiCacheInfo().catch(() => null) : null;
   }
@@ -114,6 +116,7 @@
   function versionText(): string {
     return [
       `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
+      `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
       `Build：${BUILD_ID}（${BUILD_TIME}）`,
       `判定規則修訂：${SOLVER_REVISION}`,
       `評分方式：${SCORING_MODELS.map((model) => `${SCORING_LABEL[model.id]} ${model.version}（${model.id}，schema ${SCHEMA_VERSION[model.id]}）`).join('、')}`,
@@ -127,6 +130,16 @@
       tone: ok ? 'ok' : 'error',
       title: ok ? '已複製版本資訊' : '無法寫入剪貼簿',
     });
+  }
+
+  /** 設定頁手動檢查更新；結果直接顯示在更新區塊，不用 toast。 */
+  async function checkUpdateManually() {
+    await updateState.init();
+    await updateState.check();
+  }
+
+  async function openUpdateDownload() {
+    await updateState.openDownload();
   }
 
   async function copyAndClear() {
@@ -258,6 +271,8 @@
         </dd>
         <dt>Build 號</dt>
         <dd>{BUILD_ID}</dd>
+        <dt>應用程式種類</dt>
+        <dd>{DISTRIBUTION_LABEL[updateState.distribution]}</dd>
         <dt>建置時間</dt>
         <dd>{buildTime}</dd>
         <dt>判定規則修訂</dt>
@@ -290,6 +305,52 @@
           {/each}
         </tbody>
       </table>
+    </section>
+
+    <section class="block" aria-labelledby="settings-update">
+      <div class="block-head">
+        <h3 id="settings-update">軟體更新</h3>
+        {#if session.desktop}
+          <button class="btn" onclick={checkUpdateManually} disabled={updateState.checking}>
+            <Icon name={updateState.checking ? 'loader' : 'refresh-cw'} spin={updateState.checking} />
+            {updateState.checking ? '檢查中…' : '檢查更新'}
+          </button>
+        {/if}
+      </div>
+      {#if !session.desktop}
+        <p class="field-hint">瀏覽器預覽沒有版本檢查，請用桌面版查看更新。</p>
+      {:else if updateState.checking && !updateState.result}
+        <p class="field-hint">正在向 GitHub 查詢最新版本…</p>
+      {:else if updateState.result?.hasUpdate}
+        <p class="update-available">
+          有新版本 <span class="mono">v{updateState.result.latest}</span>
+         （目前 <span class="mono">v{updateState.result.current}</span>）
+        </p>
+        {#if updateState.distribution === 'installed'}
+          <p class="field-hint">安裝版未來會支援自動更新；目前請先到 GitHub 下載新版安裝。</p>
+        {:else}
+          <p class="field-hint">Portable 版不會自動下載，請到 GitHub 下載新版 exe 取代舊檔即可。</p>
+        {/if}
+        <div class="data-actions">
+          <button class="btn btn--primary" onclick={openUpdateDownload}>
+            <Icon name="download" />前往下載 v{updateState.result.latest}
+          </button>
+        </div>
+      {:else if updateState.result}
+        <p class="field-hint">
+          已是最新版本（<span class="mono">v{updateState.result.current}</span>）。
+          {#if updateState.lastChecked}
+            <span class="muted">上次檢查：{formatTime(updateState.lastChecked)}</span>
+          {/if}
+        </p>
+      {:else if updateState.error}
+        <p class="field-error">{updateState.error}</p>
+        <p class="field-hint">離線或 GitHub 忙碌時會檢查失敗，不影響使用，稍後再試即可。</p>
+      {:else}
+        <p class="field-hint">
+          尚未檢查。啟動時每天最多自動檢查一次，也可隨時按「檢查更新」。
+        </p>
+      {/if}
     </section>
 
     <section class="block" aria-labelledby="settings-errors">
@@ -488,6 +549,10 @@
 
   .empty {
     padding: var(--space-2) 0;
+  }
+
+  .update-available {
+    font-weight: 600;
   }
 
   .errors {
