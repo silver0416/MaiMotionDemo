@@ -156,9 +156,42 @@
       ],
       "paths": [
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 5,
           "id": "p0",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B5"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A5"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.848,
           "samples": [
             {

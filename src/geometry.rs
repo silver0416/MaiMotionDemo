@@ -386,6 +386,7 @@ pub fn build_path(id: String, segments: &[Segment]) -> Result<SlidePath, String>
     let total: f64 = points.windows(2).map(|w| w[0].distance(w[1])).sum();
     // 連續寫法共用一段時間、依弧長等速前進，最後一段的停留比例換算到整條路徑上。
     let last = judge_const(segments.last().unwrap()) * last_length / total.max(1e-9);
+    let wifi = segments.len() == 1 && segments[0].shape == Shape::Wifi;
     Ok(SlidePath {
         id,
         shape,
@@ -394,5 +395,12 @@ pub fn build_path(id: String, segments: &[Segment]) -> Result<SlidePath, String>
         samples,
         branches,
         judge_progress: (1.0 - last).clamp(0.0, 1.0),
+        judge_areas: crate::judge::path_queue(segments),
+        branch_judge_areas: if wifi {
+            crate::judge::wifi_branch_queues(segments[0].start)
+        } else {
+            vec![]
+        },
+        hand_routes: Default::default(),
     })
 }

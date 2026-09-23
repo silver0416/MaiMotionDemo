@@ -1,10 +1,14 @@
 mod geometry;
+mod judge;
 mod model;
 mod parser;
 pub mod scoring;
 pub mod scoring_v3;
 mod solver;
 
+/// 依 Slide 判定佇列模擬手部折線（測試與驗證用）。
+#[doc(hidden)]
+pub use judge::{finger_reach, simulate_route};
 pub use model::*;
 pub use parser::{parse_chart, ParseOutput};
 /// Debug-only V3 replay of the Top-1 candidate's ownership, roles and lookahead.

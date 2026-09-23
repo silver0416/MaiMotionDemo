@@ -23,6 +23,25 @@ pub(super) struct Data {
     pub pending_posture: f64,
 }
 
+impl Data {
+    /// 影響之後成本的 V3 歷史（手部負荷、連打、分工角色、同組接觸點）。
+    pub fn fingerprint<H: std::hash::Hasher>(&self, h: &mut H) {
+        use std::hash::Hash;
+        let q = |x: f64| (x * 1e6).round() as i64;
+        for history in &self.histories {
+            history.fingerprint(h);
+        }
+        self.roles.fingerprint(h);
+        self.contacts_at.map(q).hash(h);
+        for contacts in &self.contacts {
+            for (p, touch) in contacts {
+                (q(p.x), q(p.y), *touch).hash(h);
+            }
+            contacts.len().hash(h);
+        }
+    }
+}
+
 pub(super) struct Context<'a> {
     engine: ScoringV3,
     repetition_seconds: f64,

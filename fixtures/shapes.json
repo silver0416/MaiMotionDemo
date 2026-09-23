@@ -249,9 +249,42 @@
       ],
       "paths": [
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 5,
           "id": "p0",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B5"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A5"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.848,
           "samples": [
             {
@@ -269,9 +302,36 @@
           "startButton": 1
         },
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 6,
           "id": "p1",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A3"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A4"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A5"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A6"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.845,
           "samples": [
             {
@@ -874,9 +934,42 @@
           "startButton": 3
         },
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 2,
           "id": "p2",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A5"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B5"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B2"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A2"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.842,
           "samples": [
             {
@@ -899,9 +992,42 @@
           "startButton": 5
         },
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 3,
           "id": "p3",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A7"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B2"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A3"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.84,
           "samples": [
             {
@@ -1004,9 +1130,54 @@
           "startButton": 7
         },
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 5,
           "id": "p4",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B7"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B3"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B4"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A5"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.87,
           "samples": [
             {
@@ -1034,6 +1205,62 @@
           "startButton": 1
         },
         {
+          "branchJudgeAreas": [
+            [
+              {
+                "sensors": [
+                  "A8"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B1"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B2"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "A3",
+                  "D4"
+                ],
+                "skippable": true
+              }
+            ],
+            [
+              {
+                "sensors": [
+                  "A8"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B7"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B6"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "A5",
+                  "D5"
+                ],
+                "skippable": true
+              }
+            ]
+          ],
           "branches": [
             [
               {
@@ -1062,6 +1289,33 @@
           ],
           "endButton": 4,
           "id": "p5",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A4",
+                "B4"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.83713,
           "samples": [
             {
@@ -1079,9 +1333,55 @@
           "startButton": 8
         },
         {
+          "branchJudgeAreas": [],
           "branches": [],
           "endButton": 4,
           "id": "p6",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A2"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B1",
+                "A1"
+              ],
+              "skippable": false
+            },
+            {
+              "sensors": [
+                "A8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B8"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B4"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A4"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.896,
           "samples": [
             {
@@ -2941,7 +3241,7 @@
                 "y": 0.8258815215431394
               },
               {
-                "timeSeconds": 1.6271186440677967,
+                "timeSeconds": 1.6271186440677965,
                 "x": 0.5472413935189655,
                 "y": 0.8369748247225963
               },
@@ -5782,7 +6082,7 @@
                 "y": 0.8258815215431394
               },
               {
-                "timeSeconds": 1.6271186440677967,
+                "timeSeconds": 1.6271186440677965,
                 "x": 0.5472413935189655,
                 "y": 0.8369748247225963
               },
@@ -8618,7 +8918,7 @@
                 "y": 0.8258815215431394
               },
               {
-                "timeSeconds": 1.6271186440677967,
+                "timeSeconds": 1.6271186440677965,
                 "x": 0.5472413935189655,
                 "y": 0.8369748247225963
               },

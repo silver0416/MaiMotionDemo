@@ -38,6 +38,9 @@ fn initial() -> State {
         finished: Default::default(),
         used_early_slide: false,
         used_touch_group: false,
+        bundled: BTreeMap::new(),
+        bundle_lead: BTreeMap::new(),
+        used_bundle: false,
     }
 }
 #[test]

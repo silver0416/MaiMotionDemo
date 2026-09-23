@@ -71,21 +71,60 @@ pub struct SlidePath {
     pub start_button: u8,
     pub end_button: u8,
     pub samples: Vec<PathSample>,
-    /// Wifi 的兩條側線；其餘形狀為空。Wifi 雙手以中央＋側線的中點及另一側線同步追蹤。
+    /// Wifi 的兩條側線；其餘形狀為空。V1/V2 雙手以中央＋側線的中點及另一側線同步追蹤；
+    /// V3 依三條判定佇列分工（見 branch_judge_areas）。
     pub branches: Vec<Vec<PathSample>>,
     /// 引導星星進入最後一個判定區時的弧長比例 u（Slide 尾判的正解位置）。
     pub judge_progress: f64,
+    /// 依序要通過的判定區（MajdataPlay 判定佇列）；WiFi 為中央那條。
+    #[serde(default)]
+    pub judge_areas: Vec<JudgeArea>,
+    /// WiFi 兩條側線的判定佇列，順序與 branches 相同；其餘形狀為空。
+    #[serde(default)]
+    pub branch_judge_areas: Vec<Vec<JudgeArea>>,
+    /// V3 求解器內部用的手部路線，不輸出。
+    #[serde(skip)]
+    pub hand_routes: HandRoutes,
 }
 impl SlidePath {
     pub fn at(&self, u: f64) -> Point {
-        let u = u.clamp(0.0, 1.0);
-        let i = self
-            .samples
-            .partition_point(|p| p.u < u)
-            .clamp(1, self.samples.len() - 1);
-        let (a, b) = (&self.samples[i - 1], &self.samples[i]);
-        Point { x: a.x, y: a.y }.lerp(Point { x: b.x, y: b.y }, (u - a.u) / (b.u - a.u))
+        sample_at(&self.samples, u)
     }
+}
+
+/// 弧長參數化折線在 u 的位置。
+pub fn sample_at(samples: &[PathSample], u: f64) -> Point {
+    let u = u.clamp(0.0, 1.0);
+    let i = samples
+        .partition_point(|p| p.u < u)
+        .clamp(1, samples.len() - 1);
+    let (a, b) = (&samples[i - 1], &samples[i]);
+    let span = b.u - a.u;
+    let t = if span > 0.0 { (u - a.u) / span } else { 1.0 };
+    Point { x: a.x, y: a.y }.lerp(Point { x: b.x, y: b.y }, t.clamp(0.0, 1.0))
+}
+
+/// Slide 的一個判定區。依 MajdataPlay 規則：碰到其中任一個感應區就算碰到；
+/// 目前的判定區還沒碰到時，碰到下一個判定區可直接跳過它（skippable）。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JudgeArea {
+    /// 感應區名稱，例如 A1、B8、C。
+    pub sensors: Vec<String>,
+    pub skippable: bool,
+}
+
+/// V3 求解器依判定區抄近算出的手部路線（弧長參數化，u 0→1 對應接上到完成）。
+#[derive(Clone, Debug, Default)]
+pub struct HandRoutes {
+    /// 與另一條同時 Slide 由同一隻手張開覆蓋：(對方音符索引, 共用路線)。
+    pub bundles: Vec<(usize, Vec<PathSample>)>,
+    /// WiFi：[side] 為中央＋該側線同一手覆蓋的路線；None 表示這種分工不可行。
+    pub wifi_pair: [Option<Vec<PathSample>>; 2],
+    /// WiFi：[side] 為該側線單獨一手的路線。
+    pub wifi_single: [Option<Vec<PathSample>>; 2],
+    /// WiFi：單手張開同時覆蓋三條線。
+    pub wifi_all: Option<Vec<PathSample>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

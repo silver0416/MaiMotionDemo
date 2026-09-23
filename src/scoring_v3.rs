@@ -418,7 +418,27 @@ pub struct HandHistory {
     workload: f64,
     workload_time: Option<f64>,
 }
+/// 狀態指紋用的量化：1e-6 以內視為相同。
+fn quantize(x: f64) -> i64 {
+    (x * 1e6).round() as i64
+}
+fn hash_point<H: std::hash::Hasher>(p: Option<Point>, h: &mut H) {
+    use std::hash::Hash;
+    p.map(|p| (quantize(p.x), quantize(p.y))).hash(h);
+}
 impl HandHistory {
+    /// 影響之後成本的全部欄位（Beam 合併等價狀態用）。
+    pub fn fingerprint<H: std::hash::Hasher>(&self, h: &mut H) {
+        use std::hash::Hash;
+        hash_point(self.prev_point, h);
+        hash_point(self.last_point, h);
+        self.last_time.map(quantize).hash(h);
+        hash_point(self.jack_point, h);
+        self.jack_streak.hash(h);
+        self.last_strike_time.map(quantize).hash(h);
+        quantize(self.workload).hash(h);
+        self.workload_time.map(quantize).hash(h);
+    }
     /// (point before the last action, last action point).
     pub fn recent_points(&self) -> (Option<Point>, Option<Point>) {
         (self.prev_point, self.last_point)
@@ -426,7 +446,7 @@ impl HandHistory {
 }
 
 /// Discrete contact identity. V3.1 ownership only tracks outer buttons.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ContactKey {
     Button(u8),
     Touch(char, u8),
@@ -530,6 +550,21 @@ pub struct RoleState {
     pub roles: [TemporaryRole; 2],
 }
 impl RoleState {
+    /// 影響之後成本的全部欄位（Beam 合併等價狀態用）。
+    pub fn fingerprint<H: std::hash::Hasher>(&self, h: &mut H) {
+        use std::hash::Hash;
+        for entry in &self.ownership.buttons {
+            entry
+                .map(|e| (e.owner.index(), quantize(e.strength), quantize(e.last_seen)))
+                .hash(h);
+        }
+        for role in &self.roles {
+            role.anchor.hash(h);
+            hash_point(Some(role.point), h);
+            quantize(role.strength).hash(h);
+            quantize(role.expires_at).hash(h);
+        }
+    }
     /// Cost of a genuine contact before observing it: taking a key from its
     /// short-term owner, or abandoning an anchor that is revisited later than
     /// the other hand's anchor for a target inside that tighter local lane.

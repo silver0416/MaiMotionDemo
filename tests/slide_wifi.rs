@@ -21,13 +21,121 @@ fn continuity(segments: &[MotionSegment]) {
         );
     }
 }
+/// 某隻手在這條 Slide 上的軌跡折線（第一點為接上的位置）。
+fn traced(segments: &[MotionSegment], note: &str) -> Vec<Point> {
+    let mut points: Vec<Point> = vec![];
+    for segment in segments
+        .iter()
+        .filter(|s| s.mode == "slide" && s.note_id.as_deref() == Some(note))
+    {
+        for sample in &segment.samples {
+            let p = sample.point();
+            if points.last().is_none_or(|q| q.distance(p) > 1e-12) {
+                points.push(p);
+            }
+        }
+    }
+    points
+}
+
+/// V3 WiFi：依三條判定佇列模擬兩手（或單手）的實際軌跡，每條線都要被某隻手完成，
+/// 而且完成時刻就是 Slide 指派的結束時間（尾判正解時刻）。
+fn assert_wifi_judged(r: &AnalyzeResponse, palm: f64) {
+    let chart = r.chart.as_ref().unwrap();
+    let path = &chart.paths[0];
+    let note = &chart.notes[0];
+    let judge = note.motion_start.unwrap()
+        + (note.motion_end.unwrap() - note.motion_start.unwrap()) * path.judge_progress;
+    let queues: Vec<&[JudgeArea]> = [
+        &path.judge_areas,
+        &path.branch_judge_areas[0],
+        &path.branch_judge_areas[1],
+    ]
+    .into_iter()
+    .map(|q| q.as_slice())
+    .collect();
+    for solution in &r.solutions {
+        continuity(&solution.left_segments);
+        continuity(&solution.right_segments);
+        assert!(solution.handovers.is_empty());
+        let slides: Vec<_> = solution
+            .assignments
+            .iter()
+            .filter(|a| a.part == "slide" && a.note_id == note.id)
+            .collect();
+        assert!((1..=2).contains(&slides.len()));
+        for a in &slides {
+            assert!((a.end_seconds - judge).abs() < 1e-9);
+            assert_eq!(a.start_seconds, slides[0].start_seconds);
+        }
+        let mut judged = [false; 3];
+        for segments in [&solution.left_segments, &solution.right_segments] {
+            let points = traced(segments, &note.id);
+            if points.len() < 2 {
+                continue;
+            }
+            for (q, queue) in queues.iter().enumerate() {
+                if simulate_route(&points, &[queue], Some(palm)).is_some() {
+                    judged[q] = true;
+                }
+            }
+        }
+        assert_eq!(judged, [true; 3], "每條 WiFi 線都要依判定佇列完成");
+    }
+}
+
+#[test]
+fn v3_wifi_follows_the_three_judge_queues() {
+    for palm in [0.5, 0.2] {
+        for start in 1..=8 {
+            let end = (start + 3) % 8 + 1;
+            let mut c = SolverConfig::v3();
+            c.palm_radius = palm;
+            let r = run(&format!("(120){{4}}{start}w{end}[4:2],E"), c);
+            assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+            assert_wifi_judged(&r, palm);
+            if palm < 0.3 {
+                // 手掌張不開時單手覆蓋不了三條，必須雙手分工。
+                for s in &r.solutions {
+                    assert_eq!(
+                        s.assignments.iter().filter(|a| a.part == "slide").count(),
+                        2
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn v3_one_spread_hand_can_play_wifi_while_the_other_holds() {
+    let r = run("(120){4}1w5[4:2]/8h[4:8],E", SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_wifi_judged(&r, 0.5);
+    for s in &r.solutions {
+        let hold = s
+            .assignments
+            .iter()
+            .find(|a| a.note_id == "n1")
+            .unwrap()
+            .hand;
+        assert!(s
+            .assignments
+            .iter()
+            .filter(|a| a.part == "slide")
+            .all(|a| a.hand != hold));
+    }
+    let mut narrow = SolverConfig::v3();
+    narrow.palm_radius = 0.2;
+    assert_eq!(
+        run("(120){4}1w5[4:2]/8h[4:8],E", narrow).status,
+        "no_solution"
+    );
+}
+
 #[test]
 fn wifi_covers_three_synchronous_lines_with_two_continuous_hands() {
-    for config in [
-        SolverConfig::default(),
-        SolverConfig::v2(),
-        SolverConfig::v3(),
-    ] {
+    for config in [SolverConfig::default(), SolverConfig::v2()] {
         for start in 1..=8 {
             let end = (start + 3) % 8 + 1;
             let r = run(&format!("(120){{4}}{start}w{end}[4:2],E"), config.clone());
@@ -95,11 +203,8 @@ fn wifi_covers_three_synchronous_lines_with_two_continuous_hands() {
 }
 #[test]
 fn wifi_requires_both_hands_and_sufficient_palm_width() {
-    for mut c in [
-        SolverConfig::default(),
-        SolverConfig::v2(),
-        SolverConfig::v3(),
-    ] {
+    // V3 依判定佇列，張開的單手也能完成 WiFi，見 v3_one_spread_hand_can_play_wifi_while_the_other_holds。
+    for mut c in [SolverConfig::default(), SolverConfig::v2()] {
         assert_eq!(
             run("(120){4}1w5[4:2]/8h[4:8],E", c.clone()).status,
             "no_solution"
@@ -129,10 +234,8 @@ fn wifi_hands_can_brush_a_touch_without_leaving_the_fan() {
     for s in &r.solutions {
         continuity(&s.left_segments);
         continuity(&s.right_segments);
-        assert_eq!(
-            s.assignments.iter().filter(|a| a.part == "slide").count(),
-            2
-        );
+        let hands = s.assignments.iter().filter(|a| a.part == "slide").count();
+        assert!((1..=2).contains(&hands));
         let touch = r
             .chart
             .as_ref()
@@ -142,20 +245,25 @@ fn wifi_hands_can_brush_a_touch_without_leaving_the_fan() {
             .find(|n| n.kind == "touch")
             .unwrap();
         assert!(s.assignments.iter().any(|a| a.note_id == touch.id));
-        assert!(!s
-            .left_segments
-            .iter()
-            .chain(&s.right_segments)
-            .any(|seg| seg.note_id.as_ref() == Some(&touch.id)));
+        // 兩手都在 WiFi 上時，Touch 只能由經過的手掌順帶完成；單手 WiFi 時另一手可直接去按。
+        if hands == 2 {
+            assert!(!s
+                .left_segments
+                .iter()
+                .chain(&s.right_segments)
+                .any(|seg| seg.note_id.as_ref() == Some(&touch.id)));
+        }
     }
 }
 
 #[test]
 fn wifi_is_deterministic_and_late_pickup_stays_synchronous() {
     // Heads at 0.5 occupy both hands until 0.53; WiFi must start both at 0.53.
+    // 手掌 0.2 張不開，必須雙手分工，才能檢查兩手同步晚接。
     let source = "(120){4}1w5[4:2],1/8,E";
     let mut c = SolverConfig::v3();
     c.top_k = 1;
+    c.palm_radius = 0.2;
     let r = run(source, c.clone());
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     let a: Vec<_> = r.solutions[0]

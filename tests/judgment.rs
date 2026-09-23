@@ -259,7 +259,8 @@ fn slide_hand_leaves_after_entering_the_last_judgment_area() {
             run("(120){4}1-5[4:1]/8h[4:3],{40},,,,,,,,4,E", c.clone()).status,
             "no_solution"
         );
-        // 沒有衝突時照舊追到終點。
+        // 沒有衝突時 V1/V2 照舊追到終點；V3 依判定區抄近，一律在最後判定區的正解時刻完成。
+        let v3 = c.is_v3();
         let free = ok("(120){4}1-5[4:1],E", c);
         let end = free.solutions[0]
             .assignments
@@ -267,6 +268,6 @@ fn slide_hand_leaves_after_entering_the_last_judgment_area() {
             .filter(|a| a.part == "slide")
             .map(|a| a.end_seconds)
             .fold(0.0, f64::max);
-        assert!((end - 1.0).abs() < 1e-9);
+        assert!((end - if v3 { judge } else { 1.0 }).abs() < 1e-9, "{end}");
     }
 }

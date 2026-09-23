@@ -92,6 +92,62 @@
       ],
       "paths": [
         {
+          "branchJudgeAreas": [
+            [
+              {
+                "sensors": [
+                  "A1"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B2"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B3"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "A4",
+                  "D5"
+                ],
+                "skippable": true
+              }
+            ],
+            [
+              {
+                "sensors": [
+                  "A1"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B8"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "B7"
+                ],
+                "skippable": true
+              },
+              {
+                "sensors": [
+                  "A6",
+                  "D6"
+                ],
+                "skippable": true
+              }
+            ]
+          ],
           "branches": [
             [
               {
@@ -120,6 +176,33 @@
           ],
           "endButton": 5,
           "id": "p0",
+          "judgeAreas": [
+            {
+              "sensors": [
+                "A1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "B1"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "C"
+              ],
+              "skippable": true
+            },
+            {
+              "sensors": [
+                "A5",
+                "B5"
+              ],
+              "skippable": true
+            }
+          ],
           "judgeProgress": 0.83713,
           "samples": [
             {
@@ -412,31 +495,24 @@
         "assignments": [
           {
             "endSeconds": 0.03,
-            "hand": "L",
+            "hand": "R",
             "noteId": "n0",
             "part": "head",
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.5,
+            "endSeconds": 1.3371300000000002,
+            "hand": "R",
+            "noteId": "n0",
+            "part": "slide",
+            "startSeconds": 0.5
+          },
+          {
+            "endSeconds": 0.78,
             "hand": "L",
-            "noteId": "n0",
-            "part": "slide",
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 1.5,
-            "hand": "R",
-            "noteId": "n0",
-            "part": "slide",
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 0.7915640776694117,
-            "hand": "R",
             "noteId": "n1",
             "part": "contact",
-            "startSeconds": 0.774897411002745
+            "startSeconds": 0.75
           }
         ],
         "configSnapshot": {
@@ -462,7 +538,7 @@
         "id": "solution-1",
         "leftSegments": [
           {
-            "endSeconds": 0.0,
+            "endSeconds": 0.75,
             "mode": "travel",
             "noteId": null,
             "samples": [
@@ -470,6 +546,63 @@
                 "timeSeconds": -1.0,
                 "x": -0.9238795325112868,
                 "y": -0.38268343236508967
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.78,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.78
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.0,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
               },
               {
                 "timeSeconds": 0.0,
@@ -516,7 +649,7 @@
             "startSeconds": 0.03
           },
           {
-            "endSeconds": 0.55,
+            "endSeconds": 0.5492429411764705,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -526,66 +659,89 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.55,
-                "x": 0.31735528412127095,
-                "y": -0.8585513842674679
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               }
             ],
             "startSeconds": 0.5
           },
           {
-            "endSeconds": 0.6,
+            "endSeconds": 0.5984858823529412,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.55,
-                "x": 0.31735528412127095,
-                "y": -0.8585513842674679
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               },
               {
-                "timeSeconds": 0.6,
-                "x": 0.2520271358774522,
-                "y": -0.7932232360236491
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               }
             ],
-            "startSeconds": 0.55
+            "startSeconds": 0.5492429411764705
           },
           {
-            "endSeconds": 0.65,
+            "endSeconds": 0.6477288235294119,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.6,
-                "x": 0.2520271358774522,
-                "y": -0.7932232360236491
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               },
               {
-                "timeSeconds": 0.65,
-                "x": 0.18669898763363332,
-                "y": -0.7278950877798303
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               }
             ],
-            "startSeconds": 0.6
+            "startSeconds": 0.5984858823529412
           },
           {
-            "endSeconds": 0.7,
+            "endSeconds": 0.6969717647058824,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.65,
-                "x": 0.18669898763363332,
-                "y": -0.7278950877798303
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               },
               {
-                "timeSeconds": 0.7,
-                "x": 0.12137083938981458,
-                "y": -0.6625669395360114
+                "timeSeconds": 0.6785858030189112,
+                "x": 0.2699756833276986,
+                "y": -0.6517789562006744
+              },
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
               }
             ],
-            "startSeconds": 0.65
+            "startSeconds": 0.6477288235294119
+          },
+          {
+            "endSeconds": 0.746214705882353,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
+              },
+              {
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
+              }
+            ],
+            "startSeconds": 0.6969717647058824
           },
           {
             "endSeconds": 0.75,
@@ -593,215 +749,220 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.7,
-                "x": 0.12137083938981458,
-                "y": -0.6625669395360114
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
               },
               {
                 "timeSeconds": 0.75,
-                "x": 0.05604269114599569,
-                "y": -0.5972387912921926
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               }
             ],
-            "startSeconds": 0.7
+            "startSeconds": 0.746214705882353
           },
           {
-            "endSeconds": 0.8,
+            "endSeconds": 0.7954576470588236,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
                 "timeSeconds": 0.75,
-                "x": 0.05604269114599569,
-                "y": -0.5972387912921926
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               },
               {
-                "timeSeconds": 0.8,
-                "x": -0.009285457097823191,
-                "y": -0.5319106430483738
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               }
             ],
             "startSeconds": 0.75
           },
           {
-            "endSeconds": 0.85,
+            "endSeconds": 0.8447005882352943,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.8,
-                "x": -0.009285457097823191,
-                "y": -0.5319106430483738
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               },
               {
-                "timeSeconds": 0.85,
-                "x": -0.07461360534164191,
-                "y": -0.466582494804555
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               }
             ],
-            "startSeconds": 0.8
+            "startSeconds": 0.7954576470588236
           },
           {
-            "endSeconds": 0.9,
+            "endSeconds": 0.8939435294117648,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.85,
-                "x": -0.07461360534164191,
-                "y": -0.466582494804555
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               },
               {
-                "timeSeconds": 0.9,
-                "x": -0.1399417535854608,
-                "y": -0.4012543465607361
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               }
             ],
-            "startSeconds": 0.85
+            "startSeconds": 0.8447005882352943
           },
           {
-            "endSeconds": 0.95,
+            "endSeconds": 0.9431864705882353,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.9,
-                "x": -0.1399417535854608,
-                "y": -0.4012543465607361
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               },
               {
-                "timeSeconds": 0.95,
-                "x": -0.2052699018292795,
-                "y": -0.3359261983169174
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               }
             ],
-            "startSeconds": 0.9
+            "startSeconds": 0.8939435294117648
           },
           {
-            "endSeconds": 1.0,
+            "endSeconds": 0.9924294117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.95,
-                "x": -0.2052699018292795,
-                "y": -0.3359261983169174
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               },
               {
-                "timeSeconds": 1.0,
-                "x": -0.27059805007309845,
-                "y": -0.27059805007309845
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               }
             ],
-            "startSeconds": 0.95
+            "startSeconds": 0.9431864705882353
           },
           {
-            "endSeconds": 1.05,
+            "endSeconds": 1.0416723529411764,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.0,
-                "x": -0.27059805007309845,
-                "y": -0.27059805007309845
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               },
               {
-                "timeSeconds": 1.05,
-                "x": -0.3359261983169174,
-                "y": -0.2052699018292795
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               }
             ],
-            "startSeconds": 1.0
+            "startSeconds": 0.9924294117647059
           },
           {
-            "endSeconds": 1.1,
+            "endSeconds": 1.0909152941176472,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.05,
-                "x": -0.3359261983169174,
-                "y": -0.2052699018292795
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               },
               {
-                "timeSeconds": 1.1,
-                "x": -0.4012543465607362,
-                "y": -0.13994175358546068
+                "timeSeconds": 1.0871300000000004,
+                "x": 0.012138296225035428,
+                "y": -0.029304439370582802
+              },
+              {
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               }
             ],
-            "startSeconds": 1.05
+            "startSeconds": 1.0416723529411764
           },
           {
-            "endSeconds": 1.15,
+            "endSeconds": 1.1401582352941178,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.1,
-                "x": -0.4012543465607362,
-                "y": -0.13994175358546068
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               },
               {
-                "timeSeconds": 1.15,
-                "x": -0.4665824948045548,
-                "y": -0.07461360534164208
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               }
             ],
-            "startSeconds": 1.1
+            "startSeconds": 1.0909152941176472
           },
           {
-            "endSeconds": 1.2,
+            "endSeconds": 1.1894011764705885,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.15,
-                "x": -0.4665824948045548,
-                "y": -0.07461360534164208
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               },
               {
-                "timeSeconds": 1.2,
-                "x": -0.5319106430483737,
-                "y": -0.009285457097823246
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               }
             ],
-            "startSeconds": 1.15
+            "startSeconds": 1.1401582352941178
           },
           {
-            "endSeconds": 1.25,
+            "endSeconds": 1.238644117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.2,
-                "x": -0.5319106430483737,
-                "y": -0.009285457097823246
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               },
               {
-                "timeSeconds": 1.25,
-                "x": -0.5972387912921926,
-                "y": 0.05604269114599569
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               }
             ],
-            "startSeconds": 1.2
+            "startSeconds": 1.1894011764705885
           },
           {
-            "endSeconds": 1.3,
+            "endSeconds": 1.2878870588235296,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.25,
-                "x": -0.5972387912921926,
-                "y": 0.05604269114599569
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               },
               {
-                "timeSeconds": 1.3,
-                "x": -0.6625669395360114,
-                "y": 0.12137083938981452
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               }
             ],
-            "startSeconds": 1.25
+            "startSeconds": 1.238644117647059
           },
           {
             "endSeconds": 1.3371300000000002,
@@ -809,544 +970,85 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.3,
-                "x": -0.6625669395360114,
-                "y": 0.12137083938981452
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               },
               {
                 "timeSeconds": 1.3371300000000002,
-                "x": -0.7110796224218714,
-                "y": 0.1698835222756745
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": -0.7110796224218714,
-                "y": 0.1698835222756745
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": -0.7278950877798305,
-                "y": 0.18669898763363357
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": -0.7278950877798305,
-                "y": 0.18669898763363357
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": -0.7932232360236489,
-                "y": 0.25202713587745196
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": -0.7932232360236489,
-                "y": 0.25202713587745196
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": -0.8585513842674679,
-                "y": 0.317355284121271
-              }
-            ],
-            "startSeconds": 1.4
+            "startSeconds": 1.2878870588235296
           },
           {
             "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.45,
-                "x": -0.8585513842674679,
-                "y": 0.317355284121271
-              },
-              {
-                "timeSeconds": 1.5,
-                "x": -0.9238795325112867,
-                "y": 0.38268343236508984
-              }
-            ],
-            "startSeconds": 1.45
-          }
-        ],
-        "palmPlacements": [],
-        "rightSegments": [
-          {
-            "endSeconds": 0.5,
-            "mode": "travel",
+            "mode": "idle",
             "noteId": null,
             "samples": [
               {
-                "timeSeconds": -1.0,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": -1.0
-          },
-          {
-            "endSeconds": 0.55,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.55,
-                "x": 0.36354926074683536,
-                "y": -0.831491579260158
-              }
-            ],
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 0.6,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.55,
-                "x": 0.36354926074683536,
-                "y": -0.831491579260158
-              },
-              {
-                "timeSeconds": 0.6,
-                "x": 0.3444150891285809,
-                "y": -0.7391036260090295
-              }
-            ],
-            "startSeconds": 0.55
-          },
-          {
-            "endSeconds": 0.65,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.6,
-                "x": 0.3444150891285809,
-                "y": -0.7391036260090295
-              },
-              {
-                "timeSeconds": 0.65,
-                "x": 0.32528091751032634,
-                "y": -0.6467156727579007
-              }
-            ],
-            "startSeconds": 0.6
-          },
-          {
-            "endSeconds": 0.7,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.65,
-                "x": 0.32528091751032634,
-                "y": -0.6467156727579007
-              },
-              {
-                "timeSeconds": 0.7,
-                "x": 0.3061467458920719,
-                "y": -0.5543277195067722
-              }
-            ],
-            "startSeconds": 0.65
-          },
-          {
-            "endSeconds": 0.75,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.7,
-                "x": 0.3061467458920719,
-                "y": -0.5543277195067722
-              },
-              {
-                "timeSeconds": 0.75,
-                "x": 0.2870125742738174,
-                "y": -0.46193976625564337
-              }
-            ],
-            "startSeconds": 0.7
-          },
-          {
-            "endSeconds": 0.8,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.75,
-                "x": 0.2870125742738174,
-                "y": -0.46193976625564337
-              },
-              {
-                "timeSeconds": 0.8,
-                "x": 0.2678784026555629,
-                "y": -0.36955181300451456
-              }
-            ],
-            "startSeconds": 0.75
-          },
-          {
-            "endSeconds": 0.85,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.8,
-                "x": 0.2678784026555629,
-                "y": -0.36955181300451456
-              },
-              {
-                "timeSeconds": 0.85,
-                "x": 0.24874423103730842,
-                "y": -0.2771638597533861
-              }
-            ],
-            "startSeconds": 0.8
-          },
-          {
-            "endSeconds": 0.9,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.85,
-                "x": 0.24874423103730842,
-                "y": -0.2771638597533861
-              },
-              {
-                "timeSeconds": 0.9,
-                "x": 0.2296100594190539,
-                "y": -0.18477590650225728
-              }
-            ],
-            "startSeconds": 0.85
-          },
-          {
-            "endSeconds": 0.95,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.9,
-                "x": 0.2296100594190539,
-                "y": -0.18477590650225728
-              },
-              {
-                "timeSeconds": 0.95,
-                "x": 0.21047588780079945,
-                "y": -0.09238795325112881
-              }
-            ],
-            "startSeconds": 0.9
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.95,
-                "x": 0.21047588780079945,
-                "y": -0.09238795325112881
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": 0.19134171618254495,
-                "y": 0.0
-              }
-            ],
-            "startSeconds": 0.95
-          },
-          {
-            "endSeconds": 1.05,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": 0.19134171618254495,
-                "y": 0.0
-              },
-              {
-                "timeSeconds": 1.05,
-                "x": 0.17220754456429044,
-                "y": 0.0923879532511287
-              }
-            ],
-            "startSeconds": 1.0
-          },
-          {
-            "endSeconds": 1.1,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.05,
-                "x": 0.17220754456429044,
-                "y": 0.0923879532511287
-              },
-              {
-                "timeSeconds": 1.1,
-                "x": 0.15307337294603593,
-                "y": 0.18477590650225761
-              }
-            ],
-            "startSeconds": 1.05
-          },
-          {
-            "endSeconds": 1.15,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.1,
-                "x": 0.15307337294603593,
-                "y": 0.18477590650225761
-              },
-              {
-                "timeSeconds": 1.15,
-                "x": 0.1339392013277815,
-                "y": 0.27716385975338587
-              }
-            ],
-            "startSeconds": 1.1
-          },
-          {
-            "endSeconds": 1.2,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.15,
-                "x": 0.1339392013277815,
-                "y": 0.27716385975338587
-              },
-              {
-                "timeSeconds": 1.2,
-                "x": 0.114805029709527,
-                "y": 0.36955181300451456
-              }
-            ],
-            "startSeconds": 1.15
-          },
-          {
-            "endSeconds": 1.25,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.2,
-                "x": 0.114805029709527,
-                "y": 0.36955181300451456
-              },
-              {
-                "timeSeconds": 1.25,
-                "x": 0.09567085809127251,
-                "y": 0.46193976625564326
-              }
-            ],
-            "startSeconds": 1.2
-          },
-          {
-            "endSeconds": 1.3,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.25,
-                "x": 0.09567085809127251,
-                "y": 0.46193976625564326
-              },
-              {
-                "timeSeconds": 1.3,
-                "x": 0.07653668647301798,
-                "y": 0.5543277195067722
-              }
-            ],
-            "startSeconds": 1.25
-          },
-          {
-            "endSeconds": 1.3371300000000002,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3,
-                "x": 0.07653668647301798,
-                "y": 0.5543277195067722
-              },
-              {
                 "timeSeconds": 1.3371300000000002,
-                "x": 0.06232765062930218,
-                "y": 0.6229350135910605
-              }
-            ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": 0.06232765062930218,
-                "y": 0.6229350135910605
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": 0.0574025148547635,
-                "y": 0.6467156727579009
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": 0.0574025148547635,
-                "y": 0.6467156727579009
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": 0.03826834323650907,
-                "y": 0.7391036260090291
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": 0.03826834323650907,
-                "y": 0.7391036260090291
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": 0.019134171618254536,
-                "y": 0.831491579260158
-              }
-            ],
-            "startSeconds": 1.4
-          },
-          {
-            "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.45,
-                "x": 0.019134171618254536,
-                "y": 0.831491579260158
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               },
               {
                 "timeSeconds": 1.5,
-                "x": 5.551115123125783e-17,
-                "y": 0.9238795325112867
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.45
+            "startSeconds": 1.3371300000000002
           }
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.04522877139929358,
-          "total": 0.437553248277883
+          "movement": 0.3177660356514323,
+          "posture": 0.00018298561575018864,
+          "total": 0.3179490212671825
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
           "crossExposure": 0.0,
-          "excursion": 0.04522877139929358,
+          "excursion": 0.00018298561575018864,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.3177660356514323,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。",
-          "WiFi 以雙手同步 2+1 覆蓋近似：一手沿中央與相鄰側線的中點移動，另一手沿剩餘側線；手掌半徑沿用設定值。"
+          "Slide 依判定區抄近（MajdataPlay 判定佇列）：可跳過單一判定區、不必追到星星終點，手在最後判定區的正解時刻完成；感應區大小與指尖半徑是 Demo 近似。",
+          "WiFi 依三條判定佇列分工：一手張開覆蓋中央與一側、另一手覆蓋另一側，或單手張開覆蓋三條；手掌半徑沿用設定值。"
         ]
       },
       {
         "assignments": [
           {
             "endSeconds": 0.03,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n0",
             "part": "head",
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.5,
+            "endSeconds": 1.3371300000000002,
             "hand": "L",
             "noteId": "n0",
             "part": "slide",
             "startSeconds": 0.5
           },
           {
-            "endSeconds": 1.5,
-            "hand": "R",
-            "noteId": "n0",
-            "part": "slide",
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 0.7915640776694117,
+            "endSeconds": 0.78,
             "hand": "R",
             "noteId": "n1",
             "part": "contact",
-            "startSeconds": 0.774897411002745
+            "startSeconds": 0.75
           }
         ],
         "configSnapshot": {
@@ -1372,7 +1074,7 @@
         "id": "solution-2",
         "leftSegments": [
           {
-            "endSeconds": 0.5,
+            "endSeconds": 0.0,
             "mode": "travel",
             "noteId": null,
             "samples": [
@@ -1380,405 +1082,6 @@
                 "timeSeconds": -1.0,
                 "x": -0.9238795325112868,
                 "y": -0.38268343236508967
-              },
-              {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": -1.0
-          },
-          {
-            "endSeconds": 0.55,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.55,
-                "x": 0.31735528412127095,
-                "y": -0.8585513842674679
-              }
-            ],
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 0.6,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.55,
-                "x": 0.31735528412127095,
-                "y": -0.8585513842674679
-              },
-              {
-                "timeSeconds": 0.6,
-                "x": 0.2520271358774522,
-                "y": -0.7932232360236491
-              }
-            ],
-            "startSeconds": 0.55
-          },
-          {
-            "endSeconds": 0.65,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.6,
-                "x": 0.2520271358774522,
-                "y": -0.7932232360236491
-              },
-              {
-                "timeSeconds": 0.65,
-                "x": 0.18669898763363332,
-                "y": -0.7278950877798303
-              }
-            ],
-            "startSeconds": 0.6
-          },
-          {
-            "endSeconds": 0.7,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.65,
-                "x": 0.18669898763363332,
-                "y": -0.7278950877798303
-              },
-              {
-                "timeSeconds": 0.7,
-                "x": 0.12137083938981458,
-                "y": -0.6625669395360114
-              }
-            ],
-            "startSeconds": 0.65
-          },
-          {
-            "endSeconds": 0.75,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.7,
-                "x": 0.12137083938981458,
-                "y": -0.6625669395360114
-              },
-              {
-                "timeSeconds": 0.75,
-                "x": 0.05604269114599569,
-                "y": -0.5972387912921926
-              }
-            ],
-            "startSeconds": 0.7
-          },
-          {
-            "endSeconds": 0.8,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.75,
-                "x": 0.05604269114599569,
-                "y": -0.5972387912921926
-              },
-              {
-                "timeSeconds": 0.8,
-                "x": -0.009285457097823191,
-                "y": -0.5319106430483738
-              }
-            ],
-            "startSeconds": 0.75
-          },
-          {
-            "endSeconds": 0.85,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.8,
-                "x": -0.009285457097823191,
-                "y": -0.5319106430483738
-              },
-              {
-                "timeSeconds": 0.85,
-                "x": -0.07461360534164191,
-                "y": -0.466582494804555
-              }
-            ],
-            "startSeconds": 0.8
-          },
-          {
-            "endSeconds": 0.9,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.85,
-                "x": -0.07461360534164191,
-                "y": -0.466582494804555
-              },
-              {
-                "timeSeconds": 0.9,
-                "x": -0.1399417535854608,
-                "y": -0.4012543465607361
-              }
-            ],
-            "startSeconds": 0.85
-          },
-          {
-            "endSeconds": 0.95,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.9,
-                "x": -0.1399417535854608,
-                "y": -0.4012543465607361
-              },
-              {
-                "timeSeconds": 0.95,
-                "x": -0.2052699018292795,
-                "y": -0.3359261983169174
-              }
-            ],
-            "startSeconds": 0.9
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.95,
-                "x": -0.2052699018292795,
-                "y": -0.3359261983169174
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": -0.27059805007309845,
-                "y": -0.27059805007309845
-              }
-            ],
-            "startSeconds": 0.95
-          },
-          {
-            "endSeconds": 1.05,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": -0.27059805007309845,
-                "y": -0.27059805007309845
-              },
-              {
-                "timeSeconds": 1.05,
-                "x": -0.3359261983169174,
-                "y": -0.2052699018292795
-              }
-            ],
-            "startSeconds": 1.0
-          },
-          {
-            "endSeconds": 1.1,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.05,
-                "x": -0.3359261983169174,
-                "y": -0.2052699018292795
-              },
-              {
-                "timeSeconds": 1.1,
-                "x": -0.4012543465607362,
-                "y": -0.13994175358546068
-              }
-            ],
-            "startSeconds": 1.05
-          },
-          {
-            "endSeconds": 1.15,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.1,
-                "x": -0.4012543465607362,
-                "y": -0.13994175358546068
-              },
-              {
-                "timeSeconds": 1.15,
-                "x": -0.4665824948045548,
-                "y": -0.07461360534164208
-              }
-            ],
-            "startSeconds": 1.1
-          },
-          {
-            "endSeconds": 1.2,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.15,
-                "x": -0.4665824948045548,
-                "y": -0.07461360534164208
-              },
-              {
-                "timeSeconds": 1.2,
-                "x": -0.5319106430483737,
-                "y": -0.009285457097823246
-              }
-            ],
-            "startSeconds": 1.15
-          },
-          {
-            "endSeconds": 1.25,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.2,
-                "x": -0.5319106430483737,
-                "y": -0.009285457097823246
-              },
-              {
-                "timeSeconds": 1.25,
-                "x": -0.5972387912921926,
-                "y": 0.05604269114599569
-              }
-            ],
-            "startSeconds": 1.2
-          },
-          {
-            "endSeconds": 1.3,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.25,
-                "x": -0.5972387912921926,
-                "y": 0.05604269114599569
-              },
-              {
-                "timeSeconds": 1.3,
-                "x": -0.6625669395360114,
-                "y": 0.12137083938981452
-              }
-            ],
-            "startSeconds": 1.25
-          },
-          {
-            "endSeconds": 1.3371300000000002,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3,
-                "x": -0.6625669395360114,
-                "y": 0.12137083938981452
-              },
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": -0.7110796224218714,
-                "y": 0.1698835222756745
-              }
-            ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": -0.7110796224218714,
-                "y": 0.1698835222756745
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": -0.7278950877798305,
-                "y": 0.18669898763363357
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": -0.7278950877798305,
-                "y": 0.18669898763363357
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": -0.7932232360236489,
-                "y": 0.25202713587745196
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": -0.7932232360236489,
-                "y": 0.25202713587745196
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": -0.8585513842674679,
-                "y": 0.317355284121271
-              }
-            ],
-            "startSeconds": 1.4
-          },
-          {
-            "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.45,
-                "x": -0.8585513842674679,
-                "y": 0.317355284121271
-              },
-              {
-                "timeSeconds": 1.5,
-                "x": -0.9238795325112867,
-                "y": 0.38268343236508984
-              }
-            ],
-            "startSeconds": 1.45
-          }
-        ],
-        "palmPlacements": [],
-        "rightSegments": [
-          {
-            "endSeconds": 0.0,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": -1.0,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
               },
               {
                 "timeSeconds": 0.0,
@@ -1825,7 +1128,7 @@
             "startSeconds": 0.03
           },
           {
-            "endSeconds": 0.55,
+            "endSeconds": 0.5492429411764705,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -1835,66 +1138,89 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.55,
-                "x": 0.36354926074683536,
-                "y": -0.831491579260158
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               }
             ],
             "startSeconds": 0.5
           },
           {
-            "endSeconds": 0.6,
+            "endSeconds": 0.5984858823529412,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.55,
-                "x": 0.36354926074683536,
-                "y": -0.831491579260158
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               },
               {
-                "timeSeconds": 0.6,
-                "x": 0.3444150891285809,
-                "y": -0.7391036260090295
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               }
             ],
-            "startSeconds": 0.55
+            "startSeconds": 0.5492429411764705
           },
           {
-            "endSeconds": 0.65,
+            "endSeconds": 0.6477288235294119,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.6,
-                "x": 0.3444150891285809,
-                "y": -0.7391036260090295
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               },
               {
-                "timeSeconds": 0.65,
-                "x": 0.32528091751032634,
-                "y": -0.6467156727579007
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               }
             ],
-            "startSeconds": 0.6
+            "startSeconds": 0.5984858823529412
           },
           {
-            "endSeconds": 0.7,
+            "endSeconds": 0.6969717647058824,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.65,
-                "x": 0.32528091751032634,
-                "y": -0.6467156727579007
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               },
               {
-                "timeSeconds": 0.7,
-                "x": 0.3061467458920719,
-                "y": -0.5543277195067722
+                "timeSeconds": 0.6785858030189112,
+                "x": 0.2699756833276986,
+                "y": -0.6517789562006744
+              },
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
               }
             ],
-            "startSeconds": 0.65
+            "startSeconds": 0.6477288235294119
+          },
+          {
+            "endSeconds": 0.746214705882353,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
+              },
+              {
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
+              }
+            ],
+            "startSeconds": 0.6969717647058824
           },
           {
             "endSeconds": 0.75,
@@ -1902,215 +1228,220 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.7,
-                "x": 0.3061467458920719,
-                "y": -0.5543277195067722
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
               },
               {
                 "timeSeconds": 0.75,
-                "x": 0.2870125742738174,
-                "y": -0.46193976625564337
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               }
             ],
-            "startSeconds": 0.7
+            "startSeconds": 0.746214705882353
           },
           {
-            "endSeconds": 0.8,
+            "endSeconds": 0.7954576470588236,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
                 "timeSeconds": 0.75,
-                "x": 0.2870125742738174,
-                "y": -0.46193976625564337
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               },
               {
-                "timeSeconds": 0.8,
-                "x": 0.2678784026555629,
-                "y": -0.36955181300451456
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               }
             ],
             "startSeconds": 0.75
           },
           {
-            "endSeconds": 0.85,
+            "endSeconds": 0.8447005882352943,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.8,
-                "x": 0.2678784026555629,
-                "y": -0.36955181300451456
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               },
               {
-                "timeSeconds": 0.85,
-                "x": 0.24874423103730842,
-                "y": -0.2771638597533861
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               }
             ],
-            "startSeconds": 0.8
+            "startSeconds": 0.7954576470588236
           },
           {
-            "endSeconds": 0.9,
+            "endSeconds": 0.8939435294117648,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.85,
-                "x": 0.24874423103730842,
-                "y": -0.2771638597533861
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               },
               {
-                "timeSeconds": 0.9,
-                "x": 0.2296100594190539,
-                "y": -0.18477590650225728
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               }
             ],
-            "startSeconds": 0.85
+            "startSeconds": 0.8447005882352943
           },
           {
-            "endSeconds": 0.95,
+            "endSeconds": 0.9431864705882353,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.9,
-                "x": 0.2296100594190539,
-                "y": -0.18477590650225728
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               },
               {
-                "timeSeconds": 0.95,
-                "x": 0.21047588780079945,
-                "y": -0.09238795325112881
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               }
             ],
-            "startSeconds": 0.9
+            "startSeconds": 0.8939435294117648
           },
           {
-            "endSeconds": 1.0,
+            "endSeconds": 0.9924294117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.95,
-                "x": 0.21047588780079945,
-                "y": -0.09238795325112881
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               },
               {
-                "timeSeconds": 1.0,
-                "x": 0.19134171618254495,
-                "y": 0.0
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               }
             ],
-            "startSeconds": 0.95
+            "startSeconds": 0.9431864705882353
           },
           {
-            "endSeconds": 1.05,
+            "endSeconds": 1.0416723529411764,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.0,
-                "x": 0.19134171618254495,
-                "y": 0.0
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               },
               {
-                "timeSeconds": 1.05,
-                "x": 0.17220754456429044,
-                "y": 0.0923879532511287
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               }
             ],
-            "startSeconds": 1.0
+            "startSeconds": 0.9924294117647059
           },
           {
-            "endSeconds": 1.1,
+            "endSeconds": 1.0909152941176472,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.05,
-                "x": 0.17220754456429044,
-                "y": 0.0923879532511287
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               },
               {
-                "timeSeconds": 1.1,
-                "x": 0.15307337294603593,
-                "y": 0.18477590650225761
+                "timeSeconds": 1.0871300000000004,
+                "x": 0.012138296225035428,
+                "y": -0.029304439370582802
+              },
+              {
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               }
             ],
-            "startSeconds": 1.05
+            "startSeconds": 1.0416723529411764
           },
           {
-            "endSeconds": 1.15,
+            "endSeconds": 1.1401582352941178,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.1,
-                "x": 0.15307337294603593,
-                "y": 0.18477590650225761
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               },
               {
-                "timeSeconds": 1.15,
-                "x": 0.1339392013277815,
-                "y": 0.27716385975338587
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               }
             ],
-            "startSeconds": 1.1
+            "startSeconds": 1.0909152941176472
           },
           {
-            "endSeconds": 1.2,
+            "endSeconds": 1.1894011764705885,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.15,
-                "x": 0.1339392013277815,
-                "y": 0.27716385975338587
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               },
               {
-                "timeSeconds": 1.2,
-                "x": 0.114805029709527,
-                "y": 0.36955181300451456
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               }
             ],
-            "startSeconds": 1.15
+            "startSeconds": 1.1401582352941178
           },
           {
-            "endSeconds": 1.25,
+            "endSeconds": 1.238644117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.2,
-                "x": 0.114805029709527,
-                "y": 0.36955181300451456
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               },
               {
-                "timeSeconds": 1.25,
-                "x": 0.09567085809127251,
-                "y": 0.46193976625564326
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               }
             ],
-            "startSeconds": 1.2
+            "startSeconds": 1.1894011764705885
           },
           {
-            "endSeconds": 1.3,
+            "endSeconds": 1.2878870588235296,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.25,
-                "x": 0.09567085809127251,
-                "y": 0.46193976625564326
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               },
               {
-                "timeSeconds": 1.3,
-                "x": 0.07653668647301798,
-                "y": 0.5543277195067722
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               }
             ],
-            "startSeconds": 1.25
+            "startSeconds": 1.238644117647059
           },
           {
             "endSeconds": 1.3371300000000002,
@@ -2118,114 +1449,118 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.3,
-                "x": 0.07653668647301798,
-                "y": 0.5543277195067722
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               },
               {
                 "timeSeconds": 1.3371300000000002,
-                "x": 0.06232765062930218,
-                "y": 0.6229350135910605
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": 0.06232765062930218,
-                "y": 0.6229350135910605
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": 0.0574025148547635,
-                "y": 0.6467156727579009
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": 0.0574025148547635,
-                "y": 0.6467156727579009
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": 0.03826834323650907,
-                "y": 0.7391036260090291
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": 0.03826834323650907,
-                "y": 0.7391036260090291
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": 0.019134171618254536,
-                "y": 0.831491579260158
-              }
-            ],
-            "startSeconds": 1.4
+            "startSeconds": 1.2878870588235296
           },
           {
             "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
+            "mode": "idle",
+            "noteId": null,
             "samples": [
               {
-                "timeSeconds": 1.45,
-                "x": 0.019134171618254536,
-                "y": 0.831491579260158
+                "timeSeconds": 1.3371300000000002,
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               },
               {
                 "timeSeconds": 1.5,
-                "x": 5.551115123125783e-17,
-                "y": 0.9238795325112867
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.45
+            "startSeconds": 1.3371300000000002
+          }
+        ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.75,
+            "mode": "travel",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.75,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": -1.0
+          },
+          {
+            "endSeconds": 0.78,
+            "mode": "tap",
+            "noteId": "n1",
+            "samples": [
+              {
+                "timeSeconds": 0.75,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.75
+          },
+          {
+            "endSeconds": 1.5,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
+              },
+              {
+                "timeSeconds": 1.5,
+                "x": 0.0,
+                "y": 0.0
+              }
+            ],
+            "startSeconds": 0.78
           }
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.04522877139929358,
-          "total": 0.437553248277883
+          "movement": 0.4345584412271571,
+          "posture": 0.04586275580186068,
+          "total": 0.48042119702901775
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 0.0,
-          "excursion": 0.04522877139929358,
+          "crossExposure": 0.0003483274586816079,
+          "excursion": 0.04551442834317907,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.4345584412271571,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。",
-          "WiFi 以雙手同步 2+1 覆蓋近似：一手沿中央與相鄰側線的中點移動，另一手沿剩餘側線；手掌半徑沿用設定值。"
+          "Slide 依判定區抄近（MajdataPlay 判定佇列）：可跳過單一判定區、不必追到星星終點，手在最後判定區的正解時刻完成；感應區大小與指尖半徑是 Demo 近似。",
+          "WiFi 依三條判定佇列分工：一手張開覆蓋中央與一側、另一手覆蓋另一側，或單手張開覆蓋三條；手掌半徑沿用設定值。"
         ]
       },
       {
@@ -2238,25 +1573,18 @@
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 1.5,
-            "hand": "L",
-            "noteId": "n0",
-            "part": "slide",
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 1.5,
+            "endSeconds": 1.3371300000000002,
             "hand": "R",
             "noteId": "n0",
             "part": "slide",
             "startSeconds": 0.5
           },
           {
-            "endSeconds": 0.7915640776694118,
+            "endSeconds": 0.78,
             "hand": "L",
             "noteId": "n1",
             "part": "contact",
-            "startSeconds": 0.7748974110027451
+            "startSeconds": 0.75
           }
         ],
         "configSnapshot": {
@@ -2318,8 +1646,8 @@
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 0.5,
-            "mode": "idle",
+            "endSeconds": 0.75,
+            "mode": "travel",
             "noteId": null,
             "samples": [
               {
@@ -2328,390 +1656,48 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "timeSeconds": 0.75,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 0.03
           },
           {
-            "endSeconds": 0.55,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.5,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.55,
-                "x": 0.3308851866249259,
-                "y": -0.8450214817638129
-              }
-            ],
-            "startSeconds": 0.5
-          },
-          {
-            "endSeconds": 0.6,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.55,
-                "x": 0.3308851866249259,
-                "y": -0.8450214817638129
-              },
-              {
-                "timeSeconds": 0.6,
-                "x": 0.27908694088476205,
-                "y": -0.7661634310163392
-              }
-            ],
-            "startSeconds": 0.55
-          },
-          {
-            "endSeconds": 0.65,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.6,
-                "x": 0.27908694088476205,
-                "y": -0.7661634310163392
-              },
-              {
-                "timeSeconds": 0.65,
-                "x": 0.2272886951445981,
-                "y": -0.6873053802688655
-              }
-            ],
-            "startSeconds": 0.6
-          },
-          {
-            "endSeconds": 0.7,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.65,
-                "x": 0.2272886951445981,
-                "y": -0.6873053802688655
-              },
-              {
-                "timeSeconds": 0.7,
-                "x": 0.17549044940443426,
-                "y": -0.6084473295213918
-              }
-            ],
-            "startSeconds": 0.65
-          },
-          {
-            "endSeconds": 0.75,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.7,
-                "x": 0.17549044940443426,
-                "y": -0.6084473295213918
-              },
-              {
-                "timeSeconds": 0.75,
-                "x": 0.1236922036642703,
-                "y": -0.529589278773918
-              }
-            ],
-            "startSeconds": 0.7
-          },
-          {
-            "endSeconds": 0.8,
-            "mode": "slide",
-            "noteId": "n0",
+            "endSeconds": 0.78,
+            "mode": "tap",
+            "noteId": "n1",
             "samples": [
               {
                 "timeSeconds": 0.75,
-                "x": 0.1236922036642703,
-                "y": -0.529589278773918
+                "x": 0.0,
+                "y": 0.0
               },
               {
-                "timeSeconds": 0.8,
-                "x": 0.07189395792410636,
-                "y": -0.45073122802644416
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
               }
             ],
             "startSeconds": 0.75
           },
           {
-            "endSeconds": 0.85,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.8,
-                "x": 0.07189395792410636,
-                "y": -0.45073122802644416
-              },
-              {
-                "timeSeconds": 0.85,
-                "x": 0.020095712183942516,
-                "y": -0.3718731772789705
-              }
-            ],
-            "startSeconds": 0.8
-          },
-          {
-            "endSeconds": 0.9,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.85,
-                "x": 0.020095712183942516,
-                "y": -0.3718731772789705
-              },
-              {
-                "timeSeconds": 0.9,
-                "x": -0.031702533556221435,
-                "y": -0.29301512653149664
-              }
-            ],
-            "startSeconds": 0.85
-          },
-          {
-            "endSeconds": 0.95,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.9,
-                "x": -0.031702533556221435,
-                "y": -0.29301512653149664
-              },
-              {
-                "timeSeconds": 0.95,
-                "x": -0.08350077929638527,
-                "y": -0.2141570757840231
-              }
-            ],
-            "startSeconds": 0.9
-          },
-          {
-            "endSeconds": 1.0,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 0.95,
-                "x": -0.08350077929638527,
-                "y": -0.2141570757840231
-              },
-              {
-                "timeSeconds": 1.0,
-                "x": -0.13529902503654923,
-                "y": -0.13529902503654923
-              }
-            ],
-            "startSeconds": 0.95
-          },
-          {
-            "endSeconds": 1.05,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.0,
-                "x": -0.13529902503654923,
-                "y": -0.13529902503654923
-              },
-              {
-                "timeSeconds": 1.05,
-                "x": -0.18709727077671323,
-                "y": -0.05644097428907535
-              }
-            ],
-            "startSeconds": 1.0
-          },
-          {
-            "endSeconds": 1.1,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.05,
-                "x": -0.18709727077671323,
-                "y": -0.05644097428907535
-              },
-              {
-                "timeSeconds": 1.1,
-                "x": -0.23889551651687713,
-                "y": 0.02241707645839841
-              }
-            ],
-            "startSeconds": 1.05
-          },
-          {
-            "endSeconds": 1.15,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.1,
-                "x": -0.23889551651687713,
-                "y": 0.02241707645839841
-              },
-              {
-                "timeSeconds": 1.15,
-                "x": -0.2906937622570408,
-                "y": 0.10127512720587184
-              }
-            ],
-            "startSeconds": 1.1
-          },
-          {
-            "endSeconds": 1.2,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.15,
-                "x": -0.2906937622570408,
-                "y": 0.10127512720587184
-              },
-              {
-                "timeSeconds": 1.2,
-                "x": -0.3424920079972048,
-                "y": 0.1801331779533457
-              }
-            ],
-            "startSeconds": 1.15
-          },
-          {
-            "endSeconds": 1.25,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.2,
-                "x": -0.3424920079972048,
-                "y": 0.1801331779533457
-              },
-              {
-                "timeSeconds": 1.25,
-                "x": -0.3942902537373687,
-                "y": 0.2589912287008196
-              }
-            ],
-            "startSeconds": 1.2
-          },
-          {
-            "endSeconds": 1.3,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.25,
-                "x": -0.3942902537373687,
-                "y": 0.2589912287008196
-              },
-              {
-                "timeSeconds": 1.3,
-                "x": -0.4460884994775327,
-                "y": 0.33784927944829346
-              }
-            ],
-            "startSeconds": 1.25
-          },
-          {
-            "endSeconds": 1.3371300000000002,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3,
-                "x": -0.4460884994775327,
-                "y": 0.33784927944829346
-              },
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": -0.4845538767641785,
-                "y": 0.3964092679333675
-              }
-            ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": -0.4845538767641785,
-                "y": 0.3964092679333675
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": -0.4978867452176967,
-                "y": 0.4167073301957671
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": -0.4978867452176967,
-                "y": 0.4167073301957671
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": -0.5496849909578604,
-                "y": 0.49556538094324054
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": -0.5496849909578604,
-                "y": 0.49556538094324054
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": -0.6014832366980243,
-                "y": 0.5744234316907144
-              }
-            ],
-            "startSeconds": 1.4
-          },
-          {
             "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
+            "mode": "idle",
+            "noteId": null,
             "samples": [
               {
-                "timeSeconds": 1.45,
-                "x": -0.6014832366980243,
-                "y": 0.5744234316907144
+                "timeSeconds": 0.78,
+                "x": 0.0,
+                "y": 0.0
               },
               {
                 "timeSeconds": 1.5,
-                "x": -0.6532814824381883,
-                "y": 0.6532814824381883
+                "x": 0.0,
+                "y": 0.0
               }
             ],
-            "startSeconds": 1.45
+            "startSeconds": 0.78
           }
         ],
         "palmPlacements": [],
@@ -2735,7 +1721,7 @@
             "startSeconds": -1.0
           },
           {
-            "endSeconds": 0.55,
+            "endSeconds": 0.5492429411764705,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
@@ -2745,66 +1731,89 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.55,
-                "x": 0.38268343236508984,
-                "y": -0.831491579260158
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               }
             ],
             "startSeconds": 0.5
           },
           {
-            "endSeconds": 0.6,
+            "endSeconds": 0.5984858823529412,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.55,
-                "x": 0.38268343236508984,
-                "y": -0.831491579260158
+                "timeSeconds": 0.5492429411764705,
+                "x": 0.3516055921215799,
+                "y": -0.8488509891061409
               },
               {
-                "timeSeconds": 0.6,
-                "x": 0.38268343236508984,
-                "y": -0.7391036260090295
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               }
             ],
-            "startSeconds": 0.55
+            "startSeconds": 0.5492429411764705
           },
           {
-            "endSeconds": 0.65,
+            "endSeconds": 0.6477288235294119,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.6,
-                "x": 0.38268343236508984,
-                "y": -0.7391036260090295
+                "timeSeconds": 0.5984858823529412,
+                "x": 0.32052775187806987,
+                "y": -0.7738224457009948
               },
               {
-                "timeSeconds": 0.65,
-                "x": 0.38268343236508984,
-                "y": -0.6467156727579007
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               }
             ],
-            "startSeconds": 0.6
+            "startSeconds": 0.5984858823529412
           },
           {
-            "endSeconds": 0.7,
+            "endSeconds": 0.6969717647058824,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.65,
-                "x": 0.38268343236508984,
-                "y": -0.6467156727579007
+                "timeSeconds": 0.6477288235294119,
+                "x": 0.28944991163455985,
+                "y": -0.6987939022958487
               },
               {
-                "timeSeconds": 0.7,
-                "x": 0.38268343236508984,
-                "y": -0.5543277195067722
+                "timeSeconds": 0.6785858030189112,
+                "x": 0.2699756833276986,
+                "y": -0.6517789562006744
+              },
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
               }
             ],
-            "startSeconds": 0.65
+            "startSeconds": 0.6477288235294119
+          },
+          {
+            "endSeconds": 0.746214705882353,
+            "mode": "slide",
+            "noteId": "n0",
+            "samples": [
+              {
+                "timeSeconds": 0.6969717647058824,
+                "x": 0.25837207139104995,
+                "y": -0.6237653588907028
+              },
+              {
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
+              }
+            ],
+            "startSeconds": 0.6969717647058824
           },
           {
             "endSeconds": 0.75,
@@ -2812,215 +1821,220 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.7,
-                "x": 0.38268343236508984,
-                "y": -0.5543277195067722
+                "timeSeconds": 0.746214705882353,
+                "x": 0.2272942311475401,
+                "y": -0.548736815485557
               },
               {
                 "timeSeconds": 0.75,
-                "x": 0.38268343236508984,
-                "y": -0.46193976625564337
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               }
             ],
-            "startSeconds": 0.7
+            "startSeconds": 0.746214705882353
           },
           {
-            "endSeconds": 0.8,
+            "endSeconds": 0.7954576470588236,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
                 "timeSeconds": 0.75,
-                "x": 0.38268343236508984,
-                "y": -0.46193976625564337
+                "x": 0.22490528436547536,
+                "y": -0.5429693877645086
               },
               {
-                "timeSeconds": 0.8,
-                "x": 0.38268343236508984,
-                "y": -0.36955181300451456
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               }
             ],
             "startSeconds": 0.75
           },
           {
-            "endSeconds": 0.85,
+            "endSeconds": 0.8447005882352943,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.8,
-                "x": 0.38268343236508984,
-                "y": -0.36955181300451456
+                "timeSeconds": 0.7954576470588236,
+                "x": 0.19621639090403015,
+                "y": -0.47370827208041083
               },
               {
-                "timeSeconds": 0.85,
-                "x": 0.38268343236508984,
-                "y": -0.2771638597533861
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               }
             ],
-            "startSeconds": 0.8
+            "startSeconds": 0.7954576470588236
           },
           {
-            "endSeconds": 0.9,
+            "endSeconds": 0.8939435294117648,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.85,
-                "x": 0.38268343236508984,
-                "y": -0.2771638597533861
+                "timeSeconds": 0.8447005882352943,
+                "x": 0.16513855066052024,
+                "y": -0.3986797286752648
               },
               {
-                "timeSeconds": 0.9,
-                "x": 0.38268343236508984,
-                "y": -0.18477590650225728
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               }
             ],
-            "startSeconds": 0.85
+            "startSeconds": 0.8447005882352943
           },
           {
-            "endSeconds": 0.95,
+            "endSeconds": 0.9431864705882353,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.9,
-                "x": 0.38268343236508984,
-                "y": -0.18477590650225728
+                "timeSeconds": 0.8939435294117648,
+                "x": 0.13406071041701043,
+                "y": -0.32365118527011894
               },
               {
-                "timeSeconds": 0.95,
-                "x": 0.38268343236508984,
-                "y": -0.09238795325112881
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               }
             ],
-            "startSeconds": 0.9
+            "startSeconds": 0.8939435294117648
           },
           {
-            "endSeconds": 1.0,
+            "endSeconds": 0.9924294117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 0.95,
-                "x": 0.38268343236508984,
-                "y": -0.09238795325112881
+                "timeSeconds": 0.9431864705882353,
+                "x": 0.10298287017350052,
+                "y": -0.2486226418649729
               },
               {
-                "timeSeconds": 1.0,
-                "x": 0.38268343236508984,
-                "y": 0.0
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               }
             ],
-            "startSeconds": 0.95
+            "startSeconds": 0.9431864705882353
           },
           {
-            "endSeconds": 1.05,
+            "endSeconds": 1.0416723529411764,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.0,
-                "x": 0.38268343236508984,
-                "y": 0.0
+                "timeSeconds": 0.9924294117647059,
+                "x": 0.07190502992999068,
+                "y": -0.17359409845982704
               },
               {
-                "timeSeconds": 1.05,
-                "x": 0.38268343236508984,
-                "y": 0.0923879532511287
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               }
             ],
-            "startSeconds": 1.0
+            "startSeconds": 0.9924294117647059
           },
           {
-            "endSeconds": 1.1,
+            "endSeconds": 1.0909152941176472,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.05,
-                "x": 0.38268343236508984,
-                "y": 0.0923879532511287
+                "timeSeconds": 1.0416723529411764,
+                "x": 0.04082718968648083,
+                "y": -0.09856555505468112
               },
               {
-                "timeSeconds": 1.1,
-                "x": 0.38268343236508984,
-                "y": 0.18477590650225761
+                "timeSeconds": 1.0871300000000004,
+                "x": 0.012138296225035428,
+                "y": -0.029304439370582802
+              },
+              {
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               }
             ],
-            "startSeconds": 1.05
+            "startSeconds": 1.0416723529411764
           },
           {
-            "endSeconds": 1.15,
+            "endSeconds": 1.1401582352941178,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.1,
-                "x": 0.38268343236508984,
-                "y": 0.18477590650225761
+                "timeSeconds": 1.0909152941176472,
+                "x": 0.009458654095183119,
+                "y": -0.022835210998387027
               },
               {
-                "timeSeconds": 1.15,
-                "x": 0.38268343236508984,
-                "y": 0.27716385975338587
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               }
             ],
-            "startSeconds": 1.1
+            "startSeconds": 1.0909152941176472
           },
           {
-            "endSeconds": 1.2,
+            "endSeconds": 1.1894011764705885,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.15,
-                "x": 0.38268343236508984,
-                "y": 0.27716385975338587
+                "timeSeconds": 1.1401582352941178,
+                "x": -0.02540084576749598,
+                "y": 0.06132306634763596
               },
               {
-                "timeSeconds": 1.2,
-                "x": 0.38268343236508984,
-                "y": 0.36955181300451456
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               }
             ],
-            "startSeconds": 1.15
+            "startSeconds": 1.1401582352941178
           },
           {
-            "endSeconds": 1.25,
+            "endSeconds": 1.238644117647059,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.2,
-                "x": 0.38268343236508984,
-                "y": 0.36955181300451456
+                "timeSeconds": 1.1894011764705885,
+                "x": -0.060260345630175266,
+                "y": 0.1454813436936594
               },
               {
-                "timeSeconds": 1.25,
-                "x": 0.38268343236508984,
-                "y": 0.46193976625564326
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               }
             ],
-            "startSeconds": 1.2
+            "startSeconds": 1.1894011764705885
           },
           {
-            "endSeconds": 1.3,
+            "endSeconds": 1.2878870588235296,
             "mode": "slide",
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.25,
-                "x": 0.38268343236508984,
-                "y": 0.46193976625564326
+                "timeSeconds": 1.238644117647059,
+                "x": -0.09511984549285438,
+                "y": 0.22963962103968238
               },
               {
-                "timeSeconds": 1.3,
-                "x": 0.38268343236508984,
-                "y": 0.5543277195067722
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               }
             ],
-            "startSeconds": 1.25
+            "startSeconds": 1.238644117647059
           },
           {
             "endSeconds": 1.3371300000000002,
@@ -3028,114 +2042,61 @@
             "noteId": "n0",
             "samples": [
               {
-                "timeSeconds": 1.3,
-                "x": 0.38268343236508984,
-                "y": 0.5543277195067722
+                "timeSeconds": 1.2878870588235296,
+                "x": -0.12997934535553352,
+                "y": 0.3137978983857055
               },
               {
                 "timeSeconds": 1.3371300000000002,
-                "x": 0.38268343236508984,
-                "y": 0.6229350135910605
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.3
-          },
-          {
-            "endSeconds": 1.35,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.3371300000000002,
-                "x": 0.38268343236508984,
-                "y": 0.6229350135910605
-              },
-              {
-                "timeSeconds": 1.35,
-                "x": 0.38268343236508984,
-                "y": 0.6467156727579009
-              }
-            ],
-            "startSeconds": 1.3371300000000002
-          },
-          {
-            "endSeconds": 1.4,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.35,
-                "x": 0.38268343236508984,
-                "y": 0.6467156727579009
-              },
-              {
-                "timeSeconds": 1.4,
-                "x": 0.38268343236508984,
-                "y": 0.7391036260090291
-              }
-            ],
-            "startSeconds": 1.35
-          },
-          {
-            "endSeconds": 1.45,
-            "mode": "slide",
-            "noteId": "n0",
-            "samples": [
-              {
-                "timeSeconds": 1.4,
-                "x": 0.38268343236508984,
-                "y": 0.7391036260090291
-              },
-              {
-                "timeSeconds": 1.45,
-                "x": 0.38268343236508984,
-                "y": 0.831491579260158
-              }
-            ],
-            "startSeconds": 1.4
+            "startSeconds": 1.2878870588235296
           },
           {
             "endSeconds": 1.5,
-            "mode": "slide",
-            "noteId": "n0",
+            "mode": "idle",
+            "noteId": null,
             "samples": [
               {
-                "timeSeconds": 1.45,
-                "x": 0.38268343236508984,
-                "y": 0.831491579260158
+                "timeSeconds": 1.3371300000000002,
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               },
               {
                 "timeSeconds": 1.5,
-                "x": 0.38268343236508984,
-                "y": 0.9238795325112867
+                "x": -0.16483884521821263,
+                "y": 0.3979561757317285
               }
             ],
-            "startSeconds": 1.45
+            "startSeconds": 1.3371300000000002
           }
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.04529848825640299,
-          "total": 0.4376229651349924
+          "movement": 0.5723244768785893,
+          "posture": 0.04514485110823408,
+          "total": 0.6174693279868234
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
           "crossExposure": 0.0,
-          "excursion": 0.04529848825640299,
+          "excursion": 0.04514485110823408,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.5723244768785893,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
         "warnings": [
           "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。",
           "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。",
-          "WiFi 以雙手同步 2+1 覆蓋近似：一手沿中央與相鄰側線的中點移動，另一手沿剩餘側線；手掌半徑沿用設定值。"
+          "Slide 依判定區抄近（MajdataPlay 判定佇列）：可跳過單一判定區、不必追到星星終點，手在最後判定區的正解時刻完成；感應區大小與指尖半徑是 Demo 近似。",
+          "WiFi 依三條判定佇列分工：一手張開覆蓋中央與一側、另一手覆蓋另一側，或單手張開覆蓋三條；手掌半徑沿用設定值。"
         ]
       }
     ],

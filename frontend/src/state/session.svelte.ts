@@ -83,8 +83,10 @@ function stableJson(value: unknown): string {
  * judgment-2：Touch Group 過半判定、Slide 進入最後判定區後可離手；s/z 方向與 pp/qq 形狀修正。
  * judgment-3：Touch 感應區代表點依盤面配置圖重新量測（A 0.80、B 0.465、D 0.87、E 0.645），順帶碰觸距離 0.2 → 0.28。
  * slide-wifi-4：WiFi 三線同時滑行由兩手 2+1 分擔；一般 Slide 除非別的音符需要，否則維持原手。
+ * slide-judge-queue-6：V3 依 Slide 判定佇列抄近並在尾判正解時刻完成；同時 Slide／WiFi 可一手張開覆蓋；
+ *   追 Slide 的手可用 A 區順手點 Tap；Beam 合併未來等價的狀態。
  */
-export const SOLVER_REVISION = 'density-sharing-v3-5';
+export const SOLVER_REVISION = 'slide-judge-queue-6';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。
