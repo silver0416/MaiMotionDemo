@@ -34,6 +34,7 @@
           "endSeconds": 0.0,
           "hasHead": true,
           "id": "n0",
+          "key": "0.000|touch|A1",
           "kind": "touch",
           "modifiers": {
             "breakNote": false,
@@ -65,6 +66,7 @@
           "endSeconds": 0.5,
           "hasHead": true,
           "id": "n1",
+          "key": "0.500|touch|B3",
           "kind": "touch",
           "modifiers": {
             "breakNote": false,
@@ -96,6 +98,7 @@
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n2",
+          "key": "1.000|touch|C",
           "kind": "touch",
           "modifiers": {
             "breakNote": false,
@@ -127,6 +130,7 @@
           "endSeconds": 1.5,
           "hasHead": true,
           "id": "n3",
+          "key": "1.500|touch|D5",
           "kind": "touch",
           "modifiers": {
             "breakNote": false,
@@ -158,6 +162,7 @@
           "endSeconds": 2.0,
           "hasHead": true,
           "id": "n4",
+          "key": "2.000|touch|E7",
           "kind": "touch",
           "modifiers": {
             "breakNote": false,
@@ -189,6 +194,7 @@
           "endSeconds": 3.5,
           "hasHead": true,
           "id": "n5",
+          "key": "2.500|touchHold|C",
           "kind": "touchHold",
           "modifiers": {
             "breakNote": false,

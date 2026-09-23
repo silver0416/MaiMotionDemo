@@ -63,6 +63,8 @@ export interface Modifiers {
 
 export interface Note {
   id: string;
+  /** 跨版本穩定的定位鍵 `時間|種類|位置`（Rust 產生）；真人標註用它對應音符。舊快取沒有。 */
+  key?: string;
   kind: NoteKind | string;
   /** 1–8 外圈鍵位或 Touch 區編號；Touch C 區為 0 */
   button: number;
@@ -439,4 +441,103 @@ export interface UpdateInfo {
   notes: string;
   publishedAt: string;
   distribution: string;
+}
+
+
+// ---- 真人手順標註（maimotion-hand-annotation 第 1 版，見 docs/CONTRACT.md） ----
+
+export const ANNOTATION_FORMAT = 'maimotion-hand-annotation';
+export const ANNOTATION_VERSION = 1;
+
+/** Slide 滑行的手；LR 為兩手一起（WiFi 2+1）。 */
+export type TrackHand = Hand | 'LR';
+
+/** sure：拿來比對與限制求解；unsure：只記錄；either：兩手皆可。 */
+export type Confidence = 'sure' | 'unsure' | 'either';
+
+export interface HandoverMark {
+  /** 換手時刻（秒） */
+  at: number;
+  to: Hand;
+}
+
+export interface NoteAnnotation {
+  key: string;
+  /** 接觸的手：Tap／Hold／Touch，或 Slide 起點觸碰 */
+  hand?: Hand;
+  /** Slide 開始滑行時的手 */
+  track?: TrackHand;
+  handovers?: HandoverMark[];
+  confidence?: Confidence;
+  /** 由模型預填、尚未確認；不當作真人資料 */
+  prefilled?: boolean;
+  memo?: string;
+  /** 最後編輯的標註者 */
+  by?: string;
+}
+
+export interface RangeMemo {
+  from: number;
+  to: number;
+  memo: string;
+  by?: string;
+}
+
+export interface HandAnnotation {
+  format: typeof ANNOTATION_FORMAT;
+  version: typeof ANNOTATION_VERSION;
+  title: string;
+  annotators: string[];
+  updatedAt: string;
+  chart: {
+    /** 原文 SHA-256（十六進位） */
+    sha256: string;
+    firstSeconds: number;
+    noteCount: number;
+    source: string;
+  };
+  memo: string;
+  notes: NoteAnnotation[];
+  ranges: RangeMemo[];
+}
+
+export interface EvaluateRequest {
+  requestId: string;
+  source: string;
+  firstSeconds: number;
+  solverConfig: SolverConfig;
+  annotation: HandAnnotation;
+}
+
+export interface EvaluatedSolution {
+  /** V2／V3 為分數 total，Legacy 為總成本；越低越好 */
+  cost: number;
+  score?: unknown;
+  scoringModel?: string | null;
+}
+
+export interface Divergence {
+  noteId: string;
+  key: string;
+  timeSeconds: number;
+  /** hand：接觸；track：Slide 開始滑行 */
+  part: 'hand' | 'track' | string;
+  human: TrackHand;
+  model: TrackHand;
+}
+
+export interface EvaluateResponse {
+  requestId: string;
+  /** ok／human_infeasible（模型照標註走不下去）／invalid 等 */
+  status: string;
+  diagnostics: Diagnostic[];
+  labeled: number;
+  matched: number;
+  unmatchedKeys: string[];
+  compared: number;
+  agreed: number;
+  divergences: Divergence[];
+  model: EvaluatedSolution | null;
+  human: EvaluatedSolution | null;
+  humanSolution: Solution | null;
 }

@@ -4,7 +4,7 @@ mod majdata;
 mod update;
 mod wiki;
 
-use mai_motion_core::{AnalyzeRequest, AnalyzeResponse};
+use mai_motion_core::{AnalyzeRequest, AnalyzeResponse, EvaluateRequest, EvaluateResponse};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -37,6 +37,28 @@ async fn analyze_chart(
     })
     .await
     .map_err(|e| format!("分析工作失敗：{e}"))
+}
+
+/// 比對真人標註與模型：求模型最佳解與照標註的最佳解。與分析共用同一個忙碌旗標。
+#[tauri::command]
+async fn evaluate_annotation(
+    request: EvaluateRequest,
+    gate: tauri::State<'_, AnalysisGate>,
+) -> Result<EvaluateResponse, String> {
+    if gate
+        .0
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return Err("正在分析另一份譜面，請等待完成後重試".into());
+    }
+    let guard = BusyGuard(gate.0.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
+        mai_motion_core::evaluate_annotation(request)
+    })
+    .await
+    .map_err(|e| format!("比對工作失敗：{e}"))
 }
 
 #[tauri::command]
@@ -136,6 +158,7 @@ fn main() {
         .manage(wiki::WikiState::new(wiki_client))
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
+            evaluate_annotation,
             app_distribution,
             check_update,
             search_majdata_charts,

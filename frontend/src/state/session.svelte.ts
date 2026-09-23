@@ -85,8 +85,9 @@ function stableJson(value: unknown): string {
  * slide-wifi-4：WiFi 三線同時滑行由兩手 2+1 分擔；一般 Slide 除非別的音符需要，否則維持原手。
  * slide-judge-queue-6：V3 依 Slide 判定佇列抄近並在尾判正解時刻完成；同時 Slide／WiFi 可一手張開覆蓋；
  *   追 Slide 的手可用 A 區順手點 Tap；Beam 合併未來等價的狀態。
+ * note-key-7：音符輸出穩定鍵 key（真人標註對應用）；舊快取沒有這個欄位。
  */
-export const SOLVER_REVISION = 'slide-judge-queue-6';
+export const SOLVER_REVISION = 'note-key-7';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。
@@ -136,6 +137,11 @@ export class Session {
 
   solutionIndex = $state(0);
   selectedNoteId = $state<string | null>(null);
+  /**
+   * 盤面暫時改看「照真人標註求解」的方案（標註分頁的比對結果）。
+   * 不是模型候選；切換候選或重新分析時自動取消。
+   */
+  humanView = $state<Solution | null>(null);
 
   #pendingRequestId: string | null = null;
   /** 開啟紀錄時的快取查詢序號，只套用最後一次。 */
@@ -144,7 +150,9 @@ export class Session {
   response = $derived<AnalyzeResponse | null>(this.result?.response ?? null);
   chart = $derived<Chart | null>(this.result?.response.chart ?? null);
   solutions = $derived<Solution[]>(this.result?.response.solutions ?? []);
-  solution = $derived<Solution | null>(this.solutions[this.solutionIndex] ?? this.solutions[0] ?? null);
+  solution = $derived<Solution | null>(
+    this.humanView ?? this.solutions[this.solutionIndex] ?? this.solutions[0] ?? null,
+  );
 
   configIssues = $derived(validateConfig(this.config, this.firstSeconds));
 
@@ -271,6 +279,7 @@ export class Session {
   selectSolution(index: number): void {
     if (index < 0 || index >= this.solutions.length) return;
     this.solutionIndex = index;
+    this.humanView = null;
     const bounds = this.computeBounds();
     // 候選切換只改軌跡，保留目前播放時間。
     playback.setRange(bounds.start, bounds.end);
@@ -298,6 +307,7 @@ export class Session {
     const previousNote = this.selectedNoteId;
     this.result = bundle;
     this.solutionIndex = 0;
+    this.humanView = null;
     this.selectedNoteId =
       sameChart && previousNote && bundle.response.chart?.notes.some((note) => note.id === previousNote)
         ? previousNote
@@ -467,8 +477,16 @@ export class Session {
     });
   }
 
+  /** 盤面改看照真人標註求得的方案；null 回到模型候選。 */
+  showHuman(solution: Solution | null): void {
+    this.humanView = solution;
+    const bounds = this.computeBounds();
+    playback.setRange(bounds.start, bounds.end);
+  }
+
   clearResult(): void {
     this.result = null;
+    this.humanView = null;
     this.source = '';
     toasts.dismiss(ANALYSIS_TOAST);
     this.phase = 'empty';

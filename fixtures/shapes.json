@@ -34,6 +34,7 @@
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n0",
+          "key": "0.000|slide|1-5",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -65,6 +66,7 @@
           "endSeconds": 2.0,
           "hasHead": true,
           "id": "n1",
+          "key": "1.000|slide|3^6",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -96,6 +98,7 @@
           "endSeconds": 3.0,
           "hasHead": true,
           "id": "n2",
+          "key": "2.000|slide|5v2",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -127,6 +130,7 @@
           "endSeconds": 4.0,
           "hasHead": true,
           "id": "n3",
+          "key": "3.000|slide|7q3",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -158,6 +162,7 @@
           "endSeconds": 5.0,
           "hasHead": true,
           "id": "n4",
+          "key": "4.000|slide|1s5",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -189,6 +194,7 @@
           "endSeconds": 6.0,
           "hasHead": true,
           "id": "n5",
+          "key": "5.000|slide|8w4",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -220,6 +226,7 @@
           "endSeconds": 7.0,
           "hasHead": true,
           "id": "n6",
+          "key": "6.000|slide|2V4",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,

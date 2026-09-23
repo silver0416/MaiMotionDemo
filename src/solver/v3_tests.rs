@@ -41,6 +41,8 @@ fn initial() -> State {
         bundled: BTreeMap::new(),
         bundle_lead: BTreeMap::new(),
         used_bundle: false,
+        assign_mark: 0,
+        forced_handovers: Default::default(),
     }
 }
 #[test]

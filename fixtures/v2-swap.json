@@ -32,6 +32,7 @@
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n0",
+          "key": "0.000|slide|1-5",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -63,6 +64,7 @@
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n1",
+          "key": "0.000|slide|5-1",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,

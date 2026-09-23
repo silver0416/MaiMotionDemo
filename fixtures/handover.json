@@ -34,6 +34,7 @@
           "endSeconds": 4.0,
           "hasHead": true,
           "id": "n0",
+          "key": "0.000|slide|8>4",
           "kind": "slide",
           "modifiers": {
             "breakNote": false,
@@ -65,6 +66,7 @@
           "endSeconds": 3.5,
           "hasHead": true,
           "id": "n1",
+          "key": "3.500|tap|8",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,

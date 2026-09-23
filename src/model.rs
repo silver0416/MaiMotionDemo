@@ -131,6 +131,10 @@ pub struct HandRoutes {
 #[serde(rename_all = "camelCase")]
 pub struct Note {
     pub id: String,
+    /// 跨版本穩定的定位鍵：`時間(秒, 3 位小數)|種類|位置`，同鍵重複時加 `#2`、`#3`。
+    /// 真人標註以此對應音符，解析器改版造成 id 位移時也不會錯位。
+    #[serde(default)]
+    pub key: String,
     /// tap / hold / slide / touch / touchHold
     pub kind: String,
     /// 按鍵或 Touch 區編號 1–8；Touch C 區為 0。

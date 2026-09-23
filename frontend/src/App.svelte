@@ -7,6 +7,7 @@
   import NoteInspector from './components/NoteInspector.svelte';
   import ConfigPanel from './components/ConfigPanel.svelte';
   import ViewPanel from './components/ViewPanel.svelte';
+  import AnnotatePanel from './components/AnnotatePanel.svelte';
   import RecordsPanel from './components/RecordsPanel.svelte';
   import NewChartDialog from './components/NewChartDialog.svelte';
   import SearchDialog from './components/SearchDialog.svelte';
@@ -18,18 +19,21 @@
   import { playback } from './state/playback.svelte';
   import { errorLog } from './state/errorLog.svelte';
   import { markers } from './state/markers.svelte';
+  import { annotation } from './state/annotation.svelte';
+  import { records } from './state/records.svelte';
   import type { ChartRecord } from './state/records.svelte';
   import { session } from './state/session.svelte';
   import { toasts } from './state/toasts.svelte';
   import { updateState } from './state/update.svelte';
 
-  type Tab = 'solution' | 'note' | 'config' | 'view';
+  type Tab = 'solution' | 'note' | 'config' | 'view' | 'annotate';
 
   const TABS: { id: Tab; label: string; icon: IconName }[] = [
     { id: 'solution', label: '方案', icon: 'compare' },
     { id: 'note', label: '音符', icon: 'circle-dot' },
     { id: 'config', label: '參數', icon: 'sliders' },
     { id: 'view', label: '顯示', icon: 'eye' },
+    { id: 'annotate', label: '標註', icon: 'hand' },
   ];
 
   const LEFT_DEFAULT = 248;
@@ -128,9 +132,14 @@
     return () => cancelAnimationFrame(frame);
   });
 
-  // 在盤面點到音符時，右側自動切到音符明細。
+  // 真人標註跟著目前開啟的紀錄；換紀錄時先存檔再載入另一份（不論開著哪個分頁）。
   $effect(() => {
-    if (session.selectedNoteId) tab = 'note';
+    annotation.bind(records.active);
+  });
+
+  // 在盤面點到音符時，右側自動切到音符明細；正在標註時留在標註分頁。
+  $effect(() => {
+    if (session.selectedNoteId && untrack(() => tab) !== 'annotate') tab = 'note';
   });
 
   // 參數改過但還沒重新生成：右下角常駐提醒，直到重新生成或還原參數。
@@ -187,6 +196,15 @@
   function onKeydown(event: KeyboardEvent) {
     if (dialogOpen || searchOpen || settingsOpen) return;
     if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+    // 標註分頁的快捷鍵（A／D／S／N／Enter／Delete）優先；按鈕上的 Enter 仍交給按鈕。
+    if (
+      tab === 'annotate' &&
+      !(event.key === 'Enter' && event.target instanceof HTMLButtonElement) &&
+      annotation.handleKey(event)
+    ) {
+      event.preventDefault();
+      return;
+    }
     switch (event.key) {
       case ' ':
         event.preventDefault();
@@ -354,6 +372,8 @@
             <NoteInspector />
           {:else if tab === 'config'}
             <ConfigPanel />
+          {:else if tab === 'annotate'}
+            <AnnotatePanel />
           {:else}
             <ViewPanel />
           {/if}

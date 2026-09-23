@@ -1,6 +1,8 @@
 import type {
   AnalyzeRequest,
   AnalyzeResponse,
+  EvaluateRequest,
+  EvaluateResponse,
   AppDistribution,
   MajdataChartSummary,
   UpdateInfo,
@@ -23,6 +25,12 @@ export function isDesktop(): boolean {
 export async function analyzeChart(request: AnalyzeRequest): Promise<AnalyzeResponse> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<AnalyzeResponse>('analyze_chart', { request });
+}
+
+/** 比對真人標註與模型（Rust 求模型最佳解與照標註的最佳解）。與分析共用忙碌旗標。 */
+export async function evaluateAnnotation(request: EvaluateRequest): Promise<EvaluateResponse> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<EvaluateResponse>('evaluate_annotation', { request });
 }
 
 /** 經由 Rust 搜尋 Majdata；前端不直接連線外部網站。失敗時 reject 可讀的字串。 */

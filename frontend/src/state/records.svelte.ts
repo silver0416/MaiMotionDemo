@@ -1,3 +1,4 @@
+import type { AnnotationDraft } from '../lib/annotation';
 import {
   STORE_RECORDS,
   dbDelete,
@@ -62,6 +63,8 @@ export interface ChartRecord {
   wiki?: WikiOrigin;
   /** 使用者在時間軸上加的標籤，依時間排序。 */
   markers?: TimelineMarker[];
+  /** 真人手順標註草稿（lib/annotation.ts）；舊紀錄沒有。 */
+  annotation?: AnnotationDraft;
 }
 
 export interface TimelineMarker {
@@ -328,6 +331,15 @@ export class Records {
   reset(): void {
     this.items = [];
     this.activeId = null;
+  }
+
+  /** 取代某筆紀錄的真人手順標註並寫回資料庫。 */
+  setAnnotation(id: string, annotation: AnnotationDraft): void {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const next = { ...this.items[index], annotation };
+    this.items[index] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
   }
 
   /** 取代某筆紀錄的時間軸標籤並寫回資料庫。 */

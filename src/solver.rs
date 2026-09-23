@@ -180,6 +180,11 @@ struct State {
     bundled: BTreeMap<usize, usize>,
     bundle_lead: BTreeMap<usize, usize>,
     used_bundle: bool,
+    /// 這一組開始時的指派數；標註限制只檢查之後新增的指派。
+    assign_mark: usize,
+    /// 真人標註指定要換手的 Slide（音符 id）。V3 平常只在另一手有需求時才考慮交接，
+    /// 這是縮小搜尋的近似，不是判定規則；標註明確要求換手時不套用。
+    forced_handovers: Arc<std::collections::HashSet<String>>,
     used_early_slide: bool,
     used_touch_group: bool,
 }
@@ -833,9 +838,10 @@ fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<
         return None;
     }
     if c.is_v3()
-        && ![first, second]
-            .iter()
-            .any(|note| has_upcoming_contact(chart, *note, time))
+        && ![first, second].iter().any(|note| {
+            has_upcoming_contact(chart, *note, time)
+                || state.forced_handovers.contains(&chart.notes[*note].id)
+        })
     {
         return None;
     }
@@ -1310,7 +1316,10 @@ fn assign_once(
     if switching {
         // V3 keeps ownership unless another contact is due before this slide ends.
         // Look ahead so the hand can overlap and travel before the actual conflict.
-        if c.is_v3() && !has_upcoming_contact(chart, task.note, task.start) {
+        if c.is_v3()
+            && !has_upcoming_contact(chart, task.note, task.start)
+            && !state.forced_handovers.contains(&n.id)
+        {
             return None;
         }
         if !c.allow_handover || task_end - task.start + EPS < c.handover_seconds {
@@ -2310,13 +2319,79 @@ fn merge_assignments(mut assignments: Vec<Assignment>) -> Vec<Assignment> {
 /// 先以「準時接觸優先」搜尋；若因此找不到方案，再允許所有 Touch 使用晚接觸重試一次。
 /// 優先規則只是縮小候選的策略，可能剪掉必須晚接才走得通的路線。
 pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
-    solve_traced(chart, c, None)
+    solve_traced(chart, c, None, None)
+}
+
+/// 真人標註的手部限制，以音符 id 指定。求解時每組同時音展開完，只保留新指派都符合的狀態，
+/// 因此結果是「照這個手順打」時模型能找到的最佳動作與成本。
+#[derive(Clone, Debug, Default)]
+pub struct HandRules {
+    /// Tap／Hold／Touch 的接觸，以及 Slide 起點觸碰。
+    pub contact: std::collections::HashMap<String, Hand>,
+    /// Slide 的追蹤手：依時間排序的 (起始秒數, 手)；第一筆從 −∞ 起算。空的表示兩手皆可（WiFi 2+1）。
+    pub track: std::collections::HashMap<String, Vec<(f64, Hand)>>,
+}
+
+/// 標註的換手時刻與模型 checkpoint 對不齊，前後這段時間內兩手都算符合。
+pub const HANDOVER_TOLERANCE: f64 = 0.1;
+
+impl HandRules {
+    fn allows(&self, a: &Assignment) -> bool {
+        if a.part == "slide" {
+            let Some(schedule) = self.track.get(&a.note_id) else {
+                return true;
+            };
+            if schedule.is_empty()
+                || schedule.iter().skip(1).any(|(at, _)| {
+                    *at >= a.start_seconds - HANDOVER_TOLERANCE
+                        && *at <= a.end_seconds + HANDOVER_TOLERANCE
+                })
+            {
+                return true;
+            }
+            let expected = schedule
+                .iter()
+                .take_while(|(at, _)| *at <= a.start_seconds)
+                .last()
+                .unwrap_or(&schedule[0])
+                .1;
+            return a.hand == expected;
+        }
+        self.contact
+            .get(&a.note_id)
+            .is_none_or(|hand| *hand == a.hand)
+    }
+
+    /// 這一組新增的指派是否都符合標註。
+    fn satisfied(&self, state: &State) -> bool {
+        let mut cursor = state.assignments.head.as_ref();
+        for _ in 0..state.assignments.len.saturating_sub(state.assign_mark) {
+            let Some(link) = cursor else {
+                break;
+            };
+            if !self.allows(&link.value) {
+                return false;
+            }
+            cursor = link.prev.head.as_ref();
+        }
+        true
+    }
+}
+
+/// 依真人標註限制手順求解。找不到符合的動作時回傳 code=annotation_infeasible 的診斷，
+/// 標出第一個走不下去的時刻與音符。
+pub fn solve_constrained(
+    chart: &Chart,
+    c: &SolverConfig,
+    rules: &HandRules,
+) -> Result<Vec<Solution>, Diagnostic> {
+    solve_traced(chart, c, None, Some(rules))
 }
 
 /// V3 debug: replay ownership, roles and lookahead parts of the Top-1 candidate.
 pub fn trace_v3(chart: &Chart, c: &SolverConfig) -> Result<Vec<String>, Diagnostic> {
     let mut lines = vec![];
-    solve_traced(chart, c, Some(&mut lines))?;
+    solve_traced(chart, c, Some(&mut lines), None)?;
     Ok(lines)
 }
 
@@ -2324,6 +2399,7 @@ fn solve_traced(
     chart: &Chart,
     c: &SolverConfig,
     mut trace: Option<&mut Vec<String>>,
+    rules: Option<&HandRules>,
 ) -> Result<Vec<Solution>, Diagnostic> {
     // V3 依判定區抄近：手部路線與完成時間換成追蹤用譜面，回傳的譜面不變。
     let tracking;
@@ -2333,9 +2409,9 @@ fn solve_traced(
     } else {
         chart
     };
-    match solve_with(chart, c, false, trace.as_deref_mut()) {
-        Err(first) if first.code == "no_solution" => {
-            let mut solutions = solve_with(chart, c, true, trace)?;
+    match solve_with(chart, c, false, trace.as_deref_mut(), rules) {
+        Err(first) if first.code == "no_solution" || first.code == "annotation_infeasible" => {
+            let mut solutions = solve_with(chart, c, true, trace, rules)?;
             for solution in &mut solutions {
                 solution.warnings.push(
                     "準時接觸優先的搜尋無解，此方案允許 Touch 在判定區間內任意晚接觸。".into(),
@@ -2352,6 +2428,7 @@ fn solve_with(
     c: &SolverConfig,
     relaxed: bool,
     trace: Option<&mut Vec<String>>,
+    rules: Option<&HandRules>,
 ) -> Result<Vec<Solution>, Diagnostic> {
     let start = chart
         .notes
@@ -2407,6 +2484,18 @@ fn solve_with(
         bundled: BTreeMap::new(),
         bundle_lead: BTreeMap::new(),
         used_bundle: false,
+        assign_mark: 0,
+        forced_handovers: Arc::new(
+            rules
+                .map(|r| {
+                    r.track
+                        .iter()
+                        .filter(|(_, schedule)| schedule.len() > 1)
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
         used_early_slide: false,
         used_touch_group: false,
     }];
@@ -2438,6 +2527,7 @@ fn solve_with(
         // 已經結束的 Slide 不會再被查詢；清掉之後每個狀態要複製的資料量才是常數。
         for (origin, state) in beam.iter_mut().enumerate() {
             state.group_origin = origin;
+            state.assign_mark = state.assignments.len;
             state.lenient_in_group = false;
             let live =
                 |note: &usize| chart.notes[*note].motion_end.unwrap_or(f64::INFINITY) >= time - EPS;
@@ -2487,7 +2577,9 @@ fn solve_with(
                         if let Some(context) = &v3_context {
                             context.update(state, &mut result)?;
                         }
-                        swept.push(result);
+                        if rules.is_none_or(|r| r.satisfied(&result)) {
+                            swept.push(result);
+                        }
                     }
                 }
             }
@@ -2507,6 +2599,8 @@ fn solve_with(
             .map(|i| touch_groups.iter().any(|g| g.contains(&i)))
             .collect();
         let mut next = vec![];
+        // 依標註剔除的狀態數；整組都被剔除時要回報是標註走不通，而不是模型本身無解。
+        let mut rejected = 0usize;
         // 第三個欄位標記由 Touch Group 過半判定連帶完成、沒有實際接觸的 Touch。
         let mut pending: Vec<(State, Vec<bool>, Vec<bool>)> = beam
             .into_iter()
@@ -2537,6 +2631,10 @@ fn solve_with(
                 }
                 if let Some(context) = &v3_context {
                     context.refresh(&mut state)?;
+                }
+                if rules.is_some_and(|r| !r.satisfied(&state)) {
+                    rejected += 1;
+                    continue;
                 }
                 next.push(state);
                 continue;
@@ -2716,10 +2814,17 @@ fn solve_with(
             }
         }
         if next.is_empty() {
-            let mut d = Diagnostic::plain(
-                "no_solution",
-                "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。".into(),
-            );
+            let mut d = if rejected > 0 {
+                Diagnostic::plain(
+                    "annotation_infeasible",
+                    "依標註的手順，模型在此時找不到能完成的動作（手被佔用、來不及移動，或 Slide 換手與模型的交接規則不合）。".into(),
+                )
+            } else {
+                Diagnostic::plain(
+                    "no_solution",
+                    "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。".into(),
+                )
+            };
             d.time_seconds = Some(time);
             d.note_ids = group
                 .iter()

@@ -1,3 +1,4 @@
+pub mod annotation;
 mod geometry;
 mod judge;
 mod model;
@@ -6,6 +7,7 @@ pub mod scoring;
 pub mod scoring_v3;
 mod solver;
 
+pub use annotation::{evaluate_annotation, EvaluateRequest, EvaluateResponse, HandAnnotation};
 /// 依 Slide 判定佇列模擬手部折線（測試與驗證用）。
 #[doc(hidden)]
 pub use judge::{finger_reach, simulate_route};

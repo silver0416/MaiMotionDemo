@@ -32,6 +32,7 @@
           "endSeconds": 0.0,
           "hasHead": true,
           "id": "n0",
+          "key": "0.000|tap|1",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -63,6 +64,7 @@
           "endSeconds": 0.5,
           "hasHead": true,
           "id": "n1",
+          "key": "0.500|tap|8",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -94,6 +96,7 @@
           "endSeconds": 1.0,
           "hasHead": true,
           "id": "n2",
+          "key": "1.000|tap|2",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -125,6 +128,7 @@
           "endSeconds": 1.5,
           "hasHead": true,
           "id": "n3",
+          "key": "1.500|tap|7",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -156,6 +160,7 @@
           "endSeconds": 2.0,
           "hasHead": true,
           "id": "n4",
+          "key": "2.000|tap|3",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -187,6 +192,7 @@
           "endSeconds": 2.5,
           "hasHead": true,
           "id": "n5",
+          "key": "2.500|tap|6",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -218,6 +224,7 @@
           "endSeconds": 3.0,
           "hasHead": true,
           "id": "n6",
+          "key": "3.000|tap|4",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,
@@ -249,6 +256,7 @@
           "endSeconds": 3.5,
           "hasHead": true,
           "id": "n7",
+          "key": "3.500|tap|5",
           "kind": "tap",
           "modifiers": {
             "breakNote": false,

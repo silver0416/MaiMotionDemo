@@ -248,6 +248,7 @@ impl<'a> Parser<'a> {
     fn blank(&self, kind: &str, button: u8, position: crate::Point, time: f64) -> Note {
         Note {
             id: format!("n{}", self.chart.notes.len()),
+            key: String::new(),
             kind: kind.into(),
             button,
             touch_area: None,
@@ -730,6 +731,7 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
     if p.chart.duration_seconds > MAX_SECONDS {
         return Err(p.error("invalid", "時間軸上限為 3600 秒", 0));
     }
+    crate::annotation::assign_keys(&mut p.chart);
     Ok(ParseOutput {
         chart: p.chart,
         notices,
