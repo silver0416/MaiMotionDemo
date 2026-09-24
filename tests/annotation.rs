@@ -125,6 +125,35 @@ fn impossible_annotation_reports_where_it_breaks() {
     assert!(r.model.is_some() && r.human.is_none());
 }
 
+/// 四月の雨 開頭：右手按住的 Hold 3 結束的同一瞬間，同一隻手從 2 開始滑 2q7。
+/// 真人會提早放開 Hold 移過去，照標註求解不能因此判定做不到。
+#[test]
+fn hold_ending_as_the_same_hands_slide_starts_is_released_early() {
+    let source = "(79){16}7,,,,2q7[8:1]/6h[16:1],5h[16:1],4h[16:1],3h[16:1],,,,,,,,,E";
+    let c = chart(source);
+    let find = |kind: &str, button: u8| {
+        c.notes
+            .iter()
+            .position(|n| n.kind == kind && n.button == button)
+            .unwrap()
+    };
+    let (slide, hold3) = (find("slide", 2), find("hold", 3));
+    assert!((c.notes[hold3].end_seconds - c.notes[slide].motion_start.unwrap()).abs() < 1e-9);
+    let r = evaluate(
+        source,
+        json!([
+            {"key": key(source, find("tap", 7)), "hand": "L"},
+            {"key": key(source, slide), "hand": "R", "track": "R"},
+            {"key": key(source, find("hold", 6)), "hand": "L"},
+            {"key": key(source, find("hold", 5)), "hand": "L"},
+            {"key": key(source, find("hold", 4)), "hand": "R"},
+            {"key": key(source, hold3), "hand": "R"},
+        ]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert!(r.human.is_some());
+}
+
 #[test]
 fn slide_handover_and_track_hand_are_followed() {
     // 長 Slide 沒有其他音符需要手：V3 平常不會換手，但標註明確要求時照做。

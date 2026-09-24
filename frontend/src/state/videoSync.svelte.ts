@@ -45,6 +45,8 @@ class VideoSync {
   #resync: ReturnType<typeof setInterval> | undefined;
   /** 影片視窗要求的暫停不再通知回去（影片已經自己停在正確位置）。 */
   #silentPause = false;
+  #lastPlaying: boolean | null = null;
+  #lastRate = Number.NaN;
 
   /** 目前要給影片視窗的譜面狀態。 */
   get chartState(): ChartState {
@@ -59,6 +61,7 @@ class VideoSync {
       ready: !!record && !!session.chart && annotation.keysReady && annotation.recordId === record.id,
       firstTime: notes[0]?.timeSeconds ?? null,
       lastTime: notes.at(-1)?.timeSeconds ?? null,
+      range: playback.hasRange ? { start: playback.startSeconds, end: playback.endSeconds } : null,
       selected: step
         ? { id: step.note.id, time: step.time, label: stepLabel(step, session.pathById) }
         : null,
@@ -106,6 +109,13 @@ class VideoSync {
 
   /** 主視窗開始或停止播放、改變倍率。 */
   playbackChanged(playing: boolean, rate: number): void {
+    const rateChanged = rate !== this.#lastRate;
+    const playingChanged = playing !== this.#lastPlaying;
+    this.#lastRate = rate;
+    this.#lastPlaying = playing;
+    if (rateChanged) this.send({ type: 'rate', rate });
+    // 暫停中只改倍率：不送播放狀態，免得把影片拉回主視窗的時間。
+    if (!playingChanged && !playing) return;
     clearInterval(this.#resync);
     if (this.#silentPause && !playing) {
       this.#silentPause = false;
@@ -140,6 +150,7 @@ class VideoSync {
     switch (message.type) {
       case 'hello':
         this.sendState();
+        this.send({ type: 'rate', rate: playback.rate });
         break;
       case 'link':
         annotation.setVideo(message.link);
@@ -155,6 +166,10 @@ class VideoSync {
         if (message.action === 'pause') this.#pauseQuietly();
         playback.seek(message.time);
         this.#followed = playback.time;
+        if (message.action === 'play') playback.play();
+        break;
+      case 'rate':
+        playback.setRate(message.rate);
         break;
       case 'key':
         annotation.handleKey({ key: message.key, shiftKey: message.shiftKey } as KeyboardEvent);

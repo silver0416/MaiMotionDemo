@@ -430,7 +430,11 @@
     </div>
   </main>
 
-  <NewChartDialog bind:open={dialogOpen} bind:editing={editingRecord} />
+  <NewChartDialog
+    bind:open={dialogOpen}
+    bind:editing={editingRecord}
+    onAnnotationImported={() => (tab = 'annotate')}
+  />
   <SearchDialog bind:open={searchOpen} />
   <SettingsDialog bind:open={settingsOpen} />
   <Toaster />

@@ -15,7 +15,7 @@ import {
 } from '../lib/annotation';
 import { projectConfig } from '../lib/contract';
 import { hashText } from '../lib/db';
-import type { VideoLink } from '../lib/video';
+import { recallAlignment, rememberAlignment, type VideoLink } from '../lib/video';
 import type {
   Confidence,
   EvaluateResponse,
@@ -60,6 +60,12 @@ export interface Step {
   part: StepPart;
   /** 這一步的時間：起點為判定時間，滑行為開始移動的時間 */
   time: number;
+}
+
+/** 標註檔附的原譜和它記錄的雜湊不符時回傳錯誤訊息；沒問題回傳 null。 */
+export async function checkSource(file: HandAnnotation): Promise<string | null> {
+  if (!file.chart.sha256 || file.chart.sha256 === (await hashText(file.chart.source))) return null;
+  return '標註檔裡的原譜被改過（雜湊不符），為避免對錯音符已停止匯入。';
 }
 
 /** 這一步是否已有人確認（不是預填）。 */
@@ -135,6 +141,7 @@ export class AnnotationStore {
     this.recordId = record?.id ?? null;
     this.draft = (record && cleanDraft(record.annotation)) ?? emptyDraft(record ? recordTitle(record) : '');
     if (record && !this.draft.title) this.draft.title = recordTitle(record);
+    if (this.#syncAlignment()) this.#scheduleSave();
     this.evaluation = null;
     this.evaluationError = null;
   }
@@ -384,9 +391,29 @@ export class AnnotationStore {
     if (!this.recordId) return;
     if (link) this.draft.video = { ...link };
     else delete this.draft.video;
+    this.#syncAlignment();
+    this.#scheduleSave();
+  }
+
+  #scheduleSave(): void {
     this.draft.updatedAt = Date.now();
     clearTimeout(this.#saveTimer);
     this.#saveTimer = setTimeout(() => this.flush(), SAVE_DELAY);
+  }
+
+  /** 影片還沒對齊時補上這份譜面配這部影片上次的對齊；已對齊就記下來。有補上時回傳 true。 */
+  #syncAlignment(): boolean {
+    const hash = records.get(this.recordId)?.sourceHash;
+    const video = this.draft.video;
+    if (!hash || !video) return false;
+    if (video.offset !== null) {
+      rememberAlignment(hash, $state.snapshot(video) as VideoLink);
+      return false;
+    }
+    const recalled = recallAlignment(hash, $state.snapshot(video) as VideoLink);
+    if (recalled.offset === null) return false;
+    this.draft.video = recalled;
+    return true;
   }
 
   setOverallMemo(memo: string): void {
@@ -434,8 +461,48 @@ export class AnnotationStore {
   applyMerge(file: HandAnnotation, mode: 'fill' | 'replace'): MergeResult {
     const result = merge($state.snapshot(this.draft) as AnnotationDraft, file, mode);
     this.draft = result.draft;
+    this.#syncAlignment();
     this.#touch();
     return result;
+  }
+
+  /**
+   * 匯入標註檔：找同一份原譜的紀錄（沒有就連同原譜新增一筆），切過去後合併標註。
+   * 回傳給使用者看的結果摘要；原譜被改過時不匯入。
+   */
+  async importFile(
+    file: HandAnnotation,
+    options: { mode: 'fill' | 'replace'; name?: string; skipped?: number },
+  ): Promise<{ ok: boolean; text: string }> {
+    const tampered = await checkSource(file);
+    if (tampered) return { ok: false, text: tampered };
+    const hash = await hashText(file.chart.source);
+    let record = records.findByHash(hash);
+    let created = false;
+    if (!record) {
+      record = await records.add(file.chart.source, { name: options.name?.trim() || file.title || undefined });
+      created = true;
+    }
+    const switching = records.activeId !== record.id;
+    records.activeId = record.id;
+    this.bind(record);
+    const result = this.applyMerge(file, options.mode);
+    if (switching || !session.result || session.result.source !== record.source) {
+      void session.load(record.source);
+    }
+    const parts = [
+      created ? '已連同原譜新增譜面紀錄' : switching ? '已切換到同一份譜面的紀錄' : '已合併到目前的譜面',
+      `新增 ${result.added} 顆`,
+    ];
+    if (result.conflicts.length > 0) {
+      parts.push(
+        options.mode === 'fill'
+          ? `${result.conflicts.length} 顆手順不同，保留你的`
+          : `${result.conflicts.length} 顆手順不同，已改用匯入的`,
+      );
+    }
+    if (options.skipped) parts.push(`略過 ${options.skipped} 筆格式不對的項目`);
+    return { ok: true, text: `${parts.join('，')}。` };
   }
 
   /** 選取一顆音符（預設它的第一步）並把播放時間移到那一步。 */

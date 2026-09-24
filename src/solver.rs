@@ -270,10 +270,14 @@ fn relieve(
     if arm.free <= time + EPS {
         // V3: a hold that already ended may still be left at its earliest legal
         // release, so the hand is not forced into a burst move right at the end.
+        // Slides pass no target (where the hand joins depends on the pickup time),
+        // so a hold ending exactly as the track starts may also be released early.
         if c.is_v3() && !late {
-            if let (Some(target), Some(last)) = (target, arm.segments.last()) {
+            if let Some(last) = arm.segments.last() {
                 if last.mode == "hold"
-                    && last.samples.last().unwrap().point().distance(target) > EPS
+                    && target.is_none_or(|target| {
+                        last.samples.last().unwrap().point().distance(target) > EPS
+                    })
                 {
                     if let Some(held) = chart
                         .notes

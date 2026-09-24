@@ -182,6 +182,61 @@ export function sameVideo(a: VideoLink | undefined | null, b: VideoLink | undefi
   return a.kind === 'youtube' ? a.id === b.id : a.path === b.path;
 }
 
+// ---- 對齊記憶：同一份譜面配同一部影片，換過影片、解除連結或紀錄刪掉重加後，選回來都沿用上次的對齊。
+
+const ALIGN_KEY = 'maimotion.video-align.v1';
+const ALIGN_LIMIT = 500;
+
+interface Alignment {
+  offset: number;
+  mirror?: boolean;
+  at: number;
+}
+
+function videoKey(link: VideoLink): string | null {
+  if (link.kind === 'youtube') return link.id ? `yt:${link.id}` : null;
+  return link.path ? `file:${link.path}` : null;
+}
+
+function readAlignments(): Record<string, Alignment> {
+  try {
+    const data: unknown = JSON.parse(localStorage.getItem(ALIGN_KEY) ?? '{}');
+    return typeof data === 'object' && data !== null ? (data as Record<string, Alignment>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 記下這份譜面（原文雜湊）配這部影片的對齊；超過上限時丟掉最舊的。 */
+export function rememberAlignment(chartHash: string, link: VideoLink): void {
+  const key = videoKey(link);
+  if (!key || link.offset === null || !Number.isFinite(link.offset)) return;
+  const all = readAlignments();
+  const id = `${chartHash}|${key}`;
+  const saved = all[id];
+  if (saved && saved.offset === link.offset && !!saved.mirror === !!link.mirror) return;
+  all[id] = { offset: link.offset, ...(link.mirror ? { mirror: true } : {}), at: Date.now() };
+  const ids = Object.keys(all);
+  if (ids.length > ALIGN_LIMIT) {
+    ids.sort((a, b) => (all[a].at ?? 0) - (all[b].at ?? 0));
+    for (const old of ids.slice(0, ids.length - ALIGN_LIMIT)) delete all[old];
+  }
+  try {
+    localStorage.setItem(ALIGN_KEY, JSON.stringify(all));
+  } catch {
+    // 存不了就只是下次要重新對齊。
+  }
+}
+
+/** 還沒對齊的連結補上記住的對齊；沒有記錄時原樣回傳。 */
+export function recallAlignment(chartHash: string, link: VideoLink): VideoLink {
+  const key = videoKey(link);
+  if (link.offset !== null || !key) return link;
+  const saved = readAlignments()[`${chartHash}|${key}`];
+  if (!saved || typeof saved.offset !== 'number' || !Number.isFinite(saved.offset)) return link;
+  return { ...link, offset: saved.offset, ...(saved.mirror && link.mirror === undefined ? { mirror: true } : {}) };
+}
+
 /** 預設搜尋字串：曲名＋難度＋手元。 */
 export function searchQuery(title: string, difficulty: string): string {
   return [title.trim(), difficulty.trim(), 'maimai 手元'].filter(Boolean).join(' ');
@@ -270,6 +325,8 @@ export interface ChartState {
   ready: boolean;
   firstTime: number | null;
   lastTime: number | null;
+  /** 主視窗時間軸的範圍（譜面時間）；影片畫面在範圍內時，播放由主視窗帶動 */
+  range: { start: number; end: number } | null;
   /** 目前選取的音符 */
   selected: { id: string; time: number; label: string } | null;
   link: VideoLink | null;
@@ -283,7 +340,9 @@ export type ToVideo =
   /** 主視窗選了一顆音符：影片跳到它（time 為譜面時間） */
   | { type: 'cue'; time: number; noteId: string }
   /** 主視窗在播放：影片跟著播或停 */
-  | { type: 'playback'; playing: boolean; time: number; rate: number };
+  | { type: 'playback'; playing: boolean; time: number; rate: number }
+  /** 兩邊共用的播放倍率 */
+  | { type: 'rate'; rate: number };
 
 export type ToMain =
   | { type: 'hello' }
@@ -293,8 +352,13 @@ export type ToMain =
   /** 在影片視窗按的標註快捷鍵 */
   | { type: 'key'; key: string; shiftKey: boolean }
   | { type: 'step'; direction: 1 | -1 }
-  /** 主視窗播放中，在影片視窗拖動（seek）或暫停（pause）；time 為譜面時間 */
-  | { type: 'transport'; action: 'seek' | 'pause'; time: number };
+  /**
+   * 在影片視窗操作播放：從 time 開始播（play，改由主視窗帶動），
+   * 或主視窗播放中拖動（seek）、暫停（pause）；time 為譜面時間
+   */
+  | { type: 'transport'; action: 'seek' | 'pause' | 'play'; time: number }
+  /** 在影片視窗改播放倍率 */
+  | { type: 'rate'; rate: number };
 
 type Envelope = { from: 'main' | 'video'; message: ToVideo | ToMain };
 

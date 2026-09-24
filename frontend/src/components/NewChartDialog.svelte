@@ -2,6 +2,7 @@
   import Icon from './Icon.svelte';
   import DiagnosticList from './DiagnosticList.svelte';
   import CopyDebugButton from './CopyDebugButton.svelte';
+  import { parseFile } from '../lib/annotation';
   import { STATUS_HINT, STATUS_LABEL, SUPPORT_NOTES } from '../lib/contract';
   import { reducedMotion } from '../lib/press';
   import { byteOffsetToIndex } from '../lib/text';
@@ -13,8 +14,10 @@
     wikiDifficultyLabel,
     type ChartRecord,
   } from '../state/records.svelte';
+  import { annotation, checkSource } from '../state/annotation.svelte';
   import { errorLog } from '../state/errorLog.svelte';
   import { session } from '../state/session.svelte';
+  import { toasts } from '../state/toasts.svelte';
   import type { AnalyzeResponse, AnalyzeStatus, Diagnostic } from '../lib/types';
   import type { AnalyzeFailure } from '../state/session.svelte';
 
@@ -22,9 +25,11 @@
     open: boolean;
     /** 指定時以編輯模式打開這筆紀錄；關閉後自動歸零。 */
     editing?: ChartRecord | null;
+    /** 匯入了真人手順標註檔（切到標註分頁用）。 */
+    onAnnotationImported?: () => void;
   }
 
-  let { open = $bindable(), editing = $bindable(null) }: Props = $props();
+  let { open = $bindable(), editing = $bindable(null), onAnnotationImported }: Props = $props();
 
   /** 打開當下決定的模式；關閉動畫期間維持不變，畫面不會中途換標題。 */
   let mode = $state<'new' | 'edit'>('new');
@@ -45,9 +50,20 @@
   let failed = $state<AnalyzeFailure | null>(null);
 
   const analyzing = $derived(session.phase === 'analyzing');
-  const draftHeading = $derived(draft.trim().length > 0 ? sourceHeading(draft) : '');
+  /** 貼上的是真人手順標註檔（JSON）：新增時改用檔案附的原譜，並匯入標註。 */
+  const annotationFile = $derived(draft.trimStart().startsWith('{') ? parseFile(draft) : null);
+  const importing = $derived(annotationFile?.ok ? annotationFile : null);
+  /** 匯入時原譜被改過之類的錯誤；改草稿就清掉。 */
+  let importError = $state<{ text: string; source: string } | null>(null);
+  const draftHeading = $derived(
+    importing ? importing.file.title || sourceHeading(importing.file.chart.source) : draft.trim().length > 0 ? sourceHeading(draft) : '',
+  );
   const canAnalyze = $derived(
-    session.desktop && !analyzing && draft.trim().length > 0 && session.configIssues.length === 0,
+    session.desktop &&
+      !analyzing &&
+      draft.trim().length > 0 &&
+      session.configIssues.length === 0 &&
+      (annotationFile === null || (mode === 'new' && importing !== null)),
   );
   /** 編輯中的紀錄；對話框開著時被刪掉會變成 null。 */
   const record = $derived(mode === 'edit' ? records.get(editId) : null);
@@ -63,7 +79,9 @@
     (rejected?.response.status as AnalyzeStatus) ?? null,
   );
   /** 草稿改過之後，舊診斷的行列位置可能已經不準。 */
-  const rejectedStale = $derived(rejected !== null && rejected.source !== draft);
+  const rejectedStale = $derived(
+    rejected !== null && rejected.source !== (importing?.file.chart.source ?? draft),
+  );
 
   /** 關閉動畫播放中；播完才真正呼叫 dialog.close()。 */
   let closing = $state(false);
@@ -203,12 +221,42 @@
     open = false;
   }
 
+  /** 標註檔：先分析檔案附的原譜（失敗時照常顯示診斷），再新增或切到同一份原譜的紀錄並合併標註。 */
+  async function importAnnotation() {
+    if (!importing) return;
+    const { file, skipped } = importing;
+    const text = draft;
+    importError = null;
+    const tampered = await checkSource(file);
+    if (tampered) {
+      importError = { text: tampered, source: text };
+      return;
+    }
+    if (!(await analyzeDraft(file.chart.source))) return;
+    const result = await annotation.importFile(file, { mode: 'fill', name, skipped });
+    if (!result.ok) {
+      importError = { text: result.text, source: text };
+      return;
+    }
+    toasts.show({ id: 'annotation-import', tone: 'ok', title: '已匯入標註檔', body: result.text });
+    draft = '';
+    name = '';
+    rejected = null;
+    failed = null;
+    open = false;
+    onAnnotationImported?.();
+  }
+
   async function generate() {
     if (mode === 'edit') {
       await save();
       return;
     }
     if (!canGenerate) return;
+    if (importing) {
+      await importAnnotation();
+      return;
+    }
     const source = draft;
     if (!(await analyzeDraft(source))) return;
     await records.add(source, { name });
@@ -221,7 +269,8 @@
 
   function locate(diagnostic: Diagnostic) {
     const span = diagnostic.sourceSpan;
-    if (!span || !textarea || !rejected) return;
+    // 標註檔的原譜不在輸入框裡，沒有位置可以選。
+    if (!span || !textarea || !rejected || rejected.source !== draft) return;
     const start = byteOffsetToIndex(rejected.source, span.start);
     const end = byteOffsetToIndex(rejected.source, span.end);
     textarea.focus();
@@ -317,7 +366,7 @@
         onkeydown={onKeydown}
         placeholder={draftHeading || '留空時使用譜面開頭'}
       />
-      <label class="field-label name-gap" for="new-chart-source">simai 原文或 maidata.txt</label>
+      <label class="field-label name-gap" for="new-chart-source">simai 原文、maidata.txt 或標註檔</label>
       <textarea
         id="new-chart-source"
         class="textarea source"
@@ -327,6 +376,23 @@
         onkeydown={onKeydown}
         placeholder="(120)&#123;4&#125;1,2,3,4,E"
       ></textarea>
+      {#if annotationFile}
+        {#if !annotationFile.ok}
+          <p class="field-error">{annotationFile.error}</p>
+        {:else if mode === 'edit'}
+          <p class="field-error">這是真人手順標註檔，不能當成原文儲存。請關閉後用「新增譜面」匯入。</p>
+        {:else}
+          <p class="field-hint">
+            偵測到真人手順標註檔「{annotationFile.file.title || '未命名'}」：{annotationFile.file.notes.length} 顆標註{annotationFile
+              .file.video
+              ? '，含對照影片'
+              : ''}。會用檔案附的原譜新增紀錄並匯入標註；已經有同一份原譜的紀錄時直接合併進去，你已標的保留不動。
+          </p>
+        {/if}
+        {#if importError && importError.source === draft}
+          <p class="field-error">{importError.text}</p>
+        {/if}
+      {/if}
 
       {#if !session.desktop}
         <p class="field-error">
@@ -419,8 +485,8 @@
         <Icon name={analyzing ? 'loader' : sourceChanged ? 'zap' : 'check'} spin={analyzing} />
         {analyzing ? '分析中' : sourceChanged ? '重新分析並儲存' : '儲存'}
       {:else}
-        <Icon name={analyzing ? 'loader' : 'zap'} spin={analyzing} />
-        {analyzing ? '分析中' : '生成並新增'}
+        <Icon name={analyzing ? 'loader' : importing ? 'file-text' : 'zap'} spin={analyzing} />
+        {analyzing ? '分析中' : importing ? '新增並匯入標註' : '生成並新增'}
       {/if}
     </button>
   </footer>

@@ -12,7 +12,6 @@
     progress,
   } from '../lib/annotation';
   import { copyText } from '../lib/debug';
-  import { hashText } from '../lib/db';
   import { formatClock } from '../lib/format';
   import { noteLabel, stepLabel } from '../lib/notes';
   import { annotation, isStepDone, type ListFilter, type Step } from '../state/annotation.svelte';
@@ -283,40 +282,9 @@
     }
     importing = true;
     try {
-      const file = parsed.file;
-      const hash = await hashText(file.chart.source);
-      if (file.chart.sha256 && file.chart.sha256 !== hash) {
-        importMessage = { tone: 'error', text: '標註檔裡的原譜被改過（雜湊不符），為避免對錯音符已停止匯入。' };
-        return;
-      }
-      // 找同一份原譜的紀錄；沒有就連同原譜新增一筆。
-      let record = records.findByHash(hash);
-      let created = false;
-      if (!record) {
-        record = await records.add(file.chart.source, { name: file.title || undefined });
-        created = true;
-      }
-      const switching = records.activeId !== record.id;
-      records.activeId = record.id;
-      annotation.bind(record);
-      const result = annotation.applyMerge(file, importMode);
-      if (switching || !session.result || session.result.source !== record.source) {
-        void session.load(record.source);
-      }
-      const parts = [
-        created ? '已連同原譜新增譜面紀錄' : switching ? '已切換到同一份譜面的紀錄' : '已合併到目前的譜面',
-        `新增 ${result.added} 顆`,
-      ];
-      if (result.conflicts.length > 0) {
-        parts.push(
-          importMode === 'fill'
-            ? `${result.conflicts.length} 顆手順不同，保留你的`
-            : `${result.conflicts.length} 顆手順不同，已改用匯入的`,
-        );
-      }
-      if (parsed.skipped > 0) parts.push(`略過 ${parsed.skipped} 筆格式不對的項目`);
-      importMessage = { tone: 'ok', text: `${parts.join('，')}。` };
-      importText = '';
+      const result = await annotation.importFile(parsed.file, { mode: importMode, skipped: parsed.skipped });
+      importMessage = { tone: result.ok ? 'ok' : 'error', text: result.text };
+      if (result.ok) importText = '';
     } finally {
       importing = false;
     }

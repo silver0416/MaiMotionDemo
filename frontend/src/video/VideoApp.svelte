@@ -35,7 +35,8 @@
 
   const CUE_KEY = 'maimotion.video-cue.v1';
   const DEFAULT_CUE: CueSettings = { mode: 'segment', pre: 0.4, post: 0.3, rate: 0.5, land: true };
-  const RATES = [0.25, 0.5, 1];
+  /** 與主視窗相同的倍率選項；兩邊共用同一個倍率。 */
+  const RATES = [0.25, 0.5, 1, 2];
   const CUE_MODES: { id: CueMode; label: string; hint: string }[] = [
     { id: 'segment', label: '播放片段', hint: '從判定前一點慢速播到判定後' },
     { id: 'jump', label: '只跳過去', hint: '停在判定那一格' },
@@ -192,6 +193,10 @@
       case 'playback':
         followMain(message.playing, message.time, message.rate);
         break;
+      case 'rate':
+        userRate = message.rate;
+        if (video && !segment) video.playbackRate = message.rate;
+        break;
     }
   }
 
@@ -280,6 +285,7 @@
   }
 
   function followMain(playing: boolean, time: number, rate: number): void {
+    userRate = rate;
     if (!video || !src || offset === null) return;
     const target = time + offset;
     const recent = performance.now() - touchedAt < TOUCH_QUIET_MS;
@@ -325,9 +331,25 @@
     if (video) video.playbackRate = userRate;
   }
 
+  /** 已對齊且畫面在主視窗時間軸範圍內：播放交給主視窗帶動，兩邊的播放狀態一致。 */
+  function mainCanLead(): boolean {
+    const range = chart?.range;
+    if (!video || offset === null || !range || lonely) return false;
+    const time = video.currentTime - offset;
+    return time >= range.start && time < range.end - 1e-3;
+  }
+
   function togglePlay(): void {
     if (!video || !src) return;
     if (video.paused) {
+      if (mainCanLead()) {
+        leader = 'main';
+        segment = null;
+        video.playbackRate = userRate;
+        channel?.send({ type: 'transport', action: 'play', time: video.currentTime - (offset ?? 0) });
+        void video.play().catch(() => {});
+        return;
+      }
       takeOver();
       void video.play().catch(() => {});
     } else if (mainLeading()) {
@@ -366,7 +388,8 @@
 
   function setRate(rate: number): void {
     userRate = rate;
-    if (video && !segment && leader !== 'main') video.playbackRate = rate;
+    if (video && !segment) video.playbackRate = rate;
+    channel?.send({ type: 'rate', rate });
   }
 
   function onSeekInput(event: Event): void {
