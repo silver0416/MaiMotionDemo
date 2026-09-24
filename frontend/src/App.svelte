@@ -146,9 +146,10 @@
     untrack(() => videoSync.sendState());
   });
 
+  // 標註步驟換了（Slide 的起點與滑行是兩步）：影片跳到那一步的時間。
   $effect(() => {
-    const note = session.selectedNote;
-    if (note) untrack(() => videoSync.cue(note.id, note.timeSeconds));
+    const step = annotation.currentStep;
+    if (step) untrack(() => videoSync.cue(step.note.id, step.time));
   });
 
   $effect(() => {
@@ -186,14 +187,26 @@
     });
   });
 
-  // 啟動時每天最多自動檢查一次更新；有新版才提示，失敗靜默忽略。
+  // 每次開啟都自動檢查一次更新；有新版才提示，失敗靜默忽略。從舊版更新過來時先問要不要刪舊版。
   $effect(() => {
     let cancelled = false;
     (async () => {
       await updateState.init();
+      await updateState.askAboutPrevious();
       if (cancelled || !updateState.shouldAutoCheck()) return;
       const info = await updateState.check();
       if (cancelled || !info?.hasUpdate) return;
+      if (updateState.canSelfUpdate) {
+        toasts.show({
+          id: 'update-available',
+          tone: 'info',
+          title: `有新版本 v${info.latest}`,
+          body: '可以直接下載更新，完成後重新啟動就換成新版。',
+          sticky: true,
+          action: { label: '下載更新', icon: 'download', run: () => void updateState.download() },
+        });
+        return;
+      }
       toasts.show({
         id: 'update-available',
         tone: 'info',

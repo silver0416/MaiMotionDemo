@@ -34,6 +34,16 @@ export function noteLabel(note: Note, pathById: Map<string, SlidePath>): string 
   return `${kind} ${noteTarget(note)}`;
 }
 
+/** 標註步驟的說明：有起點的 Slide 分成「起點」與「滑行」兩步。 */
+export function stepLabel(
+  step: { note: Note; part: 'hand' | 'track' },
+  pathById: Map<string, SlidePath>,
+): string {
+  const label = noteLabel(step.note, pathById);
+  if (step.note.kind !== 'slide' || !step.note.hasHead) return label;
+  return `${label} ${step.part === 'hand' ? '起點' : '滑行'}`;
+}
+
 /** 修飾語標籤，例如 Break、EX、煙火。 */
 export function noteBadges(note: Note): string[] {
   const m = note.modifiers;

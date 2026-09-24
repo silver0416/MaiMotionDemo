@@ -51,6 +51,23 @@ function writeLocal(key: string, value: string): void {
 
 export type ListFilter = 'all' | 'todo' | 'prefilled' | 'diff' | 'memo' | 'unsure';
 
+/** 標註的一步：一般音符只有一步；有起點的 Slide 分成起點觸碰與開始滑行兩步。 */
+export type StepPart = 'hand' | 'track';
+
+export interface Step {
+  key: string;
+  note: Note;
+  part: StepPart;
+  /** 這一步的時間：起點為判定時間，滑行為開始移動的時間 */
+  time: number;
+}
+
+/** 這一步是否已有人確認（不是預填）。 */
+export function isStepDone(step: Step, mark: NoteAnnotation | undefined): boolean {
+  if (!mark || mark.prefilled) return false;
+  return step.part === 'hand' ? mark.hand !== undefined : mark.track !== undefined;
+}
+
 export class AnnotationStore {
   /** 目前紀錄的草稿。 */
   draft = $state<AnnotationDraft>(emptyDraft());
@@ -71,6 +88,42 @@ export class AnnotationStore {
   ordered = $derived<Note[]>(
     [...session.notes].sort((a, b) => a.timeSeconds - b.timeSeconds || Number(a.id.slice(1)) - Number(b.id.slice(1))),
   );
+
+  /** 依時間排序的標註步驟。 */
+  steps = $derived.by<Step[]>(() => {
+    const out: (Step & { order: number })[] = [];
+    this.ordered.forEach((note, order) => {
+      const need = neededParts(note);
+      if (need.hand) out.push({ key: `${note.id}:hand`, note, part: 'hand', time: note.timeSeconds, order });
+      if (need.track) {
+        const time = note.motionStart ?? note.timeSeconds;
+        out.push({ key: `${note.id}:track`, note, part: 'track', time, order });
+      }
+    });
+    out.sort((a, b) => a.time - b.time || a.order - b.order || (a.part === 'hand' ? -1 : 1));
+    return out;
+  });
+
+  #stepIndex = $derived(new Map(this.steps.map((step, index) => [step.key, index])));
+
+  /** 目前選到的是這顆音符的哪一步；選到別顆音符時回到它的第一步。 */
+  #part = $state<{ noteId: string; part: StepPart } | null>(null);
+
+  /** 目前的標註步驟：選取的音符＋步驟。 */
+  get currentStep(): Step | null {
+    const note = session.selectedNote;
+    if (!note) return null;
+    const index = this.#indexOf(note, this.#part?.noteId === note.id ? this.#part.part : undefined);
+    return index === undefined ? null : this.steps[index];
+  }
+
+  #indexOf(note: Note, part?: StepPart): number | undefined {
+    if (part) {
+      const index = this.#stepIndex.get(`${note.id}:${part}`);
+      if (index !== undefined) return index;
+    }
+    return this.#stepIndex.get(`${note.id}:hand`) ?? this.#stepIndex.get(`${note.id}:track`);
+  }
 
   /** 分析結果缺少穩定鍵（舊快取）時無法標註。 */
   keysReady = $derived(session.notes.length > 0 && session.notes.every((note) => !!note.key));
@@ -132,8 +185,24 @@ export class AnnotationStore {
     this.#touch();
   }
 
+  /**
+   * 分步標註時只改一個部分；如果原本是模型預填，另一部分也一起清掉，
+   * 留給那一步自己標，免得沒看過的預填被當成真人資料。
+   */
+  #dropOtherPrefill(note: Note, mark: NoteAnnotation, part: StepPart): void {
+    const need = neededParts(note);
+    if (!this.mark(note)?.prefilled || !need.hand || !need.track) return;
+    if (part === 'hand') {
+      delete mark.track;
+      delete mark.handovers;
+    } else {
+      delete mark.hand;
+    }
+  }
+
   setHand(note: Note, hand: Hand | undefined): void {
     this.#edit(note, (mark) => {
+      this.#dropOtherPrefill(note, mark, 'hand');
       if (hand) mark.hand = hand;
       else delete mark.hand;
     });
@@ -141,6 +210,7 @@ export class AnnotationStore {
 
   setTrack(note: Note, track: TrackHand | undefined): void {
     this.#edit(note, (mark) => {
+      this.#dropOtherPrefill(note, mark, 'track');
       if (track) mark.track = track;
       else delete mark.track;
       if (track === 'LR') delete mark.handovers;
@@ -368,48 +438,61 @@ export class AnnotationStore {
     return result;
   }
 
-  /** 選取一顆音符並把播放時間移到它的判定時間。 */
-  select(note: Note, seek = true): void {
+  /** 選取一顆音符（預設它的第一步）並把播放時間移到那一步。 */
+  select(note: Note, part?: StepPart, seek = true): void {
+    const index = this.#indexOf(note, part);
+    const step = index === undefined ? null : this.steps[index];
+    this.#part = { noteId: note.id, part: step?.part ?? part ?? 'hand' };
     session.selectNote(note.id);
-    if (seek) playback.seek(note.timeSeconds);
+    if (seek) playback.seek(step?.time ?? note.timeSeconds);
   }
 
-  /** 依時間順序的上一顆／下一顆。 */
+  selectStep(step: Step): void {
+    this.select(step.note, step.part);
+  }
+
+  #currentIndex(): number {
+    const step = this.currentStep;
+    return step ? (this.#stepIndex.get(step.key) ?? -1) : -1;
+  }
+
+  /** 依時間順序的上一步／下一步。 */
   step(direction: 1 | -1): void {
-    const list = this.ordered;
+    const list = this.steps;
     if (list.length === 0) return;
-    const current = session.selectedNote;
-    const index = current ? list.findIndex((note) => note.id === current.id) : -1;
+    const index = this.#currentIndex();
     const target = list[Math.min(list.length - 1, Math.max(0, index + direction))];
-    if (target) this.select(target);
+    if (target) this.selectStep(target);
   }
 
-  /** 從目前這顆之後找下一顆還沒有人確認的音符；到結尾就從頭找。 */
+  /** 從目前這一步之後找下一步還沒有人確認的；到結尾就從頭找。 */
   nextTodo(): boolean {
-    const list = this.ordered;
-    const current = session.selectedNote;
-    const start = current ? list.findIndex((note) => note.id === current.id) + 1 : 0;
+    const list = this.steps;
+    const start = this.#currentIndex() + 1;
     for (let offset = 0; offset < list.length; offset += 1) {
-      const note = list[(start + offset) % list.length];
-      if (!isHumanLabeled(this.mark(note))) {
-        this.select(note);
+      const step = list[(start + offset) % list.length];
+      if (!isStepDone(step, this.mark(step.note))) {
+        this.selectStep(step);
         return true;
       }
     }
     return false;
   }
 
-  #advance(note: Note): void {
+  /** 標完跳到下一步；wholeNote 時跳過這顆音符剩下的步驟。 */
+  #advance(from: Step, wholeNote = false): void {
     if (!this.autoAdvance) return;
-    const list = this.ordered;
-    const index = list.findIndex((item) => item.id === note.id);
-    const target = list[index + 1];
-    if (target) this.select(target);
+    const list = this.steps;
+    let index = (this.#stepIndex.get(from.key) ?? -1) + 1;
+    while (wholeNote && index < list.length && list[index].note.id === from.note.id) index += 1;
+    const target = list[index];
+    if (target) this.selectStep(target);
   }
 
   /**
    * 標註分頁開著時的快捷鍵；處理了就回傳 true。
-   * A／D 左右手（Shift 只標 Slide 滑行）、S 切換信心、Enter 確認預填、Delete 清除、N 下一顆未標。
+   * A／D 標目前這一步的左右手（Shift 整顆同一隻手）、S 切換信心、Enter 確認預填、
+   * Delete 清除、N 下一步未標。
    */
   handleKey(event: KeyboardEvent): boolean {
     const key = event.key.toLowerCase();
@@ -417,17 +500,15 @@ export class AnnotationStore {
       this.nextTodo();
       return true;
     }
-    const note = session.selectedNote;
-    if (!note || !note.key) return false;
+    const step = this.currentStep;
+    const note = step?.note;
+    if (!step || !note || !note.key) return false;
     if (key === 'a' || key === 'd') {
       const hand: Hand = key === 'a' ? 'L' : 'R';
-      if (event.shiftKey) {
-        if (note.kind !== 'slide') return false;
-        this.setTrack(note, hand);
-      } else {
-        this.setAll(note, hand);
-      }
-      this.#advance(note);
+      if (event.shiftKey) this.setAll(note, hand);
+      else if (step.part === 'hand') this.setHand(note, hand);
+      else this.setTrack(note, hand);
+      this.#advance(step, event.shiftKey);
       return true;
     }
     if (key === 's') {
@@ -436,7 +517,7 @@ export class AnnotationStore {
     }
     if (event.key === 'Enter') {
       if (this.mark(note)?.prefilled) this.confirm(note);
-      this.#advance(note);
+      this.#advance(step);
       return true;
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {

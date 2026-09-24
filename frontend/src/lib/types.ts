@@ -442,6 +442,22 @@ export interface UpdateInfo {
   notes: string;
   publishedAt: string;
   distribution: string;
+  /** 可以在程式內下載的執行檔；沒有就只能到 GitHub 手動下載 */
+  asset: UpdateAsset | null;
+}
+
+export interface UpdateAsset {
+  name: string;
+  url: string;
+  size: number;
+  sha256: string | null;
+}
+
+export interface DownloadedUpdate {
+  path: string;
+  name: string;
+  /** 程式所在資料夾不能寫入，改放在「下載」資料夾 */
+  fallback: boolean;
 }
 
 

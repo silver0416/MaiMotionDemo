@@ -3,7 +3,7 @@
 
 import { isDesktop } from '../lib/api';
 import { progress } from '../lib/annotation';
-import { noteLabel } from '../lib/notes';
+import { stepLabel } from '../lib/notes';
 import { openChannel, searchQuery, videoApi, type ChartState, type ToMain, type ToVideo } from '../lib/video';
 import { annotation } from './annotation.svelte';
 import { playback } from './playback.svelte';
@@ -50,7 +50,7 @@ class VideoSync {
   get chartState(): ChartState {
     const record = records.active;
     const notes = annotation.ordered;
-    const selected = session.selectedNote;
+    const step = annotation.currentStep;
     const stats = progress(annotation.draft, notes);
     return {
       recordId: record?.id ?? null,
@@ -59,8 +59,8 @@ class VideoSync {
       ready: !!record && !!session.chart && annotation.keysReady && annotation.recordId === record.id,
       firstTime: notes[0]?.timeSeconds ?? null,
       lastTime: notes.at(-1)?.timeSeconds ?? null,
-      selected: selected
-        ? { id: selected.id, time: selected.timeSeconds, label: noteLabel(selected, session.pathById) }
+      selected: step
+        ? { id: step.note.id, time: step.time, label: stepLabel(step, session.pathById) }
         : null,
       link: annotation.draft.video ?? null,
       done: stats.done,

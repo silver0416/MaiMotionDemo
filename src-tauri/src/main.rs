@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod majdata;
+mod self_update;
 mod update;
 mod video;
 mod wiki;
@@ -152,6 +153,9 @@ fn main() {
     let update_client = update::build_client().expect("Failed to initialize update HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
     let video_client = video::build_client().expect("Failed to initialize video tool HTTP client");
+    let self_update_client =
+        self_update::build_client().expect("Failed to initialize update download HTTP client");
+    let previous = self_update::previous_from_args(std::env::args());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -176,6 +180,7 @@ fn main() {
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
         .manage(video::VideoState::new(video_client))
+        .manage(self_update::SelfUpdateState::new(self_update_client, previous))
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
             evaluate_annotation,
@@ -200,7 +205,11 @@ fn main() {
             video::commands::video_delete,
             video::commands::video_cache_info,
             video::commands::video_clear_cache,
-            video::commands::video_open_local
+            video::commands::video_open_local,
+            self_update::commands::update_download,
+            self_update::commands::update_restart,
+            self_update::commands::update_previous,
+            self_update::commands::update_remove_previous
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run MaiMotionDemo");

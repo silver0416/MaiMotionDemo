@@ -4,7 +4,9 @@ import type {
   EvaluateRequest,
   EvaluateResponse,
   AppDistribution,
+  DownloadedUpdate,
   MajdataChartSummary,
+  UpdateAsset,
   UpdateInfo,
   WikiChartPayload,
   WikiChartType,
@@ -142,6 +144,30 @@ export function appDistribution(): Promise<AppDistribution> {
 export async function checkForUpdate(): Promise<UpdateInfo> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<UpdateInfo>('check_update');
+}
+
+/** 下載新版執行檔到目前程式所在的資料夾（Portable 版限定）。進度見事件 update-download-progress。 */
+export async function downloadUpdate(asset: UpdateAsset): Promise<DownloadedUpdate> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<DownloadedUpdate>('update_download', { asset });
+}
+
+/** 開啟下載好的新版並結束目前的程式。 */
+export async function restartToUpdate(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('update_restart');
+}
+
+/** 這次是從哪個舊版更新過來的；沒有或已不存在時回傳 null。 */
+export async function previousVersionPath(): Promise<string | null> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<string | null>('update_previous');
+}
+
+/** 刪除（remove=true）或保留舊版；之後不再詢問。 */
+export async function settlePreviousVersion(remove: boolean): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('update_remove_previous', { remove });
 }
 
 let counter = 0;

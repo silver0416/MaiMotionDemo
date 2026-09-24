@@ -14,8 +14,8 @@
   import { copyText } from '../lib/debug';
   import { hashText } from '../lib/db';
   import { formatClock } from '../lib/format';
-  import { noteLabel } from '../lib/notes';
-  import { annotation, type ListFilter } from '../state/annotation.svelte';
+  import { noteLabel, stepLabel } from '../lib/notes';
+  import { annotation, isStepDone, type ListFilter, type Step } from '../state/annotation.svelte';
   import { playback } from '../state/playback.svelte';
   import { records } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
@@ -43,6 +43,9 @@
   let view = $state<View>('label');
 
   const note = $derived<Note | null>(session.selectedNote);
+  const current = $derived<Step | null>(annotation.currentStep);
+  /** Slide 的起點與滑行分兩步標；目前這一步在編輯區會標出來。 */
+  const split = $derived(!!note && note.kind === 'slide' && note.hasHead);
   const mark = $derived<NoteAnnotation | undefined>(annotation.mark(note));
   const need = $derived(note ? neededParts(note) : { hand: false, track: false });
   const noteShape = $derived(note?.pathId ? session.pathById.get(note.pathId)?.shape : undefined);
@@ -60,63 +63,67 @@
   const stats = $derived(progress(annotation.draft, annotation.ordered));
   const percent = $derived(stats.total > 0 ? Math.round((100 * stats.done) / stats.total) : 0);
 
-  function differs(item: Note, human: NoteAnnotation | undefined): boolean {
-    if (!isHumanLabeled(human)) return false;
-    const model = modelMarks.get(item.id);
-    if (!model || !human) return false;
-    if (human.hand && model.hand && human.hand !== model.hand) return true;
-    if (human.track && model.track && human.track !== model.track) return true;
-    return false;
+  /** 這一步和模型不同。 */
+  function stepDiffers(step: Step, human: NoteAnnotation | undefined): boolean {
+    if (!isHumanLabeled(human) || !human) return false;
+    const model = modelMarks.get(step.note.id);
+    if (!model) return false;
+    if (step.part === 'hand') return !!human.hand && !!model.hand && human.hand !== model.hand;
+    return !!human.track && !!model.track && human.track !== model.track;
   }
 
+  /** 清單一列一步；備註與信心是整顆的，只列在它的第一步。 */
   const rows = $derived.by(() => {
     const filter = annotation.filter;
-    return annotation.ordered.filter((item) => {
-      const human = annotation.mark(item);
+    const seen = new Set<string>();
+    return annotation.steps.filter((step) => {
+      const human = annotation.mark(step.note);
+      const first = !seen.has(step.note.id);
+      seen.add(step.note.id);
       switch (filter) {
         case 'todo':
-          return !isHumanLabeled(human);
+          return !isStepDone(step, human);
         case 'prefilled':
-          return human?.prefilled === true;
+          return human?.prefilled === true && stepValue(step, human) !== undefined;
         case 'diff':
-          return differs(item, human);
+          return stepDiffers(step, human);
         case 'memo':
-          return !!human?.memo;
+          return first && !!human?.memo;
         case 'unsure':
-          return human?.confidence === 'unsure' || human?.confidence === 'either';
+          return first && (human?.confidence === 'unsure' || human?.confidence === 'either');
         default:
           return true;
       }
     });
   });
 
-  /** 播放時間所在的音符（最後一顆判定時間不晚於目前時間的）。 */
-  const currentId = $derived.by(() => {
-    const list = annotation.ordered;
+  /** 播放時間所在的步驟（最後一步時間不晚於目前時間的）。 */
+  const currentKey = $derived.by(() => {
+    const list = annotation.steps;
     let low = 0;
     let high = list.length - 1;
     let found = -1;
     const time = playback.time + 1e-6;
     while (low <= high) {
       const mid = (low + high) >> 1;
-      if (list[mid].timeSeconds <= time) {
+      if (list[mid].time <= time) {
         found = mid;
         low = mid + 1;
       } else {
         high = mid - 1;
       }
     }
-    return found >= 0 ? list[found].id : null;
+    return found >= 0 ? list[found].key : null;
   });
 
   let listElement = $state<HTMLDivElement | null>(null);
 
-  // 選取的音符捲進可視範圍（盤面點選、快捷鍵前進時）。
+  // 目前這一步捲進可視範圍（盤面點選、快捷鍵前進時）。
   $effect(() => {
-    const id = session.selectedNoteId;
-    if (!id || !listElement) return;
+    const key = current?.key;
+    if (!key || !listElement) return;
     queueMicrotask(() => {
-      listElement?.querySelector(`[data-note-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+      listElement?.querySelector(`[data-step="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
     });
   });
 
@@ -127,6 +134,19 @@
   function handText(value: TrackHand | undefined): string {
     if (!value) return '—';
     return value === 'LR' ? 'L+R' : value;
+  }
+
+  function stepValue(step: Step, value: Omit<NoteAnnotation, 'key'> | undefined): TrackHand | undefined {
+    return step.part === 'hand' ? value?.hand : value?.track;
+  }
+
+  /** 清單上這一步的手：接觸只有一隻手；滑行另加換手。 */
+  function stepSummary(step: Step, value: Omit<NoteAnnotation, 'key'> | undefined): string {
+    const hand = stepValue(step, value);
+    if (hand === undefined) return '';
+    let text = handText(hand);
+    if (step.part === 'track') for (const handover of value?.handovers ?? []) text += `→${handover.to}`;
+    return text;
   }
 
   /** 列表上的手：起點／接觸，Slide 另加滑行與換手。 */
@@ -391,21 +411,23 @@
     <section class="section editor" aria-label="目前音符">
       {#if note}
         <div class="row">
-          <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一顆" title="上一顆">
+          <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
             <Icon name="chevron-left" size={14} />
           </button>
           <div class="note-title">
-            <span class="mono small">{formatClock(note.timeSeconds)}</span>
-            <strong>{describe(note)}</strong>
+            <span class="mono small">{formatClock(current?.time ?? note.timeSeconds)}</span>
+            <strong>{current ? stepLabel(current, session.pathById) : describe(note)}</strong>
           </div>
-          <button class="btn btn--icon" onclick={() => annotation.step(1)} aria-label="下一顆" title="下一顆">
+          <button class="btn btn--icon" onclick={() => annotation.step(1)} aria-label="下一步" title="下一步">
             <Icon name="chevron-right" size={14} />
           </button>
         </div>
 
         {#if need.hand}
-          <div class="line">
-            <span class="line-label">{note.kind === 'slide' ? '起點' : '手'}</span>
+          <div class="line" class:is-active={split && current?.part === 'hand'}>
+            <button class="line-label" onclick={() => annotation.select(note!, 'hand')} disabled={!split} title={split ? '切到起點這一步' : undefined}>
+              {note.kind === 'slide' ? '起點' : '手'}
+            </button>
             <div class="choices" role="group" aria-label={note.kind === 'slide' ? '起點觸碰的手' : '接觸的手'}>
               <button class="btn choice left" aria-pressed={mark?.hand === 'L'} onclick={() => onHand('L')}>左 L</button>
               <button class="btn choice right" aria-pressed={mark?.hand === 'R'} onclick={() => onHand('R')}>右 R</button>
@@ -417,8 +439,10 @@
         {/if}
 
         {#if need.track}
-          <div class="line">
-            <span class="line-label">滑行</span>
+          <div class="line" class:is-active={split && current?.part === 'track'}>
+            <button class="line-label" onclick={() => annotation.select(note!, 'track')} disabled={!split} title={split ? '切到滑行這一步' : undefined}>
+              滑行
+            </button>
             <div class="choices" role="group" aria-label="開始滑行的手">
               <button class="btn choice left" aria-pressed={mark?.track === 'L'} onclick={() => onTrack('L')}>左 L</button>
               <button class="btn choice right" aria-pressed={mark?.track === 'R'} onclick={() => onTrack('R')}>右 R</button>
@@ -503,7 +527,7 @@
         <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
       {/if}
       <p class="xsmall muted keys">
-        <kbd>A</kbd> 左手　<kbd>D</kbd> 右手　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 只標滑行　<kbd>S</kbd> 信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一顆未確認
+        <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
       </p>
     </section>
 
@@ -522,7 +546,7 @@
       </div>
       <label class="check">
         <input type="checkbox" checked={annotation.autoAdvance} onchange={(event) => annotation.setAutoAdvance(event.currentTarget.checked)} />
-        <span>標完自動跳到下一顆</span>
+        <span>標完自動跳到下一步</span>
       </label>
     </section>
 
@@ -532,35 +556,36 @@
           <option value={item.id}>{item.label}</option>
         {/each}
       </select>
-      <span class="xsmall muted">{rows.length} 顆</span>
+      <span class="xsmall muted">{rows.length} 步</span>
     </div>
     <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
-      {#each rows as item (item.id)}
-        {@const human = annotation.mark(item)}
-        {@const labeled = isHumanLabeled(human)}
+      {#each rows as step (step.key)}
+        {@const human = annotation.mark(step.note)}
+        {@const text = stepSummary(step, human)}
+        {@const first = step.part === 'hand' || !step.note.hasHead}
         <button
           class="item"
-          class:is-selected={session.selectedNoteId === item.id}
-          class:is-current={currentId === item.id}
-          data-note-id={item.id}
+          class:is-selected={current?.key === step.key}
+          class:is-current={currentKey === step.key}
+          data-step={step.key}
           role="option"
-          aria-selected={session.selectedNoteId === item.id}
-          onclick={() => annotation.select(item)}
+          aria-selected={current?.key === step.key}
+          onclick={() => annotation.selectStep(step)}
         >
-          <span class="mono xsmall muted time">{formatClock(item.timeSeconds)}</span>
-          <span class="what small">{describe(item)}</span>
-          <span class="hands small mono" class:is-prefilled={human?.prefilled} class:is-empty={!human}>
-            {summary(item, human) || '未標'}
+          <span class="mono xsmall muted time">{formatClock(step.time)}</span>
+          <span class="what small">{stepLabel(step, session.pathById)}</span>
+          <span class="hands small mono" class:is-prefilled={human?.prefilled && !!text} class:is-empty={!text}>
+            {text || '未標'}
           </span>
           <span class="flags xsmall">
-            {#if differs(item, human)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
-            {#if human?.confidence && human.confidence !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[human.confidence]}</span>{/if}
-            {#if human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
-            {#if !labeled && human?.prefilled}<span class="badge badge--quiet">預填</span>{/if}
+            {#if stepDiffers(step, human)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
+            {#if first && human?.confidence && human.confidence !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[human.confidence]}</span>{/if}
+            {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
+            {#if human?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
           </span>
         </button>
       {:else}
-        <p class="small muted empty">沒有符合條件的音符。</p>
+        <p class="small muted empty">沒有符合條件的步驟。</p>
       {/each}
     </div>
   {/if}
@@ -809,9 +834,30 @@
   }
 
   .line-label {
-    padding-top: 6px;
+    padding: 6px 0 0;
+    background: none;
+    border: none;
     font-size: var(--fs-sm);
     color: var(--c-text-dim);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .line-label:disabled {
+    cursor: default;
+  }
+
+  /* 目前這一步：A／D 會標到這一行。用淺底色標出，不用左側色條。 */
+  .line.is-active {
+    margin: 0 calc(-1 * var(--space-2));
+    padding: var(--space-1) var(--space-2);
+    background: var(--c-control);
+    border-radius: var(--radius-md);
+  }
+
+  .line.is-active .line-label {
+    color: var(--c-text-strong);
+    font-weight: 600;
   }
 
   .choices {

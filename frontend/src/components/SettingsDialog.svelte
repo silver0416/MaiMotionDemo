@@ -369,16 +369,50 @@
           有新版本 <span class="mono">v{updateState.result.latest}</span>
          （目前 <span class="mono">v{updateState.result.current}</span>）
         </p>
-        {#if updateState.distribution === 'installed'}
-          <p class="field-hint">安裝版未來會支援自動更新；目前請先到 GitHub 下載新版安裝。</p>
+        {#if updateState.canSelfUpdate}
+          {#if updateState.downloaded}
+            <p class="field-hint">
+              已下載到 {updateState.downloaded.fallback ? '「下載」資料夾' : '目前程式所在的資料夾'}（<span class="mono">{updateState.downloaded.name}</span>）。
+              重新啟動就會換成新版，舊版可以在新版開啟後刪除。
+            </p>
+          {:else if updateState.downloading}
+            <div class="update-progress" role="progressbar" aria-label="下載更新" aria-valuenow={updateState.percent} aria-valuemin={0} aria-valuemax={100}>
+              <div class="update-progress-fill" style={`width:${updateState.percent}%`}></div>
+            </div>
+            <p class="field-hint mono">{updateState.percent}%</p>
+          {:else}
+            <p class="field-hint">會下載到目前程式所在的資料夾，完成後重新啟動就換成新版。</p>
+          {/if}
+          {#if updateState.downloadError}
+            <p class="field-error">{updateState.downloadError}</p>
+          {/if}
+          <div class="data-actions">
+            {#if updateState.downloaded}
+              <button class="btn btn--primary" onclick={() => void updateState.restart()} disabled={updateState.restarting}>
+                <Icon name="refresh-cw" />重新啟動並更新
+              </button>
+            {:else}
+              <button class="btn btn--primary" onclick={() => void updateState.download()} disabled={updateState.downloading}>
+                <Icon name={updateState.downloading ? 'loader' : 'download'} spin={updateState.downloading} />
+                {updateState.downloading ? '下載中…' : `下載並更新 v${updateState.result.latest}`}
+              </button>
+            {/if}
+            <button class="btn" onclick={openUpdateDownload}>
+              <Icon name="external-link" />在 GitHub 查看
+            </button>
+          </div>
         {:else}
-          <p class="field-hint">Portable 版不會自動下載，請到 GitHub 下載新版 exe 取代舊檔即可。</p>
+          {#if updateState.distribution === 'installed'}
+            <p class="field-hint">安裝版未來會支援自動更新；目前請先到 GitHub 下載新版安裝。</p>
+          {:else}
+            <p class="field-hint">請到 GitHub 下載新版 exe 取代舊檔即可。</p>
+          {/if}
+          <div class="data-actions">
+            <button class="btn btn--primary" onclick={openUpdateDownload}>
+              <Icon name="download" />前往下載 v{updateState.result.latest}
+            </button>
+          </div>
         {/if}
-        <div class="data-actions">
-          <button class="btn btn--primary" onclick={openUpdateDownload}>
-            <Icon name="download" />前往下載 v{updateState.result.latest}
-          </button>
-        </div>
       {:else if updateState.result}
         <p class="field-hint">
           已是最新版本（<span class="mono">v{updateState.result.current}</span>）。
@@ -391,7 +425,7 @@
         <p class="field-hint">離線或 GitHub 忙碌時會檢查失敗，不影響使用，稍後再試即可。</p>
       {:else}
         <p class="field-hint">
-          尚未檢查。啟動時每天最多自動檢查一次，也可隨時按「檢查更新」。
+          尚未檢查。每次開啟都會自動檢查一次，也可隨時按「檢查更新」。
         </p>
       {/if}
     </section>
@@ -772,6 +806,18 @@
     display: flex;
     gap: var(--space-2);
     flex: none;
+  }
+
+  .update-progress {
+    height: 4px;
+    background: var(--c-control);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  .update-progress-fill {
+    height: 100%;
+    background: var(--c-right);
   }
 
   .video-list {

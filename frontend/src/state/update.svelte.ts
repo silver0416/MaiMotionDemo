@@ -1,9 +1,18 @@
-import { appDistribution, checkForUpdate, isDesktop, openExternalUrl } from '../lib/api';
-import type { AppDistribution, UpdateInfo } from '../lib/types';
+import {
+  appDistribution,
+  checkForUpdate,
+  downloadUpdate,
+  isDesktop,
+  openExternalUrl,
+  previousVersionPath,
+  restartToUpdate,
+  settlePreviousVersion,
+} from '../lib/api';
+import type { AppDistribution, DownloadedUpdate, UpdateInfo } from '../lib/types';
+import { listenEvent } from '../lib/video';
+import { toasts } from './toasts.svelte';
 
 const STORAGE_KEY = 'maimotion.update-check.v1';
-/** 自動檢查間隔：上次檢查超過 24 小時才在啟動時再查，避免每次開啟都打 GitHub API。 */
-export const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const RELEASES_URL = 'https://github.com/silver0416/MaiMotionDemo/releases';
 
 export const DISTRIBUTION_LABEL: Record<AppDistribution, string> = {
@@ -20,7 +29,23 @@ class UpdateState {
   result = $state<UpdateInfo | null>(null);
   error = $state<string | null>(null);
   lastChecked = $state<number | null>(null);
+  /** 程式內更新：下載進度、下載好的檔案與錯誤。 */
+  downloading = $state(false);
+  progress = $state<{ downloaded: number; total: number } | null>(null);
+  downloaded = $state<DownloadedUpdate | null>(null);
+  downloadError = $state<string | null>(null);
+  restarting = $state(false);
   #initialized = false;
+
+  /** Portable 版而且這一版有可下載的執行檔，才能在程式內更新。 */
+  get canSelfUpdate(): boolean {
+    return this.distribution === 'portable' && !!this.result?.hasUpdate && !!this.result.asset;
+  }
+
+  get percent(): number {
+    if (!this.progress || this.progress.total <= 0) return 0;
+    return Math.min(100, Math.round((100 * this.progress.downloaded) / this.progress.total));
+  }
 
   async init(): Promise<void> {
     if (this.#initialized) return;
@@ -33,12 +58,10 @@ class UpdateState {
     }
   }
 
-  /** 上次自動檢查是否已超過間隔；沒查過也算要查。 */
-  shouldAutoCheck(now: number = Date.now()): boolean {
+  /** 每次開啟都自動檢查一次；開發與瀏覽器預覽版不查。 */
+  shouldAutoCheck(): boolean {
     if (!isDesktop()) return false;
-    if (this.distribution === 'dev' || this.distribution === 'preview') return false;
-    if (this.lastChecked == null) return true;
-    return now - this.lastChecked >= UPDATE_CHECK_INTERVAL_MS;
+    return this.distribution !== 'dev' && this.distribution !== 'preview';
   }
 
   /**
@@ -61,6 +84,123 @@ class UpdateState {
     } finally {
       this.checking = false;
     }
+  }
+
+  /** 下載新版；進度與結果以右下角通知顯示。成功回傳 true。 */
+  async download(): Promise<boolean> {
+    const asset = this.result?.asset;
+    if (!asset || this.downloading) return false;
+    if (this.downloaded) {
+      this.#announceReady();
+      return true;
+    }
+    toasts.dismiss('update-available');
+    this.downloading = true;
+    this.downloadError = null;
+    this.progress = { downloaded: 0, total: asset.size };
+    const version = this.result?.latest ?? '';
+    const show = () =>
+      toasts.show({
+        id: 'update-download',
+        tone: 'busy',
+        title: `正在下載 v${version}`,
+        body: `${this.percent}%`,
+        sticky: true,
+      });
+    show();
+    let lastPercent = -1;
+    const stop = await listenEvent<{ downloaded: number; total: number }>('update-download-progress', (progress) => {
+      this.progress = progress;
+      if (this.percent !== lastPercent) {
+        lastPercent = this.percent;
+        show();
+      }
+    });
+    try {
+      this.downloaded = await downloadUpdate($state.snapshot(asset));
+      this.#announceReady();
+      return true;
+    } catch (error) {
+      this.downloadError = typeof error === 'string' ? error : String(error);
+      toasts.show({
+        id: 'update-download',
+        tone: 'error',
+        title: '更新下載失敗',
+        body: this.downloadError,
+        sticky: true,
+        action: { label: '到 GitHub 下載', icon: 'external-link', run: () => void this.openDownload() },
+      });
+      return false;
+    } finally {
+      stop();
+      this.downloading = false;
+    }
+  }
+
+  #announceReady(): void {
+    const file = this.downloaded;
+    if (!file) return;
+    toasts.show({
+      id: 'update-download',
+      tone: 'ok',
+      title: `v${this.result?.latest ?? ''} 已下載`,
+      body: file.fallback
+        ? `程式所在的資料夾不能寫入，已下載到「下載」資料夾（${file.name}）。重新啟動會開啟新版。`
+        : '重新啟動就會換成新版，舊版可以在新版開啟後刪除。',
+      sticky: true,
+      action: { label: '重新啟動', icon: 'refresh-cw', run: () => void this.restart() },
+    });
+  }
+
+  /** 開啟新版並關閉目前的程式。 */
+  async restart(): Promise<void> {
+    if (!this.downloaded || this.restarting) return;
+    this.restarting = true;
+    try {
+      await restartToUpdate();
+    } catch (error) {
+      this.restarting = false;
+      toasts.show({
+        id: 'update-download',
+        tone: 'error',
+        title: '無法開啟新版',
+        body: typeof error === 'string' ? error : String(error),
+        sticky: true,
+      });
+    }
+  }
+
+  /** 從舊版更新過來時，詢問要不要刪除舊版。 */
+  async askAboutPrevious(): Promise<void> {
+    if (!isDesktop()) return;
+    const path = await previousVersionPath().catch(() => null);
+    if (!path) return;
+    const name = path.split(/[\\/]/).pop() ?? path;
+    const version = await import('../lib/api').then(({ appVersion }) => appVersion());
+    toasts.show({
+      id: 'update-previous',
+      tone: 'ok',
+      title: `已更新到 v${version}`,
+      body: `要刪除舊版 ${name} 嗎？不刪也不影響使用。`,
+      sticky: true,
+      action: {
+        label: '刪除舊版',
+        icon: 'trash',
+        run: () => {
+          void settlePreviousVersion(true).then(
+            () => toasts.show({ id: 'update-previous', tone: 'ok', title: '已刪除舊版', body: name }),
+            (error) =>
+              toasts.show({
+                id: 'update-previous',
+                tone: 'error',
+                title: '無法刪除舊版',
+                body: `${typeof error === 'string' ? error : String(error)}。可以之後自己刪除 ${path}。`,
+                sticky: true,
+              }),
+          );
+        },
+      },
+    });
   }
 
   /** 開啟新版下載頁；還沒檢查過就開 Releases 總覽。 */

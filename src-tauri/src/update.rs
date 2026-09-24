@@ -17,6 +17,52 @@ pub struct UpdateInfo {
     pub notes: String,
     pub published_at: String,
     pub distribution: String,
+    /// 這個平台可以在程式內下載的執行檔；沒有就只能到 GitHub 手動下載。
+    pub asset: Option<UpdateAsset>,
+}
+
+/// Release 附件：Portable 單一執行檔。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAsset {
+    pub name: String,
+    pub url: String,
+    pub size: u64,
+    /// GitHub 提供的 SHA-256（十六進位）；舊版 Release 可能沒有。
+    pub sha256: Option<String>,
+}
+
+/// 只接受本專案 Release 的下載網址，避免被導去別處下載執行檔。
+pub const ASSET_URL_PREFIX: &str = "https://github.com/silver0416/MaiMotionDemo/releases/download/";
+
+/// 從 Release 的附件中找出這一版的 Windows x64 執行檔。
+pub fn pick_asset(release: &serde_json::Value, version: &str) -> Option<UpdateAsset> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let assets = release.get("assets")?.as_array()?;
+    let expected = format!("MaiMotionDemo-v{version}-windows-x64.exe");
+    let parse = |asset: &serde_json::Value| -> Option<UpdateAsset> {
+        let name = asset.get("name")?.as_str()?.to_string();
+        let url = asset.get("browser_download_url")?.as_str()?.to_string();
+        let size = asset.get("size")?.as_u64()?;
+        if !url.starts_with(ASSET_URL_PREFIX) || size == 0 || name.contains(['/', '\\']) {
+            return None;
+        }
+        let sha256 = asset
+            .get("digest")
+            .and_then(|value| value.as_str())
+            .and_then(|digest| digest.strip_prefix("sha256:"))
+            .filter(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+            .map(|hex| hex.to_ascii_lowercase());
+        Some(UpdateAsset { name, url, size, sha256 })
+    };
+    let candidates: Vec<UpdateAsset> = assets.iter().filter_map(parse).collect();
+    candidates
+        .iter()
+        .find(|asset| asset.name == expected)
+        .or_else(|| candidates.iter().find(|asset| asset.name.ends_with("-windows-x64.exe")))
+        .cloned()
 }
 
 /// 目前這份建置的發佈通路。
@@ -87,7 +133,9 @@ pub async fn check(client: &Client) -> Result<UpdateInfo, String> {
         .and_then(|value| value.as_str())
         .unwrap_or("")
         .to_string();
+    let asset = pick_asset(&release, &latest);
     Ok(UpdateInfo {
+        asset,
         current: current.clone(),
         latest: latest.clone(),
         has_update: is_newer(&current_normalized, &latest),
@@ -217,6 +265,31 @@ mod tests {
     fn ignores_unparseable_versions() {
         assert!(!is_newer("", "0.3.3"));
         assert!(!is_newer("0.3.2", ""));
+    }
+
+    #[test]
+    fn picks_this_versions_windows_asset() {
+        let release = serde_json::json!({
+            "assets": [
+                {"name": "notes.txt", "browser_download_url": "https://github.com/silver0416/MaiMotionDemo/releases/download/v0.4.1/notes.txt", "size": 3},
+                {"name": "MaiMotionDemo-v0.4.1-windows-x64.exe", "size": 100,
+                 "browser_download_url": "https://github.com/silver0416/MaiMotionDemo/releases/download/v0.4.1/MaiMotionDemo-v0.4.1-windows-x64.exe",
+                 "digest": "sha256:8AC1AFE1A1F0A593BE08E2E2FA310F0B7B8238EDAF0EA5EE5445FFED5663ED8C"},
+                {"name": "evil-windows-x64.exe", "size": 100, "browser_download_url": "https://example.com/evil-windows-x64.exe"}
+            ]
+        });
+        let asset = pick_asset(&release, "0.4.1");
+        if cfg!(windows) {
+            let asset = asset.unwrap();
+            assert_eq!(asset.name, "MaiMotionDemo-v0.4.1-windows-x64.exe");
+            assert_eq!(asset.size, 100);
+            assert_eq!(asset.sha256.as_deref(), Some("8ac1afe1a1f0a593be08e2e2fa310f0b7b8238edaf0ea5ee5445ffed5663ed8c"));
+            // 其他網域的附件一律不接受。
+            let only_evil = serde_json::json!({"assets": [release["assets"][2].clone()]});
+            assert!(pick_asset(&only_evil, "0.4.1").is_none());
+        } else {
+            assert!(asset.is_none());
+        }
     }
 
     #[test]
