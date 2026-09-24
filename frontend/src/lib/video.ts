@@ -339,8 +339,8 @@ export type ToVideo =
   | { type: 'state'; state: ChartState }
   /** 主視窗選了一顆音符：影片跳到它（time 為譜面時間） */
   | { type: 'cue'; time: number; noteId: string }
-  /** 主視窗在播放：影片跟著播或停 */
-  | { type: 'playback'; playing: boolean; time: number; rate: number }
+  /** 主視窗在播放：影片跟著播或停；at 為送出時的 Date.now()，用來扣掉傳遞延遲 */
+  | { type: 'playback'; playing: boolean; time: number; rate: number; at: number }
   /** 兩邊共用的播放倍率 */
   | { type: 'rate'; rate: number };
 

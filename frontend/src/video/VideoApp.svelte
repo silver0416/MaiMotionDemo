@@ -45,8 +45,16 @@
   /** 找不到主視窗的等待時間 */
   const HELLO_WAIT_MS = 1500;
   const FOLLOW_INTERVAL_MS = 33;
-  /** 主視窗播放時，影片偏差超過這個值才校正 */
-  const DRIFT_LIMIT = 0.08;
+  /**
+   * 主視窗帶動播放時的對時：小偏差用微調播放速度追上（不跳格），
+   * 超過 HARD_DRIFT 秒（例如循環跳回）才直接跳過去。
+   */
+  const HARD_DRIFT = 0.3;
+  /** 偏差超過 DRIFT_START 開始微調，回到 DRIFT_STOP 以內才恢復原速，避免在門檻附近來回切換。 */
+  const DRIFT_START = 0.02;
+  const DRIFT_STOP = 0.005;
+  const DRIFT_GAIN = 1;
+  const DRIFT_MAX_ADJUST = 0.1;
   /** 使用者在影片視窗操作後，這段時間內不接受主視窗的時間校正 */
   const TOUCH_QUIET_MS = 600;
 
@@ -90,6 +98,12 @@
   let userRate = $state(1);
   let cue = $state<CueSettings>(loadCue());
   let fileInput: HTMLInputElement | null = $state(null);
+
+  /** 跳轉進行中時只記最新的目標，這次完成後再跳，避免連續跳轉互相中斷、畫面卡住不更新。 */
+  let pendingSeek: number | null = null;
+  /** 主視窗帶動時，主視窗的時鐘：at（Date.now()）那一刻的譜面時間與倍率。 */
+  let mainClock: { time: number; at: number; rate: number } | null = null;
+  let correcting = false;
 
   /** 片段播放中：播到 end 停下，視設定停回 hit。 */
   let segment: { end: number; hit: number } | null = null;
@@ -191,7 +205,7 @@
         runCue(message.time);
         break;
       case 'playback':
-        followMain(message.playing, message.time, message.rate);
+        followMain(message.playing, message.time, message.rate, message.at);
         break;
       case 'rate':
         userRate = message.rate;
@@ -223,10 +237,40 @@
     };
   });
 
+  /** 目前（或即將）顯示的影片時間：跳轉排隊中時為最後要求的位置。 */
+  function position(): number {
+    return pendingSeek ?? video?.currentTime ?? 0;
+  }
+
+  function mainExpected(): number | null {
+    if (!mainClock || offset === null) return null;
+    return mainClock.time + ((Date.now() - mainClock.at) / 1000) * mainClock.rate + offset;
+  }
+
+  /** 主視窗帶動播放中：依偏差微調播放速度追上主視窗，偏差太大才跳。 */
+  function trackMain(): void {
+    if (!video || leader !== 'main' || !mainClock || video.paused || video.seeking || segment) return;
+    const expected = mainExpected();
+    if (expected === null) return;
+    const drift = video.currentTime - expected;
+    const base = mainClock.rate;
+    if (Math.abs(drift) > HARD_DRIFT * Math.max(1, base)) {
+      video.playbackRate = base;
+      seek(expected);
+      return;
+    }
+    if (Math.abs(drift) > DRIFT_START) correcting = true;
+    else if (Math.abs(drift) < DRIFT_STOP) correcting = false;
+    const adjust = correcting ? Math.max(-DRIFT_MAX_ADJUST, Math.min(DRIFT_MAX_ADJUST, -drift * DRIFT_GAIN)) : 0;
+    const rate = base * (1 + adjust);
+    if (Math.abs(video.playbackRate - rate) > 0.002) video.playbackRate = rate;
+  }
+
   function tick(): void {
     if (!video) return;
-    current = video.currentTime;
+    current = position();
     paused = video.paused;
+    trackMain();
     if (segment && current >= segment.end - 1e-3) {
       video.pause();
       if (cue.land) video.currentTime = segment.hit;
@@ -247,7 +291,20 @@
   function seek(time: number): void {
     if (!video) return;
     const end = Number.isFinite(video.duration) ? video.duration : Infinity;
-    video.currentTime = Math.min(Math.max(0, time), end);
+    const target = Math.min(Math.max(0, time), end);
+    if (video.seeking) {
+      pendingSeek = target;
+      return;
+    }
+    pendingSeek = null;
+    video.currentTime = target;
+  }
+
+  function onSeeked(): void {
+    if (!video || pendingSeek === null) return;
+    const target = pendingSeek;
+    pendingSeek = null;
+    if (Math.abs(video.currentTime - target) > 1e-4) video.currentTime = target;
   }
 
   function runCue(time: number): void {
@@ -284,21 +341,31 @@
     if (time !== undefined && time !== null) runCue(time);
   }
 
-  function followMain(playing: boolean, time: number, rate: number): void {
+  function followMain(playing: boolean, time: number, rate: number, at: number): void {
     userRate = rate;
     if (!video || !src || offset === null) return;
-    const target = time + offset;
     const recent = performance.now() - touchedAt < TOUCH_QUIET_MS;
     if (playing) {
       // 剛接手（暫停、逐格）時，途中的播放校正是舊的。
       if (recent && leader !== 'main') return;
+      const starting = leader !== 'main' || video.paused;
       leader = 'main';
       segment = null;
-      video.playbackRate = rate;
-      if (!recent && Math.abs(video.currentTime - target) > DRIFT_LIMIT) seek(target);
-      if (video.paused) void video.play().catch(() => {});
+      // 扣掉訊息傳遞的時間；兩個視窗的 Date.now() 是同一個時鐘。
+      mainClock = { time, at: Math.min(at, Date.now()), rate };
+      const expected = mainExpected() ?? time + offset;
+      if (starting) {
+        video.playbackRate = rate;
+        correcting = false;
+        if (Math.abs(position() - expected) > DRIFT_STOP) seek(expected);
+        if (video.paused) void video.play().catch(() => {});
+      } else {
+        trackMain();
+      }
       return;
     }
+    const target = time + offset;
+    mainClock = null;
     if (leader === 'main') {
       video.pause();
       video.playbackRate = userRate;
@@ -307,7 +374,7 @@
     if (segment) return;
     // 影片自己在播：主視窗停下的通知不把影片拉回。
     if (leader === 'video' && !video.paused) return;
-    if (Math.abs(video.currentTime - target) > 0.005) {
+    if (Math.abs(position() - target) > 0.005) {
       video.pause();
       seek(target);
     }
@@ -324,7 +391,7 @@
   function takeOver(): void {
     touchedAt = performance.now();
     if (mainLeading() && video) {
-      channel?.send({ type: 'transport', action: 'pause', time: video.currentTime - (offset ?? 0) });
+      channel?.send({ type: 'transport', action: 'pause', time: position() - (offset ?? 0) });
     }
     leader = 'video';
     segment = null;
@@ -335,7 +402,7 @@
   function mainCanLead(): boolean {
     const range = chart?.range;
     if (!video || offset === null || !range || lonely) return false;
-    const time = video.currentTime - offset;
+    const time = position() - offset;
     return time >= range.start && time < range.end - 1e-3;
   }
 
@@ -346,7 +413,7 @@
         leader = 'main';
         segment = null;
         video.playbackRate = userRate;
-        channel?.send({ type: 'transport', action: 'play', time: video.currentTime - (offset ?? 0) });
+        channel?.send({ type: 'transport', action: 'play', time: position() - (offset ?? 0) });
         void video.play().catch(() => {});
         return;
       }
@@ -366,24 +433,24 @@
     if (!video) return;
     touchedAt = performance.now();
     seek(time);
-    channel?.send({ type: 'transport', action: 'seek', time: video.currentTime - (offset ?? 0) });
+    channel?.send({ type: 'transport', action: 'seek', time: position() - (offset ?? 0) });
   }
 
   function stepFrame(direction: 1 | -1): void {
     if (!video || !src) return;
     takeOver();
     video.pause();
-    seek(video.currentTime + direction / fps);
+    seek(position() + direction / fps);
   }
 
   function jump(seconds: number): void {
     if (!video || !src) return;
     if (mainLeading()) {
-      seekWhileMainLeads(video.currentTime + seconds);
+      seekWhileMainLeads(position() + seconds);
       return;
     }
     takeOver();
-    seek(video.currentTime + seconds);
+    seek(position() + seconds);
   }
 
   function setRate(rate: number): void {
@@ -406,7 +473,7 @@
 
   function alignTo(time: number | null | undefined): void {
     if (!link || !video || time === null || time === undefined) return;
-    const next = Math.round((video.currentTime - time) * 10000) / 10000;
+    const next = Math.round((position() - time) * 10000) / 10000;
     setLink({ ...link, offset: next });
     // 對齊當下就讓主視窗跳到對應時間，不必等影片再動一次。
     takeOver();
@@ -594,6 +661,7 @@
           playsinline
           preload="auto"
           onloadedmetadata={onLoaded}
+          onseeked={onSeeked}
           onpause={onPause}
           onerror={onVideoError}
           onclick={togglePlay}

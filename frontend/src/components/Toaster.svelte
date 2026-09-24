@@ -31,6 +31,19 @@
         {#if toast.body}
           <p class="toast-body">{toast.body}</p>
         {/if}
+        {#if toast.progress !== undefined}
+          {@const value = Math.min(100, Math.max(0, toast.progress))}
+          <div
+            class="toast-progress"
+            role="progressbar"
+            aria-label={toast.title}
+            aria-valuenow={value}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div class="toast-progress-fill" style={`transform:scaleX(${value / 100})`}></div>
+          </div>
+        {/if}
         {#if toast.action}
           {@const action = toast.action}
           <button class="btn toast-action" onclick={() => action.run()}>
@@ -119,6 +132,28 @@
 
   .toast-action {
     margin-top: var(--space-2);
+  }
+
+  .toast-progress {
+    height: 4px;
+    margin-top: var(--space-2);
+    background: var(--c-control);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+
+  /* 用 scaleX 而不是 width：進度更新時只做合成，不重排版面。 */
+  .toast-progress-fill {
+    height: 100%;
+    background: var(--c-right);
+    transform-origin: left center;
+    transition: transform 240ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast-progress-fill {
+      transition: none;
+    }
   }
 
   .toast-close {

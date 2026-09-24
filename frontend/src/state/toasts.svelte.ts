@@ -17,6 +17,8 @@ export interface Toast {
   /** sticky 的通知要使用者自己關；其餘幾秒後自動消失。 */
   sticky?: boolean;
   action?: ToastAction;
+  /** 0–100：在文字下方顯示進度條。 */
+  progress?: number;
 }
 
 const AUTO_DISMISS_MS = 4000;

@@ -14,7 +14,7 @@ const MAIDATA_DIFFICULTIES = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', '
 /** 選到音符之後這段時間內，播放時間的變動視為選取造成，不另外通知影片。 */
 const CUE_QUIET_MS = 400;
 /** 主視窗播放時，定期讓影片校正時間。 */
-const RESYNC_MS = 2000;
+const RESYNC_MS = 1000;
 
 /** 搜尋用的曲名與難度。 */
 function queryFor(): string {
@@ -47,6 +47,8 @@ class VideoSync {
   #silentPause = false;
   #lastPlaying: boolean | null = null;
   #lastRate = Number.NaN;
+  /** 播放中上一次的時間；變小代表循環跳回，要馬上讓影片跟上。 */
+  #lastPlayTime = Number.NaN;
 
   /** 目前要給影片視窗的譜面狀態。 */
   get chartState(): ChartState {
@@ -122,22 +124,31 @@ class VideoSync {
       return;
     }
     this.#silentPause = false;
-    this.send({ type: 'playback', playing, time: playback.time, rate });
+    this.#sendPlayback(playing, playback.time, rate);
     if (playing) {
       this.#resync = setInterval(() => {
-        if (playback.playing) this.send({ type: 'playback', playing: true, time: playback.time, rate: playback.rate });
+        if (playback.playing) this.#sendPlayback(true, playback.time, playback.rate);
       }, RESYNC_MS);
     }
   }
 
+  #sendPlayback(playing: boolean, time: number, rate: number): void {
+    this.send({ type: 'playback', playing, time, rate, at: Date.now() });
+  }
+
   /** 主視窗暫停時拖曳時間軸：影片跟著移動。跟隨影片或選取音符造成的變動不回送。 */
   timeChanged(time: number): void {
-    if (playback.playing) return;
+    if (playback.playing) {
+      if (time < this.#lastPlayTime - 1e-3) this.#sendPlayback(true, time, playback.rate);
+      this.#lastPlayTime = time;
+      return;
+    }
+    this.#lastPlayTime = Number.NaN;
     if (Math.abs(time - this.#followed) < 1e-4) return;
     if (performance.now() - this.#cueAt < CUE_QUIET_MS) return;
     if (Math.abs(time - this.#lastSentTime) < 1e-4) return;
     this.#lastSentTime = time;
-    this.send({ type: 'playback', playing: false, time, rate: playback.rate });
+    this.#sendPlayback(false, time, playback.rate);
   }
 
   #pauseQuietly(): void {

@@ -818,6 +818,7 @@
   .update-progress-fill {
     height: 100%;
     background: var(--c-right);
+    transition: width 240ms ease-out;
   }
 
   .video-list {

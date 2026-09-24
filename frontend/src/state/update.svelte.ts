@@ -9,7 +9,7 @@ import {
   settlePreviousVersion,
 } from '../lib/api';
 import type { AppDistribution, DownloadedUpdate, UpdateInfo } from '../lib/types';
-import { listenEvent } from '../lib/video';
+import { formatBytes, listenEvent } from '../lib/video';
 import { toasts } from './toasts.svelte';
 
 const STORAGE_KEY = 'maimotion.update-check.v1';
@@ -104,8 +104,9 @@ class UpdateState {
         id: 'update-download',
         tone: 'busy',
         title: `正在下載 v${version}`,
-        body: `${this.percent}%`,
+        body: `${formatBytes(this.progress?.downloaded)} / ${formatBytes(this.progress?.total)}・${this.percent}%`,
         sticky: true,
+        progress: this.percent,
       });
     show();
     let lastPercent = -1;
