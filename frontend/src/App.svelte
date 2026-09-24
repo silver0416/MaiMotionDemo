@@ -25,6 +25,7 @@
   import { session } from './state/session.svelte';
   import { toasts } from './state/toasts.svelte';
   import { updateState } from './state/update.svelte';
+  import { videoSync } from './state/videoSync.svelte';
 
   type Tab = 'solution' | 'note' | 'config' | 'view' | 'annotate';
 
@@ -135,6 +136,30 @@
   // 真人標註跟著目前開啟的紀錄；換紀錄時先存檔再載入另一份（不論開著哪個分頁）。
   $effect(() => {
     annotation.bind(records.active);
+  });
+
+  // 影片同步視窗：譜面狀態、選到的音符與播放狀態都送過去。
+  $effect(() => videoSync.start());
+
+  $effect(() => {
+    void videoSync.chartState;
+    untrack(() => videoSync.sendState());
+  });
+
+  $effect(() => {
+    const note = session.selectedNote;
+    if (note) untrack(() => videoSync.cue(note.id, note.timeSeconds));
+  });
+
+  $effect(() => {
+    const playing = playback.playing;
+    const rate = playback.rate;
+    untrack(() => videoSync.playbackChanged(playing, rate));
+  });
+
+  $effect(() => {
+    const time = playback.time;
+    untrack(() => videoSync.timeChanged(time));
   });
 
   // 在盤面點到音符時，右側自動切到音符明細；正在標註時留在標註分頁。

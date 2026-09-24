@@ -1,7 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
-  import { KIND_LABEL } from '../lib/contract';
   import {
     CONFIDENCE_LABEL,
     fileName,
@@ -15,12 +14,13 @@
   import { copyText } from '../lib/debug';
   import { hashText } from '../lib/db';
   import { formatClock } from '../lib/format';
-  import { noteTarget } from '../lib/notes';
+  import { noteLabel } from '../lib/notes';
   import { annotation, type ListFilter } from '../state/annotation.svelte';
   import { playback } from '../state/playback.svelte';
   import { records } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
+  import { videoSync } from '../state/videoSync.svelte';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'memo' | 'share' | 'compare';
@@ -121,12 +121,7 @@
   });
 
   function describe(item: Note): string {
-    const kind = KIND_LABEL[item.kind] ?? item.kind;
-    if (item.kind === 'slide' && item.pathId) {
-      const path = session.pathById.get(item.pathId);
-      if (path) return `${kind} ${path.startButton}${path.shape}${path.endButton}`;
-    }
-    return `${kind} ${noteTarget(item)}`;
+    return noteLabel(item, session.pathById);
   }
 
   function handText(value: TrackHand | undefined): string {
@@ -354,6 +349,13 @@
       <h2 class="title">真人手順標註</h2>
       <span class="spacer"></span>
       <span class="small muted mono" title="已確認／全部音符">{stats.done}／{stats.total}</span>
+      <button
+        class="btn"
+        onclick={() => void videoSync.open()}
+        title={annotation.draft.video ? `對照影片：${annotation.draft.video.title}` : '開啟影片視窗，對照真人手元影片標註'}
+      >
+        <Icon name="video" size={14} />影片同步
+      </button>
     </div>
     <div class="bar-track" role="progressbar" aria-label="標註進度" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
       <div class="bar-fill" style={`width:${percent}%`}></div>

@@ -12,6 +12,8 @@
   import { records } from '../state/records.svelte';
   import { SOLVER_REVISION, session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
+  import { VideoLibrary } from '../state/videoLibrary.svelte';
+  import { formatDuration } from '../lib/video';
 
   interface Props {
     open: boolean;
@@ -27,7 +29,9 @@
   /** 桌面核心保存的 simai Wiki 快取；瀏覽器預覽或讀取失敗時為 null。 */
   let wikiCache = $state<WikiCacheInfo | null>(null);
   /** 危險操作要按兩次：第一次只切成確認狀態。 */
-  let confirming = $state<'cache' | 'all' | null>(null);
+  let confirming = $state<'cache' | 'all' | 'videos' | null>(null);
+  /** 影片同步用的工具與已下載影片（只有桌面版）。 */
+  const videos = new VideoLibrary();
   let working = $state(false);
 
   let closing = $state(false);
@@ -77,6 +81,45 @@
     await updateState.init();
     cacheCount = await dbCount(STORE_ANALYSES);
     wikiCache = session.desktop ? await wikiCacheInfo().catch(() => null) : null;
+    if (session.desktop) {
+      await videos.init();
+      await Promise.all([videos.refreshList(), videos.refreshStatus(false)]);
+    }
+  }
+
+  function videoResult(error: string | null, done: string) {
+    toasts.show({
+      id: 'settings-video',
+      tone: error ? 'error' : 'ok',
+      title: error ? '無法刪除影片' : done,
+      ...(error ? { body: error } : {}),
+    });
+  }
+
+  async function removeVideo(id: string) {
+    videoResult(await videos.remove(id), '已刪除影片');
+  }
+
+  async function clearVideos() {
+    if (confirming !== 'videos') {
+      confirming = 'videos';
+      return;
+    }
+    working = true;
+    const error = await videos.clear();
+    working = false;
+    confirming = null;
+    videoResult(error, '已清除所有下載的影片');
+  }
+
+  async function updateTool(tool: 'yt-dlp' | 'deno') {
+    const ok = await videos.install(tool);
+    toasts.show({
+      id: 'settings-video',
+      tone: ok ? 'ok' : 'error',
+      title: ok ? `${tool === 'deno' ? 'Deno' : 'yt-dlp'} 已是最新版` : '下載失敗',
+      ...(ok ? {} : { body: videos.toolError ?? '' }),
+    });
   }
 
   function formatBytes(bytes: number): string {
@@ -388,6 +431,104 @@
       {/if}
     </section>
 
+    {#if session.desktop}
+      <section class="block" aria-labelledby="settings-video">
+        <div class="block-head">
+          <h3 id="settings-video">影片同步</h3>
+        </div>
+
+        <div class="data-row">
+          <div class="data-text">
+            <div class="data-title">yt-dlp</div>
+            <p class="xsmall muted mono">
+              {#if videos.status?.ytDlp}
+                {videos.status.ytDlp.version}{videos.status.ytDlp.managed ? '' : '（系統安裝，不由本程式更新）'}
+              {:else if videos.status}
+                尚未下載
+              {:else}
+                偵測中…
+              {/if}
+            </p>
+            <p class="field-hint">搜尋與下載 YouTube 影片用。YouTube 改版後舊版常會失效，下載失敗時先更新。</p>
+          </div>
+          <div class="data-actions">
+            <button class="btn" onclick={() => void updateTool('yt-dlp')} disabled={!!videos.installing['yt-dlp'] || !videos.status?.installable}>
+              <Icon name={videos.installing['yt-dlp'] ? 'loader' : 'download'} spin={!!videos.installing['yt-dlp']} />
+              {videos.status?.ytDlp?.managed ? '更新' : '下載'}
+            </button>
+          </div>
+        </div>
+
+        <div class="data-row">
+          <div class="data-text">
+            <div class="data-title">JS 執行環境</div>
+            <p class="xsmall muted mono">
+              {#if videos.status?.runtime}
+                {videos.status.runtime.kind === 'deno' ? 'Deno' : 'Node.js'} {videos.status.runtime.version}{videos.status.runtime.managed ? '' : '（系統安裝）'}
+              {:else if videos.status}
+                未偵測到
+              {:else}
+                偵測中…
+              {/if}
+            </p>
+            <p class="field-hint">yt-dlp 需要它才能通過 YouTube 的檢查。已安裝 Node.js 或 Deno 就不用另外下載。</p>
+          </div>
+          <div class="data-actions">
+            {#if !videos.status?.runtime || videos.status.runtime.managed}
+              <button class="btn" onclick={() => void updateTool('deno')} disabled={!!videos.installing.deno || !videos.status?.installable}>
+                <Icon name={videos.installing.deno ? 'loader' : 'download'} spin={!!videos.installing.deno} />
+                {videos.status?.runtime?.managed ? '更新 Deno' : '下載 Deno'}
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <div class="data-row" class:is-confirming={confirming === 'videos'}>
+          <div class="data-text">
+            <div class="data-title">已下載的影片</div>
+            <p class="xsmall muted mono usage">
+              <span>{videos.entries.length} 部・{formatBytes(videos.cache?.bytes ?? 0)}</span>
+            </p>
+            <p class="field-hint">刪除後標註裡的影片連結與對齊都會保留，需要時再下載一次即可。</p>
+            {#if confirming === 'videos'}
+              <p class="field-error">再按一次「確定清除」才會刪除全部影片。</p>
+            {/if}
+          </div>
+          <div class="data-actions">
+            {#if confirming === 'videos'}
+              <button class="btn" onclick={() => (confirming = null)} disabled={working}>取消</button>
+            {/if}
+            <button
+              class="btn"
+              class:btn--danger={confirming === 'videos'}
+              onclick={clearVideos}
+              disabled={working || (confirming !== 'videos' && (videos.cache?.files ?? 0) === 0)}
+            >
+              <Icon name="trash" />{confirming === 'videos' ? '確定清除' : '全部清除'}
+            </button>
+          </div>
+        </div>
+
+        {#if videos.entries.length > 0}
+          <ul class="video-list">
+            {#each videos.entries as entry (entry.id)}
+              <li class="video-item">
+                <div class="data-text">
+                  <span class="small video-title" title={entry.title}>{entry.title}</span>
+                  <span class="xsmall muted mono">
+                    {formatDuration(entry.duration)}{entry.height ? `・${entry.height}p` : ''}・{formatBytes(entry.bytes)}
+                  </span>
+                </div>
+                <button class="btn btn--icon" onclick={() => void removeVideo(entry.id)} aria-label={`刪除 ${entry.title}`} title="刪除這部影片">
+                  <Icon name="trash" />
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+
     <section class="block" aria-labelledby="settings-data">
       <div class="block-head">
         <h3 id="settings-data">資料管理</h3>
@@ -631,6 +772,31 @@
     display: flex;
     gap: var(--space-2);
     flex: none;
+  }
+
+  .video-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+    border-top: 1px solid var(--c-border);
+  }
+
+  .video-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  .video-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   @media (max-width: 559px) {

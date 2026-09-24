@@ -14,6 +14,7 @@ import {
   type Solution,
   type TrackHand,
 } from './types';
+import { cleanLink, linkFromFile, linkToFile, type VideoLink } from './video';
 
 /** 存在譜面紀錄裡的編輯狀態；notes 以音符穩定鍵為索引。 */
 export interface AnnotationDraft {
@@ -24,6 +25,8 @@ export interface AnnotationDraft {
   ranges: RangeMemo[];
   /** 最後編輯時間（epoch 毫秒） */
   updatedAt: number;
+  /** 對照用的真人影片與同步偏移 */
+  video?: VideoLink;
 }
 
 export const CONFIDENCE_LABEL: Record<Confidence, string> = {
@@ -133,6 +136,7 @@ export function cleanDraft(value: unknown): AnnotationDraft | null {
       if (mark) notes[mark.key] = mark;
     }
   }
+  const video = cleanLink(raw.video);
   return {
     title: text(raw.title),
     annotators: Array.isArray(raw.annotators) ? raw.annotators.filter((a): a is string => typeof a === 'string' && a !== '') : [],
@@ -140,6 +144,7 @@ export function cleanDraft(value: unknown): AnnotationDraft | null {
     notes,
     ranges: cleanRanges(raw.ranges),
     updatedAt: finite(raw.updatedAt) ? raw.updatedAt : 0,
+    ...(video ? { video } : {}),
   };
 }
 
@@ -196,6 +201,7 @@ export function toFile(
   chart: { source: string; sha256: string; firstSeconds: number; notes: Note[] },
 ): HandAnnotation {
   const order = new Map(chart.notes.map((note, index) => [note.key ?? '', index]));
+  const video = linkToFile(draft.video);
   const notes = Object.values(draft.notes).sort(
     (a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity) || (a.key < b.key ? -1 : 1),
   );
@@ -214,6 +220,7 @@ export function toFile(
     memo: draft.memo,
     notes: notes.map((mark) => ({ ...mark })),
     ranges: draft.ranges.map((range) => ({ ...range })),
+    ...(video ? { video } : {}),
   };
 }
 
@@ -233,6 +240,7 @@ export function serialize(file: HandAnnotation): string {
     `  "annotators": ${line(file.annotators)},`,
     `  "updatedAt": ${line(file.updatedAt)},`,
     `  "memo": ${line(file.memo)},`,
+    ...(file.video ? [`  "video": ${line(file.video)},`] : []),
     `  "ranges": ${list(file.ranges)},`,
     `  "notes": ${list(file.notes)},`,
     `  "chart": ${line(file.chart)}`,
@@ -264,6 +272,7 @@ export function parseFile(input: string): ParseResult {
     return { ok: false, error: '標註檔沒有附原譜，無法對應音符。' };
   }
   const input_notes = Array.isArray(data.notes) ? data.notes : [];
+  const video = linkToFile(linkFromFile(data.video));
   const notes = input_notes.map(cleanMark).filter((mark): mark is NoteAnnotation => mark !== null);
   return {
     ok: true,
@@ -285,6 +294,7 @@ export function parseFile(input: string): ParseResult {
       memo: text(data.memo),
       notes,
       ranges: cleanRanges(data.ranges),
+      ...(video ? { video } : {}),
     },
   };
 }
@@ -350,6 +360,9 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
     draft.memo = draft.memo ? `${draft.memo}\n\n${file.memo}` : file.memo;
   }
   if (!draft.title) draft.title = file.title;
+  // 自己還沒挑影片時，沿用對方的影片與同步偏移。
+  const video = linkFromFile(file.video);
+  if (!draft.video && video) draft.video = video;
   return { draft, added, conflicts };
 }
 

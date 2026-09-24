@@ -132,6 +132,9 @@ pub struct HandAnnotation {
     pub notes: Vec<NoteAnnotation>,
     #[serde(default)]
     pub ranges: Vec<RangeMemo>,
+    /// 對照用的真人影片（網址、標題、同步偏移）；核心不使用，原樣保留。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

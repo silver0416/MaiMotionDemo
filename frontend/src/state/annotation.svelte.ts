@@ -15,6 +15,7 @@ import {
 } from '../lib/annotation';
 import { projectConfig } from '../lib/contract';
 import { hashText } from '../lib/db';
+import type { VideoLink } from '../lib/video';
 import type {
   Confidence,
   EvaluateResponse,
@@ -306,6 +307,16 @@ export class AnnotationStore {
   restore(draft: AnnotationDraft): void {
     this.draft = draft;
     this.#touch();
+  }
+
+  /** 設定或解除對照影片（含同步偏移）。 */
+  setVideo(link: VideoLink | null): void {
+    if (!this.recordId) return;
+    if (link) this.draft.video = { ...link };
+    else delete this.draft.video;
+    this.draft.updatedAt = Date.now();
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = setTimeout(() => this.flush(), SAVE_DELAY);
   }
 
   setOverallMemo(memo: string): void {

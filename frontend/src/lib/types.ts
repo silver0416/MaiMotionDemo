@@ -1,3 +1,4 @@
+import type { AnnotationVideo } from './video';
 // 與 docs/CONTRACT.md 及 src/model.rs（camelCase 序列化）對應的型別。
 // 前端只讀取這些資料，不重做 simai 解析或左右手指派。
 
@@ -499,6 +500,8 @@ export interface HandAnnotation {
   memo: string;
   notes: NoteAnnotation[];
   ranges: RangeMemo[];
+  /** 對照用的 YouTube 影片與同步偏移（影片時間 = 譜面時間 + offset） */
+  video?: AnnotationVideo;
 }
 
 export interface EvaluateRequest {

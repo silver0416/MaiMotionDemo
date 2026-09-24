@@ -2,6 +2,7 @@
 
 mod majdata;
 mod update;
+mod video;
 mod wiki;
 
 use mai_motion_core::{AnalyzeRequest, AnalyzeResponse, EvaluateRequest, EvaluateResponse};
@@ -150,12 +151,31 @@ fn main() {
     let majdata_client = majdata::build_client().expect("Failed to initialize Majdata HTTP client");
     let update_client = update::build_client().expect("Failed to initialize update HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
+    let video_client = video::build_client().expect("Failed to initialize video tool HTTP client");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            video::commands::allow_videos(app.handle());
+            Ok(())
+        })
+        // 主視窗關閉時一併關掉影片視窗，程式才會結束。
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                use tauri::Manager;
+                if let Some(video) = window
+                    .app_handle()
+                    .get_webview_window(video::commands::WINDOW_LABEL)
+                {
+                    let _ = video.close();
+                }
+            }
+        })
         .manage(AnalysisGate(Arc::new(AtomicBool::new(false))))
         .manage(MajdataClient(majdata_client))
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
+        .manage(video::VideoState::new(video_client))
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
             evaluate_annotation,
@@ -167,7 +187,20 @@ fn main() {
             wiki_search_songs,
             wiki_fetch_chart,
             wiki_cache_info,
-            wiki_clear_cache
+            wiki_clear_cache,
+            video::commands::video_open_window,
+            video::commands::video_tools_status,
+            video::commands::video_install_tool,
+            video::commands::video_remove_tool,
+            video::commands::video_search,
+            video::commands::video_download,
+            video::commands::video_cancel_download,
+            video::commands::video_get,
+            video::commands::video_list,
+            video::commands::video_delete,
+            video::commands::video_cache_info,
+            video::commands::video_clear_cache,
+            video::commands::video_open_local
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run MaiMotionDemo");

@@ -1,4 +1,5 @@
-import type { Assignment, Hand, Note, PathSample, Point } from './types';
+import { KIND_LABEL } from './contract';
+import type { Assignment, Hand, Note, PathSample, Point, SlidePath } from './types';
 
 /**
  * 同一顆 Slide 由兩手「同時」各滑一段（例如 WiFi 2+1）時回傳兩手，否則回傳空陣列。
@@ -21,6 +22,16 @@ export function simultaneousSlideHands(list: Assignment[]): Hand[] {
 export function noteTarget(note: Note): string {
   if (!note.touchArea) return String(note.button);
   return `${note.touchArea}${note.button > 0 ? note.button : ''}`;
+}
+
+/** 音符的簡短說明，例如「Tap 3」「Slide 1-5」。 */
+export function noteLabel(note: Note, pathById: Map<string, SlidePath>): string {
+  const kind = KIND_LABEL[note.kind] ?? note.kind;
+  if (note.kind === 'slide' && note.pathId) {
+    const path = pathById.get(note.pathId);
+    if (path) return `${kind} ${path.startButton}${path.shape}${path.endButton}`;
+  }
+  return `${kind} ${noteTarget(note)}`;
 }
 
 /** 修飾語標籤，例如 Break、EX、煙火。 */
