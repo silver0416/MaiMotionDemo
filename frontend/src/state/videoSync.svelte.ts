@@ -15,6 +15,8 @@ const MAIDATA_DIFFICULTIES = ['EASY', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', '
 const CUE_QUIET_MS = 400;
 /** 主視窗播放時，定期讓影片校正時間。 */
 const RESYNC_MS = 1000;
+/** 播放中時間和預期的差超過這個值，視為使用者跳轉（點時間軸、循環跳回），立刻通知影片。 */
+const JUMP_SECONDS = 0.15;
 
 /** 搜尋用的曲名與難度。 */
 function queryFor(): string {
@@ -47,8 +49,9 @@ class VideoSync {
   #silentPause = false;
   #lastPlaying: boolean | null = null;
   #lastRate = Number.NaN;
-  /** 播放中上一次的時間；變小代表循環跳回，要馬上讓影片跟上。 */
+  /** 播放中上一次的時間與當時的 performance.now()，用來偵測跳轉。 */
   #lastPlayTime = Number.NaN;
+  #lastPlayWall = 0;
 
   /** 目前要給影片視窗的譜面狀態。 */
   get chartState(): ChartState {
@@ -139,8 +142,13 @@ class VideoSync {
   /** 主視窗暫停時拖曳時間軸：影片跟著移動。跟隨影片或選取音符造成的變動不回送。 */
   timeChanged(time: number): void {
     if (playback.playing) {
-      if (time < this.#lastPlayTime - 1e-3) this.#sendPlayback(true, time, playback.rate);
+      const now = performance.now();
+      const expected = this.#lastPlayTime + ((now - this.#lastPlayWall) / 1000) * playback.rate;
+      if (Math.abs(time - expected) > JUMP_SECONDS) this.#sendPlayback(true, time, playback.rate);
       this.#lastPlayTime = time;
+      this.#lastPlayWall = now;
+      // 播放過後，暫停時再跳回同一個時間也要通知影片。
+      this.#lastSentTime = Number.NaN;
       return;
     }
     this.#lastPlayTime = Number.NaN;

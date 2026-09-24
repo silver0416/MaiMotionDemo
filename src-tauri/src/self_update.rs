@@ -2,7 +2,8 @@
 //! 1. 把新版執行檔下載到目前程式所在的資料夾（沒有寫入權限就改放「下載」資料夾），
 //!    驗證大小與 SHA-256 後才放到正式檔名。
 //! 2. 重新啟動：開啟新版並帶上 `--updated-from <舊版路徑>`，舊版自己結束。
-//! 3. 新版啟動後詢問是否刪除舊版；只刪啟動參數指定、而且不是自己的那個執行檔。
+//! 3. 新版啟動後自動刪除舊版。啟動參數誰都能帶，所以只刪同一個資料夾裡、
+//!    內含本程式識別碼、而且不是自己的那個執行檔。
 
 use crate::update::{UpdateAsset, ASSET_URL_PREFIX};
 use serde::Serialize;
@@ -16,6 +17,8 @@ use std::time::Duration;
 
 pub const UPDATED_FROM_ARG: &str = "--updated-from";
 const DOWNLOAD_LIMIT_BYTES: u64 = 200 * 1024 * 1024;
+/// 本程式的識別碼（tauri.conf.json 的 identifier），每一版執行檔裡都有這串。
+const APP_MARKER: &[u8] = b"dev.silver0416.maimotiondemo";
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -226,6 +229,26 @@ pub fn removable_previous(previous: &Path, current_exe: &Path) -> bool {
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
         && !same_file(previous, current_exe)
+        && same_dir(previous, current_exe)
+        && is_this_app(previous)
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    match (a.parent(), b.parent()) {
+        (Some(a), Some(b)) => same_file(a, b),
+        _ => false,
+    }
+}
+
+/// 執行檔裡找得到本程式的識別碼，才確定是舊版的 MaiMotionDemo。
+fn is_this_app(path: &Path) -> bool {
+    let size_ok = std::fs::metadata(path).is_ok_and(|meta| meta.len() <= DOWNLOAD_LIMIT_BYTES);
+    size_ok
+        && std::fs::read(path).is_ok_and(|bytes| {
+            bytes
+                .windows(APP_MARKER.len())
+                .any(|window| window == APP_MARKER)
+        })
 }
 
 /// 刪除舊版；舊程式可能還在結束中，最多等幾秒。
@@ -312,7 +335,7 @@ pub mod commands {
         removable_previous(&previous, &exe).then(|| previous.to_string_lossy().into_owned())
     }
 
-    /// 刪除舊版；成功或使用者選擇保留後就不再詢問。
+    /// 刪除舊版（新版啟動後自動呼叫）；remove 為 false 時只放棄這次的舊版記錄。
     #[tauri::command]
     pub async fn update_remove_previous(
         state: tauri::State<'_, SelfUpdateState>,
@@ -361,22 +384,42 @@ mod tests {
         assert_eq!(previous_from_args(args(&["app.exe", "--updated-from"])), None);
     }
 
+    fn app_bytes() -> Vec<u8> {
+        [b"MZ...".as_slice(), APP_MARKER, b"...".as_slice()].concat()
+    }
+
     #[test]
-    fn only_other_existing_exe_is_removable() {
+    fn only_this_apps_exe_beside_us_is_removable() {
         let dir = temp_dir("removable");
         let old = dir.join("old.exe");
         let current = dir.join("new.exe");
         let text = dir.join("notes.txt");
-        std::fs::write(&old, b"x").unwrap();
-        std::fs::write(&current, b"x").unwrap();
-        std::fs::write(&text, b"x").unwrap();
+        let foreign = dir.join("other-program.exe");
+        std::fs::write(&old, app_bytes()).unwrap();
+        std::fs::write(&current, app_bytes()).unwrap();
+        std::fs::write(&text, app_bytes()).unwrap();
+        std::fs::write(&foreign, b"MZ other program").unwrap();
         assert!(removable_previous(&old, &current));
         assert!(!removable_previous(&current, &current));
         assert!(!removable_previous(&text, &current));
+        assert!(!removable_previous(&foreign, &current));
         assert!(!removable_previous(&dir.join("missing.exe"), &current));
+        // 別的資料夾裡的舊版不刪，即使內容是本程式。
+        let elsewhere = temp_dir("removable-elsewhere");
+        let away = elsewhere.join("old.exe");
+        std::fs::write(&away, app_bytes()).unwrap();
+        assert!(!removable_previous(&away, &current));
         remove_previous(&old).unwrap();
         assert!(!old.exists());
         let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn marker_matches_the_app_identifier() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config["identifier"].as_str().unwrap().as_bytes(), APP_MARKER);
     }
 
     #[test]

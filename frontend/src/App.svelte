@@ -187,12 +187,12 @@
     });
   });
 
-  // 每次開啟都自動檢查一次更新；有新版才提示，失敗靜默忽略。從舊版更新過來時先問要不要刪舊版。
+  // 每次開啟都自動檢查一次更新；有新版才提示，失敗靜默忽略。從舊版更新過來時先自動刪掉舊版。
   $effect(() => {
     let cancelled = false;
     (async () => {
       await updateState.init();
-      await updateState.askAboutPrevious();
+      await updateState.removePrevious();
       if (cancelled || !updateState.shouldAutoCheck()) return;
       const info = await updateState.check();
       if (cancelled || !info?.hasUpdate) return;

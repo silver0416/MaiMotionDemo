@@ -171,37 +171,25 @@ class UpdateState {
     }
   }
 
-  /** 從舊版更新過來時，詢問要不要刪除舊版。 */
-  async askAboutPrevious(): Promise<void> {
+  /** 透過程式內更新重新啟動後，自動刪除舊版執行檔。 */
+  async removePrevious(): Promise<void> {
     if (!isDesktop()) return;
     const path = await previousVersionPath().catch(() => null);
     if (!path) return;
     const name = path.split(/[\\/]/).pop() ?? path;
     const version = await import('../lib/api').then(({ appVersion }) => appVersion());
-    toasts.show({
-      id: 'update-previous',
-      tone: 'ok',
-      title: `已更新到 v${version}`,
-      body: `要刪除舊版 ${name} 嗎？不刪也不影響使用。`,
-      sticky: true,
-      action: {
-        label: '刪除舊版',
-        icon: 'trash',
-        run: () => {
-          void settlePreviousVersion(true).then(
-            () => toasts.show({ id: 'update-previous', tone: 'ok', title: '已刪除舊版', body: name }),
-            (error) =>
-              toasts.show({
-                id: 'update-previous',
-                tone: 'error',
-                title: '無法刪除舊版',
-                body: `${typeof error === 'string' ? error : String(error)}。可以之後自己刪除 ${path}。`,
-                sticky: true,
-              }),
-          );
-        },
-      },
-    });
+    try {
+      await settlePreviousVersion(true);
+      toasts.show({ id: 'update-previous', tone: 'ok', title: `已更新到 v${version}`, body: `已移除舊版 ${name}。` });
+    } catch (error) {
+      toasts.show({
+        id: 'update-previous',
+        tone: 'warn',
+        title: `已更新到 v${version}，但舊版沒有移除`,
+        body: `${typeof error === 'string' ? error : String(error)}。可以之後自己刪除 ${path}。`,
+        sticky: true,
+      });
+    }
   }
 
   /** 開啟新版下載頁；還沒檢查過就開 Releases 總覽。 */

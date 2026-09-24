@@ -521,6 +521,8 @@ details[open] > summary {
   margin-bottom: var(--space-2);
 }
 
+/* 捲軸一律細、用框線色；html 涵蓋窄視窗時整頁捲動的情況。 */
+html,
 .scroll,
 .textarea {
   scrollbar-width: thin;

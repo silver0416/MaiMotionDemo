@@ -104,6 +104,8 @@
   /** 主視窗帶動時，主視窗的時鐘：at（Date.now()）那一刻的譜面時間與倍率。 */
   let mainClock: { time: number; at: number; rate: number } | null = null;
   let correcting = false;
+  /** 正按著進度條拖曳：不用播放位置覆寫拇指，免得和滑鼠互相拉扯。 */
+  let scrubbing = false;
 
   /** 片段播放中：播到 end 停下，視設定停回 hit。 */
   let segment: { end: number; hit: number } | null = null;
@@ -268,7 +270,7 @@
 
   function tick(): void {
     if (!video) return;
-    current = position();
+    if (!scrubbing) current = position();
     paused = video.paused;
     trackMain();
     if (segment && current >= segment.end - 1e-3) {
@@ -349,6 +351,8 @@
       // 剛接手（暫停、逐格）時，途中的播放校正是舊的。
       if (recent && leader !== 'main') return;
       const starting = leader !== 'main' || video.paused;
+      // 剛在影片視窗拖動或點進度條：本地時鐘已經改到新位置，途中送來的舊校正不理會。
+      if (recent && !starting) return;
       leader = 'main';
       segment = null;
       // 扣掉訊息傳遞的時間；兩個視窗的 Date.now() 是同一個時鐘。
@@ -374,6 +378,8 @@
     if (segment) return;
     // 影片自己在播：主視窗停下的通知不把影片拉回。
     if (leader === 'video' && !video.paused) return;
+    // 改由主視窗決定位置（拖時間軸）：影片不再回報，免得較舊的位置把主視窗拉回去。
+    leader = null;
     if (Math.abs(position() - target) > 0.005) {
       video.pause();
       seek(target);
@@ -433,7 +439,10 @@
     if (!video) return;
     touchedAt = performance.now();
     seek(time);
-    channel?.send({ type: 'transport', action: 'seek', time: position() - (offset ?? 0) });
+    const chartTime = position() - (offset ?? 0);
+    // 主視窗會跳到同一個位置繼續播；先把本地的主視窗時鐘改過去，對時才不會拉回舊位置。
+    if (mainClock) mainClock = { time: chartTime, at: Date.now(), rate: mainClock.rate };
+    channel?.send({ type: 'transport', action: 'seek', time: chartTime });
   }
 
   function stepFrame(direction: 1 | -1): void {
@@ -461,6 +470,7 @@
 
   function onSeekInput(event: Event): void {
     const time = Number((event.currentTarget as HTMLInputElement).value);
+    current = time;
     if (mainLeading()) {
       seekWhileMainLeads(time);
       return;
@@ -631,7 +641,8 @@
   });
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<!-- 在進度條外放開滑鼠也要結束拖曳。 -->
+<svelte:window onkeydown={onKeydown} onpointerup={() => (scrubbing = false)} />
 
 <div class="video-app">
   <main class="stage">
@@ -730,6 +741,8 @@
         step="0.001"
         value={current}
         oninput={onSeekInput}
+        onpointerdown={() => (scrubbing = true)}
+        onpointercancel={() => (scrubbing = false)}
         disabled={!src}
         aria-label="影片位置"
       />
@@ -770,7 +783,7 @@
       <button class="btn tab" aria-pressed={side === 'find'} onclick={() => ((side = 'find'), (autoSide = false))}>找影片</button>
     </div>
 
-    <div class="side-body">
+    <div class="side-body scroll">
       {#if side === 'find'}
         <VideoFinder
           {library}

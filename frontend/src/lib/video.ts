@@ -379,14 +379,16 @@ export function openChannel<In extends ToVideo | ToMain>(
   if (isDesktop()) {
     let unlisten: (() => void) | null = null;
     let closed = false;
-    void import('@tauri-apps/api/event').then(async ({ listen }) => {
+    const events = import('@tauri-apps/api/event');
+    // 自己開始監聽之後才送出：否則對方立刻回覆（例如 hello 的回應）會在監聽前送到而遺失。
+    const ready = events.then(async ({ listen }) => {
       const stop = await listen<Envelope>(EVENT, (event) => accept(event.payload));
       if (closed) stop();
       else unlisten = stop;
     });
     return {
       send: (message) => {
-        void import('@tauri-apps/api/event').then(({ emit }) => emit(EVENT, { from: side, message }));
+        void ready.then(() => events).then(({ emit }) => emit(EVENT, { from: side, message }));
       },
       close: () => {
         closed = true;
