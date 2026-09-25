@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
+  import ResizeHandle from './ResizeHandle.svelte';
   import {
     CONFIDENCE_LABEL,
     fileName,
@@ -40,6 +41,37 @@
   const CONFIDENCES: Confidence[] = ['sure', 'unsure', 'either'];
 
   let view = $state<View>('label');
+
+  // ---- 清單高度：固定高度貼在面板底部，上方內容多寡不會讓清單位置跳動。
+  const LIST_KEY = 'maimotion.annotate-list-height.v1';
+  const LIST_DEFAULT = 320;
+  const LIST_MIN = 160;
+  /** 上方編輯區至少留下的高度。 */
+  const UPPER_MIN = 160;
+
+  function loadListHeight(): number {
+    try {
+      const value = Number(localStorage.getItem(LIST_KEY));
+      return Number.isFinite(value) && value > 0 ? value : LIST_DEFAULT;
+    } catch {
+      return LIST_DEFAULT;
+    }
+  }
+
+  let listHeight = $state(loadListHeight());
+  let panelHeight = $state(0);
+  let headHeight = $state(0);
+  const listMax = $derived(Math.max(LIST_MIN, panelHeight - headHeight - UPPER_MIN));
+  const shownList = $derived(Math.round(Math.min(listMax, Math.max(LIST_MIN, listHeight))));
+
+  function setListHeight(value: number): void {
+    listHeight = value;
+    try {
+      localStorage.setItem(LIST_KEY, String(value));
+    } catch {
+      // 無法保存只影響下次開啟的高度。
+    }
+  }
 
   const note = $derived<Note | null>(session.selectedNote);
   const current = $derived<Step | null>(annotation.currentStep);
@@ -331,8 +363,8 @@
   }
 </script>
 
-<div class="annotate">
-  <header class="head">
+<div class="annotate" bind:clientHeight={panelHeight}>
+  <header class="head" bind:offsetHeight={headHeight}>
     <div class="row">
       <h2 class="title">真人手順標註</h2>
       <span class="spacer"></span>
@@ -376,185 +408,199 @@
   {/if}
 
   {#if view === 'label' && session.chart && annotation.keysReady}
-    <section class="section editor" aria-label="目前音符">
-      {#if note}
-        <div class="row">
-          <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
-            <Icon name="chevron-left" size={14} />
-          </button>
-          <div class="note-title">
-            <span class="mono small">{formatClock(current?.time ?? note.timeSeconds)}</span>
-            <strong>{current ? stepLabel(current, session.pathById) : describe(note)}</strong>
-          </div>
-          <button class="btn btn--icon" onclick={() => annotation.step(1)} aria-label="下一步" title="下一步">
-            <Icon name="chevron-right" size={14} />
-          </button>
-        </div>
-
-        {#if need.hand}
-          <div class="line" class:is-active={split && current?.part === 'hand'}>
-            <button class="line-label" onclick={() => annotation.select(note!, 'hand')} disabled={!split} title={split ? '切到起點這一步' : undefined}>
-              {note.kind === 'slide' ? '起點' : '手'}
+    <div class="upper scroll">
+      <section class="section editor" aria-label="目前音符">
+        {#if note}
+          <div class="row">
+            <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
+              <Icon name="chevron-left" size={14} />
             </button>
-            <div class="choices" role="group" aria-label={note.kind === 'slide' ? '起點觸碰的手' : '接觸的手'}>
-              <button class="btn choice left" aria-pressed={mark?.hand === 'L'} onclick={() => onHand('L')}>左 L</button>
-              <button class="btn choice right" aria-pressed={mark?.hand === 'R'} onclick={() => onHand('R')}>右 R</button>
-              <button class="btn btn--icon" onclick={() => onHand(undefined)} disabled={!mark?.hand} aria-label="清除" title="清除">
-                <Icon name="x" size={14} />
-              </button>
+            <div class="note-title">
+              <span class="mono small">{formatClock(current?.time ?? note.timeSeconds)}</span>
+              <strong>{current ? stepLabel(current, session.pathById) : describe(note)}</strong>
             </div>
-          </div>
-        {/if}
-
-        {#if need.track}
-          <div class="line" class:is-active={split && current?.part === 'track'}>
-            <button class="line-label" onclick={() => annotation.select(note!, 'track')} disabled={!split} title={split ? '切到滑行這一步' : undefined}>
-              滑行
+            <button class="btn btn--icon" onclick={() => annotation.step(1)} aria-label="下一步" title="下一步">
+              <Icon name="chevron-right" size={14} />
             </button>
-            <div class="choices" role="group" aria-label="開始滑行的手">
-              <button class="btn choice left" aria-pressed={mark?.track === 'L'} onclick={() => onTrack('L')}>左 L</button>
-              <button class="btn choice right" aria-pressed={mark?.track === 'R'} onclick={() => onTrack('R')}>右 R</button>
-              {#if wifi}
-                <button class="btn choice" aria-pressed={mark?.track === 'LR'} onclick={() => onTrack('LR')} title="兩手一起（2+1）">L+R</button>
-              {/if}
-              <button class="btn btn--icon" onclick={() => onTrack(undefined)} disabled={!mark?.track} aria-label="清除" title="清除">
-                <Icon name="x" size={14} />
-              </button>
-            </div>
           </div>
-          {#if mark?.track !== 'LR'}
-            <div class="line">
-              <span class="line-label">換手</span>
-              <div class="stack-sm grow">
-                {#each mark?.handovers ?? [] as handover, index (index)}
-                  <div class="row small">
-                    <button class="linkish mono" onclick={() => seekTo(handover.at)}>{formatClock(handover.at)}</button>
-                    <span>換到 {handover.to === 'L' ? '左手' : '右手'}</span>
-                    <span class="spacer"></span>
-                    <button class="btn btn--icon" onclick={() => annotation.removeHandover(note, index)} aria-label="移除這次換手" title="移除">
-                      <Icon name="trash" size={14} />
-                    </button>
-                  </div>
-                {/each}
-                <button
-                  class="btn"
-                  disabled={!inSlide}
-                  onclick={() => annotation.addHandover(note, Math.round(playback.time * 1000) / 1000)}
-                  title="把播放時間拖到換手的那一刻再按"
-                >
-                  <Icon name="plus" size={14} />在 {formatClock(playback.time)} 換手
+
+          {#if need.hand}
+            <div class="line" class:is-active={split && current?.part === 'hand'}>
+              <button class="line-label" onclick={() => annotation.select(note!, 'hand')} disabled={!split} title={split ? '切到起點這一步' : undefined}>
+                {note.kind === 'slide' ? '起點' : '手'}
+              </button>
+              <div class="choices" role="group" aria-label={note.kind === 'slide' ? '起點觸碰的手' : '接觸的手'}>
+                <button class="btn choice left" aria-pressed={mark?.hand === 'L'} onclick={() => onHand('L')}>左 L</button>
+                <button class="btn choice right" aria-pressed={mark?.hand === 'R'} onclick={() => onHand('R')}>右 R</button>
+                <button class="btn btn--icon" onclick={() => onHand(undefined)} disabled={!mark?.hand} aria-label="清除" title="清除">
+                  <Icon name="x" size={14} />
                 </button>
-                {#if !inSlide}
-                  <span class="field-hint">播放時間要在這條 Slide 的滑行期間內。</span>
-                {/if}
               </div>
             </div>
           {/if}
-        {/if}
 
-        <div class="line">
-          <span class="line-label">信心</span>
-          <div class="choices" role="group" aria-label="信心程度">
-            {#each CONFIDENCES as value (value)}
-              <button
-                class="btn choice"
-                aria-pressed={(mark?.confidence ?? 'sure') === value && !!mark}
-                onclick={() => note && annotation.setConfidence(note, value)}
-              >
-                {CONFIDENCE_LABEL[value]}
+          {#if need.track}
+            <div class="line" class:is-active={split && current?.part === 'track'}>
+              <button class="line-label" onclick={() => annotation.select(note!, 'track')} disabled={!split} title={split ? '切到滑行這一步' : undefined}>
+                滑行
               </button>
-            {/each}
+              <div class="choices" role="group" aria-label="開始滑行的手">
+                <button class="btn choice left" aria-pressed={mark?.track === 'L'} onclick={() => onTrack('L')}>左 L</button>
+                <button class="btn choice right" aria-pressed={mark?.track === 'R'} onclick={() => onTrack('R')}>右 R</button>
+                {#if wifi}
+                  <button class="btn choice" aria-pressed={mark?.track === 'LR'} onclick={() => onTrack('LR')} title="兩手一起（2+1）">L+R</button>
+                {/if}
+                <button class="btn btn--icon" onclick={() => onTrack(undefined)} disabled={!mark?.track} aria-label="清除" title="清除">
+                  <Icon name="x" size={14} />
+                </button>
+              </div>
+            </div>
+            {#if mark?.track !== 'LR'}
+              <div class="line">
+                <span class="line-label">換手</span>
+                <div class="stack-sm grow">
+                  {#each mark?.handovers ?? [] as handover, index (index)}
+                    <div class="row small">
+                      <button class="linkish mono" onclick={() => seekTo(handover.at)}>{formatClock(handover.at)}</button>
+                      <span>換到 {handover.to === 'L' ? '左手' : '右手'}</span>
+                      <span class="spacer"></span>
+                      <button class="btn btn--icon" onclick={() => annotation.removeHandover(note, index)} aria-label="移除這次換手" title="移除">
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
+                  {/each}
+                  <button
+                    class="btn"
+                    disabled={!inSlide}
+                    onclick={() => annotation.addHandover(note, Math.round(playback.time * 1000) / 1000)}
+                    title="把播放時間拖到換手的那一刻再按"
+                  >
+                    <Icon name="plus" size={14} />在 {formatClock(playback.time)} 換手
+                  </button>
+                  {#if !inSlide}
+                    <span class="field-hint">播放時間要在這條 Slide 的滑行期間內。</span>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          {/if}
+
+          <div class="line">
+            <span class="line-label">信心</span>
+            <div class="choices" role="group" aria-label="信心程度">
+              {#each CONFIDENCES as value (value)}
+                <button
+                  class="btn choice"
+                  aria-pressed={(mark?.confidence ?? 'sure') === value && !!mark}
+                  onclick={() => note && annotation.setConfidence(note, value)}
+                >
+                  {CONFIDENCE_LABEL[value]}
+                </button>
+              {/each}
+            </div>
           </div>
-        </div>
 
-        <label class="field">
-          <span class="field-label">備註</span>
-          <textarea
-            class="input memo"
-            rows="2"
-            placeholder="為什麼這樣打、別的打法…"
-            value={mark?.memo ?? ''}
-            oninput={(event) => note && annotation.setMemo(note, event.currentTarget.value)}
-          ></textarea>
+          <label class="field">
+            <span class="field-label">備註</span>
+            <textarea
+              class="input memo"
+              rows="2"
+              placeholder="為什麼這樣打、別的打法…"
+              value={mark?.memo ?? ''}
+              oninput={(event) => note && annotation.setMemo(note, event.currentTarget.value)}
+            ></textarea>
+          </label>
+
+          <div class="row row-wrap small">
+            {#if mark?.prefilled}
+              <span class="badge badge--quiet">模型預填，尚未確認</span>
+              <button class="btn" onclick={() => note && annotation.confirm(note)}>
+                <Icon name="check" size={14} />確認
+              </button>
+            {/if}
+            {#if modelMarks.get(note.id)}
+              <span class="muted">模型：{summary(note, modelMarks.get(note.id)) || '—'}</span>
+            {/if}
+            <span class="spacer"></span>
+            <button class="btn btn--ghost" onclick={() => note && annotation.clear(note)} disabled={!mark}>清除這顆</button>
+          </div>
+        {:else}
+          <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
+        {/if}
+        <p class="xsmall muted keys">
+          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
+        </p>
+      </section>
+
+      <section class="section tools" aria-label="批次工具">
+        <div class="row row-wrap">
+          <button class="btn" disabled={!modelSolution} onclick={() => {
+            const count = annotation.prefillFromModel();
+            toasts.show({ id: 'annotation-prefill', tone: 'ok', title: `已預填 ${count} 顆`, body: '預填只是草稿，逐顆確認或修改後才算真人資料。' });
+          }}>
+            <Icon name="zap" size={14} />用模型預填空白
+          </button>
+          <button class="btn" disabled={stats.prefilled === 0} onclick={() => annotation.confirmAll()}>
+            <Icon name="check" size={14} />全部確認
+          </button>
+          <button class="btn btn--ghost" disabled={stats.prefilled === 0} onclick={() => annotation.clearPrefilled()}>清除預填</button>
+        </div>
+        <label class="check">
+          <input type="checkbox" checked={annotation.autoAdvance} onchange={(event) => annotation.setAutoAdvance(event.currentTarget.checked)} />
+          <span>標完自動跳到下一步</span>
         </label>
-
-        <div class="row row-wrap small">
-          {#if mark?.prefilled}
-            <span class="badge badge--quiet">模型預填，尚未確認</span>
-            <button class="btn" onclick={() => note && annotation.confirm(note)}>
-              <Icon name="check" size={14} />確認
-            </button>
-          {/if}
-          {#if modelMarks.get(note.id)}
-            <span class="muted">模型：{summary(note, modelMarks.get(note.id)) || '—'}</span>
-          {/if}
-          <span class="spacer"></span>
-          <button class="btn btn--ghost" onclick={() => note && annotation.clear(note)} disabled={!mark}>清除這顆</button>
-        </div>
-      {:else}
-        <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
-      {/if}
-      <p class="xsmall muted keys">
-        <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
-      </p>
-    </section>
-
-    <section class="section tools" aria-label="批次工具">
-      <div class="row row-wrap">
-        <button class="btn" disabled={!modelSolution} onclick={() => {
-          const count = annotation.prefillFromModel();
-          toasts.show({ id: 'annotation-prefill', tone: 'ok', title: `已預填 ${count} 顆`, body: '預填只是草稿，逐顆確認或修改後才算真人資料。' });
-        }}>
-          <Icon name="zap" size={14} />用模型預填空白
-        </button>
-        <button class="btn" disabled={stats.prefilled === 0} onclick={() => annotation.confirmAll()}>
-          <Icon name="check" size={14} />全部確認
-        </button>
-        <button class="btn btn--ghost" disabled={stats.prefilled === 0} onclick={() => annotation.clearPrefilled()}>清除預填</button>
-      </div>
-      <label class="check">
-        <input type="checkbox" checked={annotation.autoAdvance} onchange={(event) => annotation.setAutoAdvance(event.currentTarget.checked)} />
-        <span>標完自動跳到下一步</span>
-      </label>
-    </section>
-
-    <div class="list-head">
-      <select class="select filter" aria-label="篩選" value={annotation.filter} onchange={(event) => (annotation.filter = event.currentTarget.value as ListFilter)}>
-        {#each FILTERS as item (item.id)}
-          <option value={item.id}>{item.label}</option>
-        {/each}
-      </select>
-      <span class="xsmall muted">{rows.length} 步</span>
+      </section>
     </div>
-    <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
-      {#each rows as step (step.key)}
-        {@const human = annotation.mark(step.note)}
-        {@const text = stepSummary(step, human)}
-        {@const first = step.part === 'hand' || !step.note.hasHead}
-        <button
-          class="item"
-          class:is-selected={current?.key === step.key}
-          class:is-current={currentKey === step.key}
-          data-step={step.key}
-          role="option"
-          aria-selected={current?.key === step.key}
-          onclick={() => annotation.selectStep(step)}
-        >
-          <span class="mono xsmall muted time">{formatClock(step.time)}</span>
-          <span class="what small">{stepLabel(step, session.pathById)}</span>
-          <span class="hands small mono" class:is-prefilled={human?.prefilled && !!text} class:is-empty={!text}>
-            {text || '未標'}
-          </span>
-          <span class="flags xsmall">
-            {#if stepDiffers(step, human)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
-            {#if first && human?.confidence && human.confidence !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[human.confidence]}</span>{/if}
-            {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
-            {#if human?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
-          </span>
-        </button>
-      {:else}
-        <p class="small muted empty">沒有符合條件的步驟。</p>
-      {/each}
+
+    <div class="lower" style={`height:${shownList}px`}>
+      <ResizeHandle
+        label="調整標註清單高度"
+        side="top"
+        value={shownList}
+        min={LIST_MIN}
+        max={listMax}
+        defaultValue={LIST_DEFAULT}
+        direction={-1}
+        onChange={setListHeight}
+      />
+      <div class="list-head">
+        <select class="select filter" aria-label="篩選" value={annotation.filter} onchange={(event) => (annotation.filter = event.currentTarget.value as ListFilter)}>
+          {#each FILTERS as item (item.id)}
+            <option value={item.id}>{item.label}</option>
+          {/each}
+        </select>
+        <span class="xsmall muted">{rows.length} 步</span>
+      </div>
+      <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
+        {#each rows as step (step.key)}
+          {@const human = annotation.mark(step.note)}
+          {@const text = stepSummary(step, human)}
+          {@const first = step.part === 'hand' || !step.note.hasHead}
+          <button
+            class="item"
+            class:is-selected={current?.key === step.key}
+            class:is-current={currentKey === step.key}
+            data-step={step.key}
+            role="option"
+            aria-selected={current?.key === step.key}
+            onclick={() => annotation.selectStep(step)}
+          >
+            <span class="mono xsmall muted time">{formatClock(step.time)}</span>
+            <span class="what small">{stepLabel(step, session.pathById)}</span>
+            <span class="hands small mono" class:is-prefilled={human?.prefilled && !!text} class:is-empty={!text}>
+              {text || '未標'}
+            </span>
+            <span class="flags xsmall">
+              {#if stepDiffers(step, human)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
+              {#if first && human?.confidence && human.confidence !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[human.confidence]}</span>{/if}
+              {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
+              {#if human?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
+            </span>
+          </button>
+        {:else}
+          <p class="small muted empty">沒有符合條件的步驟。</p>
+        {/each}
+      </div>
     </div>
   {/if}
 
@@ -894,9 +940,25 @@
     padding: var(--space-1) var(--space-2);
   }
 
+  /* 上方編輯區吃剩下的高度，內容多時自己捲動。 */
+  .upper {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* 清單固定高度貼在底部：選到哪顆音符都不會讓清單上緣移動。 */
+  .lower {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    min-height: 0;
+    border-top: 1px solid var(--c-border);
+  }
+
   .list {
     flex: 1 1 auto;
-    min-height: 160px;
+    min-height: 0;
   }
 
   .item {

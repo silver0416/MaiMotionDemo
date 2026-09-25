@@ -5,17 +5,22 @@
     min: number;
     max: number;
     defaultValue: number;
-    /** 往右拖時寬度變大（左欄）為 1，變小（右欄）為 -1。 */
+    /** 往右（或往下）拖時數值變大為 1，變小為 -1。 */
     direction: 1 | -1;
-    /** 掛在容器的哪一側邊緣；感應區以該邊緣為中心，跨在面板外框上。 */
-    side: 'left' | 'right';
+    /**
+     * 掛在容器的哪一側邊緣；感應區以該邊緣為中心，跨在面板外框上。
+     * left／right 調寬度（左右拖），top／bottom 調高度（上下拖）。
+     */
+    side: 'left' | 'right' | 'top' | 'bottom';
     onChange: (value: number) => void;
   }
 
   let { label, value, min, max, defaultValue, direction, side, onChange }: Props = $props();
 
+  const vertical = $derived(side === 'top' || side === 'bottom');
+
   let dragging = $state(false);
-  let originX = 0;
+  let origin = 0;
   let originValue = 0;
 
   function clamp(next: number): number {
@@ -28,13 +33,14 @@
     const target = event.currentTarget as HTMLElement;
     target.setPointerCapture(event.pointerId);
     dragging = true;
-    originX = event.clientX;
+    origin = vertical ? event.clientY : event.clientX;
     originValue = value;
   }
 
   function onPointerMove(event: PointerEvent) {
     if (!dragging) return;
-    onChange(clamp(originValue + (event.clientX - originX) * direction));
+    const now = vertical ? event.clientY : event.clientX;
+    onChange(clamp(originValue + (now - origin) * direction));
   }
 
   function onPointerUp(event: PointerEvent) {
@@ -46,8 +52,10 @@
   function onKeydown(event: KeyboardEvent) {
     const step = event.shiftKey ? 64 : 16;
     let next: number | null = null;
-    if (event.key === 'ArrowLeft') next = value - step * direction;
-    else if (event.key === 'ArrowRight') next = value + step * direction;
+    const less = vertical ? 'ArrowUp' : 'ArrowLeft';
+    const more = vertical ? 'ArrowDown' : 'ArrowRight';
+    if (event.key === less) next = value - step * direction;
+    else if (event.key === more) next = value + step * direction;
     else if (event.key === 'Home') next = min;
     else if (event.key === 'End') next = max;
     else if (event.key === 'Enter') next = defaultValue;
@@ -65,13 +73,13 @@
   class="handle handle--{side}"
   class:is-dragging={dragging}
   role="separator"
-  aria-orientation="vertical"
+  aria-orientation={vertical ? 'horizontal' : 'vertical'}
   aria-label={label}
   aria-valuenow={value}
   aria-valuemin={min}
   aria-valuemax={max}
   tabindex="0"
-  title="拖曳調整寬度，雙擊還原"
+  title={vertical ? '拖曳調整高度，雙擊還原' : '拖曳調整寬度，雙擊還原'}
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
@@ -94,6 +102,35 @@
 
   .handle--right {
     right: -5px;
+  }
+
+  .handle--top,
+  .handle--bottom {
+    top: auto;
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: auto;
+    height: 10px;
+    cursor: row-resize;
+  }
+
+  .handle--top {
+    top: -5px;
+  }
+
+  .handle--bottom {
+    bottom: -5px;
+  }
+
+  .handle--top::after,
+  .handle--bottom::after {
+    top: 4px;
+    bottom: auto;
+    left: var(--radius-md);
+    right: var(--radius-md);
+    width: auto;
+    height: 2px;
   }
 
   .handle--left {
