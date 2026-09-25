@@ -36,6 +36,8 @@ fn initial() -> State {
         used_touch_sweep: false,
         lenient_in_group: false,
         finished: Default::default(),
+        suspended: Default::default(),
+        resumed: Default::default(),
         used_early_slide: false,
         used_touch_group: false,
         bundled: BTreeMap::new(),

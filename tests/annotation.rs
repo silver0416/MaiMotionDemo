@@ -246,3 +246,74 @@ fn wrong_format_is_rejected_with_a_message() {
         .message
         .contains("maimotion-hand-annotation"));
 }
+
+/// 某條 Slide 的滑行段中，前後兩段之間的空檔（手放開後再接回）。
+fn slide_gaps(solution: &Solution, note_id: &str) -> Vec<(Hand, f64, Hand, f64)> {
+    let mut parts: Vec<_> = solution
+        .assignments
+        .iter()
+        .filter(|a| a.note_id == note_id && a.part == "slide")
+        .collect();
+    parts.sort_by(|a, b| a.start_seconds.total_cmp(&b.start_seconds));
+    parts
+        .windows(2)
+        .filter(|p| p[1].start_seconds - p[0].end_seconds > 0.02)
+        .map(|p| (p[0].hand, p[0].end_seconds, p[1].hand, p[1].start_seconds))
+        .collect()
+}
+
+/// 四月の雨 24.3 秒：右手滑長 Slide 8q1 的前段後放開，兩手去打 8～2 的連打，
+/// 最後左手接回去補完。判定進度會保留，放開再接回是合法打法。
+#[test]
+fn long_slide_can_be_paused_and_finished_by_the_other_hand() {
+    let source = "(79){16}8q1[4:6],8,8,8,7,7,7,7,6,6,6,6,5,5,5,5,\n4,4,4,4,3,3,3,3,2,2,2,2,,,,,E";
+    let c = chart(source);
+    let slide = c.notes.iter().position(|n| n.kind == "slide").unwrap();
+    let mut marks = vec![json!({
+        "key": c.notes[slide].key,
+        "hand": "L",
+        "track": "R",
+        "handovers": [{"at": 3.7, "to": "L"}],
+    })];
+    for note in c.notes.iter().filter(|n| n.kind == "tap") {
+        let hand = if note.button <= 4 { "R" } else { "L" };
+        marks.push(json!({"key": note.key, "hand": hand}));
+    }
+    let r = evaluate(source, json!(marks));
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let gaps = slide_gaps(r.human_solution.as_ref().unwrap(), &c.notes[slide].id);
+    assert_eq!(gaps.len(), 1, "{gaps:?}");
+    let (before, paused_at, after, resumed_at) = gaps[0];
+    assert_eq!((before, after), (Hand::R, Hand::L));
+    // 右手在連打 4 之前放開；左手在自己的連打（5）結束後才接回。
+    let first_four = c
+        .notes
+        .iter()
+        .find(|n| n.kind == "tap" && n.button == 4)
+        .unwrap();
+    let last_five = c
+        .notes
+        .iter()
+        .filter(|n| n.kind == "tap" && n.button == 5)
+        .next_back()
+        .unwrap();
+    assert!(paused_at <= first_four.time_seconds, "{gaps:?}");
+    assert!(resumed_at >= last_five.time_seconds, "{gaps:?}");
+}
+
+/// 短 Slide 放開再接回只是規避追蹤成本的捷徑：模型不應該這樣打。
+#[test]
+fn short_slides_are_not_paused() {
+    let source = "(79){16}1p6[4:1],,8,,6>1[4:1],7,7,,1p6[4:1],,8,,6,7b,,7b,\n8q3[4:1],,1,,3<8[4:1],,2,,8q3[4:1],,1,,3,,,,E";
+    let r = analyze_chart(AnalyzeRequest {
+        request_id: "short".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+    });
+    let c = r.chart.as_ref().unwrap();
+    for note in c.notes.iter().filter(|n| n.kind == "slide") {
+        let gaps = slide_gaps(&r.solutions[0], &note.id);
+        assert!(gaps.is_empty(), "{} {gaps:?}", note.key);
+    }
+}

@@ -397,7 +397,13 @@ pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
             }
             response.status = if model.is_some() { "ok" } else { "no_solution" }.into();
         }
-        Err(diagnostic) => {
+        Err(mut diagnostic) => {
+            // 模型自己解得出來、照標註卻在某處全部走不下去：原因在標註（或模型不支援的打法），
+            // 不是模型本身無解，改用標註走不通的說明。
+            if model.is_some() && diagnostic.code == "no_solution" {
+                diagnostic.code = "annotation_infeasible".into();
+                diagnostic.message = solver::ANNOTATION_INFEASIBLE_MESSAGE.into();
+            }
             response.status = if diagnostic.code == "annotation_infeasible" {
                 "human_infeasible".into()
             } else {

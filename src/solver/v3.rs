@@ -402,6 +402,41 @@ impl<'a> Context<'a> {
         Ok(left.min(right))
     }
 
+    /// 暫停中的 Slide 若在 from 立刻接回、用剩下的時間追完剩下路徑的壓縮成本。
+    /// 越晚接回只會越貴，所以是排序用的樂觀下限：暫停越早、之後越要趕路，
+    /// 在排序上立刻看得到，beam 不會因為暫停暫時便宜就剪掉「滑到一半才放開」的狀態。
+    pub fn resume_bound(
+        &self,
+        task: &Task,
+        chart: &Chart,
+        progress: f64,
+        from: f64,
+    ) -> Result<f64, Diagnostic> {
+        let note = &chart.notes[task.note];
+        let end = note.motion_end.unwrap();
+        if from >= end - EPS || progress >= 1.0 - EPS {
+            return Ok(0.0);
+        }
+        let samples = path_samples_range(&chart.paths[task.path], progress, 1.0, from, end);
+        let distance: f64 = samples
+            .windows(2)
+            .map(|p| p[0].point().distance(p[1].point()))
+            .sum();
+        let segment = MotionSegment {
+            mode: "slide".into(),
+            note_id: Some(note.id.clone()),
+            start_seconds: from,
+            end_seconds: end,
+            samples,
+        };
+        // 追蹤負擔只看速度，與哪一隻手無關。
+        let terms = self.engine.motion_terms(&segment, Hand::L).map_err(error)?;
+        let rate = self.nominal[note.id.as_str()];
+        self.engine
+            .compression(terms.tracking_strain, rate * distance)
+            .map_err(error)
+    }
+
     /// Independent complete trajectory recomputation for the final candidates.
     /// Replays physical actions and handovers as well as removable motion terms,
     /// so missing/duplicated incremental updates fail before publishing a score.
@@ -515,7 +550,9 @@ pub(super) fn remove_unnecessary_deferrals(states: &mut Vec<State>) {
         .filter(|s| s.deposit.is_empty())
         .map(&key)
         .collect();
-    states.retain(|s| s.deposit.is_empty() || !ready.contains(&key(s)));
+    // 暫停中的 Slide 也有預存，但不是「晚接上」：手已經離開路線去做別的事，
+    // 和同一組接觸位置相同的持續追蹤狀態並不等價，不能當成多餘的延後剔除。
+    states.retain(|s| s.deposit.is_empty() || !s.suspended.is_empty() || !ready.contains(&key(s)));
 }
 
 pub(super) fn compare(a: &State, b: &State, final_rank: bool) -> std::cmp::Ordering {

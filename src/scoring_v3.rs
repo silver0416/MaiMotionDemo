@@ -28,7 +28,7 @@ const WORKLOAD_TAU: f64 = 0.45;
 const WORKLOAD_FREE_LEVEL: f64 = 1.25;
 /// Sharing work between the hands comes from this density term, not from raw
 /// speed: a hand repeating at 16th spacing tires far faster than at 8th spacing.
-const WORKLOAD_WEIGHT: f64 = 3.0;
+const WORKLOAD_WEIGHT: f64 = 4.0;
 // V3.1 short-term ownership. Internal Demo calibration, not UI parameters.
 pub const OWNERSHIP_TAU: f64 = 0.8;
 pub const OWNERSHIP_INITIAL: f64 = 0.5;
@@ -282,7 +282,10 @@ impl ScoringV3 {
             workload: WORKLOAD_WEIGHT * (decayed - WORKLOAD_FREE_LEVEL).max(0.).powi(2) * load,
             ..Default::default()
         };
-        if let (Some(prev), Some(last), Some(time)) = (h.prev_point, h.last_point, h.last_time) {
+        // 回頭的間隔從手到達目前這個鍵算起：在鍵上重打一陣子才離開，不算剛到就折返。
+        if let (Some(prev), Some(last), Some(time)) =
+            (h.prev_point, h.last_point, h.arrival_time.or(h.last_time))
+        {
             p.reversal =
                 reversal_scale * reversal(prev, last, event.point, event.time_seconds - time)?;
         }
@@ -310,7 +313,14 @@ impl ScoringV3 {
             h.last_strike_time = None;
             h.jack_streak = 0;
         }
-        h.prev_point = h.last_point;
+        // 同一個鍵重打不改變「從哪裡來」：3 → 2 → 2 → 3 仍是一次回頭，
+        // 不因為中間的重打把來的方向洗掉。
+        if h.last_point
+            .is_none_or(|p| p.distance(event.point) > JACK_SAME_POINT_RADIUS)
+        {
+            h.prev_point = h.last_point;
+            h.arrival_time = Some(event.time_seconds);
+        }
         h.last_point = Some(event.point);
         h.last_time = Some(event.time_seconds);
         h.workload = decayed + load;
@@ -412,6 +422,8 @@ pub struct HandHistory {
     prev_point: Option<Point>,
     last_point: Option<Point>,
     last_time: Option<f64>,
+    /// 手到達 last_point 的時間；在同一個鍵上重打不會更新。
+    arrival_time: Option<f64>,
     jack_point: Option<Point>,
     jack_streak: u32,
     last_strike_time: Option<f64>,
@@ -433,6 +445,7 @@ impl HandHistory {
         hash_point(self.prev_point, h);
         hash_point(self.last_point, h);
         self.last_time.map(quantize).hash(h);
+        self.arrival_time.map(quantize).hash(h);
         hash_point(self.jack_point, h);
         self.jack_streak.hash(h);
         self.last_strike_time.map(quantize).hash(h);

@@ -50,6 +50,11 @@ const SLIDE_CRITICAL_MAX_FRAMES: f64 = 36.0;
 const SLIDE_CRITICAL_FAST_FRAMES: f64 = 17.0;
 /// 按鍵代表點在半徑 1、最外圈感應區在 0.9；介於兩者之間視為螢幕邊界。
 const SCREEN_EDGE: f64 = 0.95;
+/// V3 暫停 Slide：剩下的滑行時間至少這麼長才考慮放開（長 Slide 期間去打別的音符）；
+/// 短 Slide 放開再接回只是規避追蹤成本的捷徑，不是真人打法。
+const SUSPEND_MIN_REMAINING: f64 = 1.0;
+/// 接回暫停的 Slide 時，剩下的路徑最快能以這個速度掃完（盤面半徑為 1，每秒；約為 speedReference 預設的 3 倍）。
+const RESUME_MAX_SPEED: f64 = 12.0;
 
 /// 不可變的單向串列。Beam Search 每展開一步就要複製一份狀態；用結構共享把
 /// 複製成本壓到 O(1)，整體搜尋才會隨音符數線性成長，而不是平方成長。
@@ -175,6 +180,11 @@ struct State {
     lenient_in_group: bool,
     /// 手已進入最後判定區而完成的 Slide；其餘 checkpoint 不再需要接觸。
     finished: std::collections::BTreeSet<usize>,
+    /// V3：追到一半先放開的 Slide → (判定已推進到的路徑比例 u, 目前記在預存裡的接回壓縮下限)。
+    /// 判定進度會保留（MajdataPlay SlideBase.SensorCheck），之後任一手可從這裡接回去，在名目終點前追完。
+    suspended: BTreeMap<usize, (f64, f64)>,
+    /// 已經暫停過又接回去的 Slide；每條只允許暫停一次，避免搜尋分支暴增。
+    resumed: std::collections::BTreeSet<usize>,
     /// V3：與另一條同時 Slide 由同一隻手張開覆蓋。bundled 為「被帶著走的 Slide → 主導的 Slide」，
     /// bundle_lead 反過來。被帶著走的那條不再有自己的 checkpoint 接觸。
     bundled: BTreeMap<usize, usize>,
@@ -1912,6 +1922,33 @@ fn brush_touch(
     Some(next)
 }
 
+/// 暫停中的 Slide 由 hand 在 task.start 接回去：從暫停時的進度 progress 追到名目終點。
+/// 以「虛擬接上時間」表示：沿用晚接上時剩餘路徑等速壓縮的公式，
+/// u(t) = (t - pickup) / (end - pickup) 在 task.start 時剛好等於 progress。
+fn resume_slide(
+    state: &State,
+    task: &Task,
+    hand: Hand,
+    progress: f64,
+    chart: &Chart,
+) -> Option<State> {
+    let end = chart.notes[task.note].motion_end?;
+    if task.start >= end - EPS || progress >= 1.0 - EPS {
+        return None;
+    }
+    if task.path_length * (1.0 - progress) > RESUME_MAX_SPEED * (end - task.start) {
+        return None;
+    }
+    let pickup = (task.start - progress * end) / (1.0 - progress);
+    let mut next = state.clone();
+    next.suspended.remove(&task.note);
+    next.resumed.insert(task.note);
+    next.engaged.insert(task.note, pickup);
+    next.owners.insert(task.note, hand);
+    next.pending -= next.deposit.remove(&task.note).unwrap_or(0.0);
+    Some(next)
+}
+
 /// Slide 尾判：手依目前的接軌排程進入最後判定區的時刻落在 Critical Perfect 區間內，
 /// 且 task.start 已不早於該時刻。正解時刻與區間寬度都隨形狀（judge_progress）與 Slide 長度改變。
 fn slide_judged(state: &State, task: &Task, chart: &Chart) -> bool {
@@ -2339,6 +2376,9 @@ pub struct HandRules {
 /// 標註的換手時刻與模型 checkpoint 對不齊，前後這段時間內兩手都算符合。
 pub const HANDOVER_TOLERANCE: f64 = 0.1;
 
+/// 照標註求解走不下去時的說明。
+pub const ANNOTATION_INFEASIBLE_MESSAGE: &str = "依標註的手順，模型在此時找不到能完成的動作（手被佔用、來不及移動，或 Slide 換手與模型的交接規則不合）。長 Slide 若是放開後由另一手補完，請在滑行標上換手時間。";
+
 impl HandRules {
     fn allows(&self, a: &Assignment) -> bool {
         if a.part == "slide" {
@@ -2485,6 +2525,8 @@ fn solve_with(
         used_touch_sweep: false,
         lenient_in_group: false,
         finished: std::collections::BTreeSet::new(),
+        suspended: BTreeMap::new(),
+        resumed: std::collections::BTreeSet::new(),
         bundled: BTreeMap::new(),
         bundle_lead: BTreeMap::new(),
         used_bundle: false,
@@ -2539,6 +2581,8 @@ fn solve_with(
             state.wifi_pairs.retain(|note, _| live(note));
             state.engaged.retain(|note, _| live(note));
             state.finished.retain(&live);
+            state.suspended.retain(|note, _| live(note));
+            state.resumed.retain(&live);
             state.bundled.retain(|note, _| live(note));
             state.bundle_lead.retain(|note, _| live(note));
             state.last_handover.retain(|note, _| live(note));
@@ -2650,6 +2694,34 @@ fn solve_with(
                 && (state.finished.contains(&task.note) || state.bundled.contains_key(&task.note))
             {
                 pending.push((state, after, auto));
+                continue;
+            }
+            if let Some(&(progress, bound)) = state.suspended.get(&task.note) {
+                for hand in [Hand::L, Hand::R] {
+                    expansions += 1;
+                    let Some(resumed) = resume_slide(&state, task, hand, progress, chart) else {
+                        continue;
+                    };
+                    for mut s in assign(&resumed, task, hand, chart, c, false) {
+                        if let Some(context) = &v3_context {
+                            context.update(&state, &mut s)?;
+                        }
+                        pending.push((s, after.clone(), auto.clone()));
+                    }
+                }
+                // 最後一段一定要有手接回去；其餘時間可以繼續等：這段路徑的移動量，
+                // 以及「晚一段才接回」多出來的壓縮成本，先記進排序用的預存。
+                if !task.last {
+                    if let Some(context) = &v3_context {
+                        let next_bound = context.resume_bound(task, chart, progress, task.end)?;
+                        let share = context.deposit(task, chart)? + next_bound - bound;
+                        let mut waiting = state.clone();
+                        waiting.pending += share;
+                        *waiting.deposit.entry(task.note).or_default() += share;
+                        waiting.suspended.insert(task.note, (progress, next_bound));
+                        pending.push((waiting, after, auto));
+                    }
+                }
                 continue;
             }
             // 準時的接觸優先；只有兩手都無法準時完成這顆音符時，才展開 Touch 在
@@ -2801,6 +2873,42 @@ fn solve_with(
                 done.used_early_slide = true;
                 pending.push((done, after.clone(), auto.clone()));
             }
+            // V3：還沒進最後判定區、這隻手在 Slide 結束前另有用途時，可以先放開，
+            // 判定進度留在這裡，之後再接回去（真人常見的「滑一半、去打別的、再補完」）。
+            if c.is_v3()
+                && task.mode == "slide"
+                && needed_elsewhere
+                && !task.last
+                && task.samples.is_empty()
+                && !state.resumed.contains(&task.note)
+                && !state.wifi_pairs.contains_key(&task.note)
+                && !state.bundle_lead.contains_key(&task.note)
+                && state.owners.contains_key(&task.note)
+                && !slide_judged(&state, task, chart)
+            {
+                if let (Some(&pickup), Some(end)) = (
+                    state.engaged.get(&task.note),
+                    chart.notes[task.note].motion_end,
+                ) {
+                    let progress = (task.start - pickup) / (end - pickup);
+                    if progress > EPS
+                        && progress < 1.0 - EPS
+                        && end - task.start >= SUSPEND_MIN_REMAINING - EPS
+                    {
+                        if let Some(context) = &v3_context {
+                            let bound = context.resume_bound(task, chart, progress, task.end)?;
+                            let share = context.deposit(task, chart)? + bound;
+                            let mut paused = state.clone();
+                            paused.owners.remove(&task.note);
+                            paused.engaged.remove(&task.note);
+                            paused.suspended.insert(task.note, (progress, bound));
+                            paused.pending += share;
+                            *paused.deposit.entry(task.note).or_default() += share;
+                            pending.push((paused, after.clone(), auto.clone()));
+                        }
+                    }
+                }
+            }
             // 沒有任何一手接得到的 Touch，交給 Touch Group 過半判定；整組結束時再驗證過半。
             if pending.len() == before && in_touch_group[i] {
                 let mut grouped = auto.clone();
@@ -2821,7 +2929,7 @@ fn solve_with(
             let mut d = if rejected > 0 {
                 Diagnostic::plain(
                     "annotation_infeasible",
-                    "依標註的手順，模型在此時找不到能完成的動作（手被佔用、來不及移動，或 Slide 換手與模型的交接規則不合）。".into(),
+                    ANNOTATION_INFEASIBLE_MESSAGE.into(),
                 )
             } else {
                 Diagnostic::plain(
@@ -3065,6 +3173,11 @@ fn fingerprint(state: &State, time: f64) -> u64 {
     state.bundled.hash(&mut h);
     state.bundle_lead.hash(&mut h);
     state.finished.hash(&mut h);
+    state
+        .suspended
+        .iter()
+        .for_each(|(n, (u, _))| (n, q(*u)).hash(&mut h));
+    state.resumed.hash(&mut h);
     state
         .deposit
         .iter()

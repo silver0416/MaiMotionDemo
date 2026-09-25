@@ -93,9 +93,11 @@ export const SOLVER_REVISION = 'note-key-7';
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。
  * V3 係數仍在校準；核心調整 V3 排序但 App 版本號沒變時遞增這裡。
  * v3-1：human-motion-v3 首次接入（schemaVersion 4）。
+ * v3-2：Hold 結束的同一瞬間可提早放開去接 Slide；長 Slide 可放開後再由任一手接回；
+ *   同一鍵重打不洗掉回頭方向（間隔從到達算起）；連打負荷權重 3 → 4。
  */
 export const SCORING_REVISION: Partial<Record<ScoringModel, string>> = {
-  'human-motion-v3': 'v3-1',
+  'human-motion-v3': 'v3-2',
 };
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */

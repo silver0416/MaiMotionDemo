@@ -100,6 +100,31 @@ fn alternating_points_have_stable_distinct_owners() {
     }
 }
 #[test]
+fn restrike_keeps_the_approach_direction_for_reversal() {
+    // Player reference n489..n494: 3 -> 2,2 -> 3 at 120 BPM 16ths. Restriking
+    // 2 does not erase that the hand came from 3, so going straight back is a
+    // reversal; the interval counts from arriving at 2, not from the restrike.
+    let e = engine();
+    let (from, to) = (button_point(3), button_point(2));
+    let reversals = |steps: &[(f64, Point)]| {
+        let mut h = HandHistory::default();
+        steps
+            .iter()
+            .map(|(t, p)| {
+                e.action(&mut h, &action(*t, *p, ActionKind::Strike), 0.15)
+                    .unwrap()
+                    .reversal
+            })
+            .collect::<Vec<_>>()
+    };
+    let quick = reversals(&[(0., from), (0.25, to), (0.375, to), (0.5, from)]);
+    assert!(quick[3] > 0.05, "{quick:?}");
+    // A hand that stays on 2 for a while before returning is not rushing back.
+    let settled = reversals(&[(0., from), (0.25, to), (0.5, to), (0.75, to), (1., from)]);
+    near(settled[4], 0.);
+}
+
+#[test]
 fn reversal_is_rotationally_invariant_and_not_a_jack() {
     let a = Point { x: 0.2, y: 0.3 };
     let b = Point { x: 0.8, y: -0.4 };
