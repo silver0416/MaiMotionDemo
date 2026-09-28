@@ -485,7 +485,10 @@ export interface NoteAnnotation {
   /** Slide 開始滑行時的手 */
   track?: TrackHand;
   handovers?: HandoverMark[];
+  /** 第一步（接觸或 Slide 起點；沒有起點的 Slide 則是滑行）的信心，省略為確定 */
   confidence?: Confidence;
+  /** 有起點的 Slide 滑行那一步的信心；省略時沿用 confidence */
+  trackConfidence?: Confidence;
   /** 由模型預填、尚未確認；不當作真人資料 */
   prefilled?: boolean;
   memo?: string;
@@ -514,10 +517,31 @@ export interface HandAnnotation {
     source: string;
   };
   memo: string;
+  /** 主線的手順 */
   notes: NoteAnnotation[];
   ranges: RangeMemo[];
   /** 對照用的 YouTube 影片與同步偏移（影片時間 = 譜面時間 + offset） */
   video?: AnnotationVideo;
+  /** 其他打法：某一段換成不同手順的分支（只有前端讀；Rust 比對時只收到展開後的單一路線） */
+  branches?: AnnotationBranchFile[];
+}
+
+/** 打法分支：from～to（含）這段的音符改用自己的手順，結束後併回 parent。 */
+export interface AnnotationBranchFile {
+  id: string;
+  name: string;
+  /** 從哪條線分出來：'main' 或另一條分支的 id */
+  parent: string;
+  /** 結束後併入哪條線；省略表示併回 parent */
+  merge?: string;
+  /** 這段第一顆與最後一顆音符的判定時間（秒） */
+  from: number;
+  to: number;
+  memo?: string;
+  by?: string;
+  /** 分支圖上的線色（#rrggbb） */
+  color?: string;
+  notes: NoteAnnotation[];
 }
 
 export interface EvaluateRequest {

@@ -58,7 +58,7 @@ class VideoSync {
     const record = records.active;
     const notes = annotation.ordered;
     const step = annotation.currentStep;
-    const stats = progress(annotation.draft, notes);
+    const stats = progress(annotation.routed, notes);
     return {
       recordId: record?.id ?? null,
       title: record ? recordTitle(record) : '',

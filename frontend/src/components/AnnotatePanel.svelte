@@ -1,21 +1,31 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import BranchPanel from './BranchPanel.svelte';
+  import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import Icon from './Icon.svelte';
+  import LaneGraph, { laneColumnWidth } from './LaneGraph.svelte';
+  import LineChips from './LineChips.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
   import {
+    assignLanes,
     CONFIDENCE_LABEL,
+    inBranch,
     fileName,
     isHumanLabeled,
     isWifi,
+    laneRows,
+    MAIN_LINE,
     modelMark,
     neededParts,
     parseFile,
     progress,
+    spansByTime,
+    stepConfidence,
   } from '../lib/annotation';
   import { copyText } from '../lib/debug';
   import { formatClock } from '../lib/format';
   import { noteLabel, stepLabel } from '../lib/notes';
-  import { annotation, isStepDone, type ListFilter, type Step } from '../state/annotation.svelte';
+  import { annotation, isStepDone, type ListFilter, type Step, type StepPart } from '../state/annotation.svelte';
   import { playback } from '../state/playback.svelte';
   import { records } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
@@ -23,9 +33,10 @@
   import { videoSync } from '../state/videoSync.svelte';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
-  type View = 'label' | 'memo' | 'share' | 'compare';
+  type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
   const VIEWS: { id: View; label: string }[] = [
     { id: 'label', label: '逐顆標註' },
+    { id: 'branch', label: '打法' },
     { id: 'memo', label: '備註' },
     { id: 'share', label: '分享' },
     { id: 'compare', label: '比對' },
@@ -77,6 +88,8 @@
   const current = $derived<Step | null>(annotation.currentStep);
   /** Slide 的起點與滑行分兩步標；目前這一步在編輯區會標出來。 */
   const split = $derived(!!note && note.kind === 'slide' && note.hasHead);
+  /** 信心按鈕分組：有起點的 Slide 起點與滑行各一組，其他音符一組。 */
+  const confidenceParts = $derived<(StepPart | null)[]>(split ? ['hand', 'track'] : [null]);
   const mark = $derived<NoteAnnotation | undefined>(annotation.mark(note));
   const need = $derived(note ? neededParts(note) : { hand: false, track: false });
   const noteShape = $derived(note?.pathId ? session.pathById.get(note.pathId)?.shape : undefined);
@@ -91,10 +104,10 @@
     return map;
   });
 
-  const stats = $derived(progress(annotation.draft, annotation.ordered));
+  const stats = $derived(progress(annotation.routed, annotation.ordered));
   const percent = $derived(stats.total > 0 ? Math.round((100 * stats.done) / stats.total) : 0);
 
-  /** 這一步和模型不同。 */
+  /** 這一步和模型不同；human 是這一步自己的標註（annotation.stepMark）。 */
   function stepDiffers(step: Step, human: NoteAnnotation | undefined): boolean {
     if (!isHumanLabeled(human) || !human) return false;
     const model = modelMarks.get(step.note.id);
@@ -103,30 +116,154 @@
     return !!human.track && !!model.track && human.track !== model.track;
   }
 
-  /** 清單一列一步；備註與信心是整顆的，只列在它的第一步。 */
+  /** 清單一列一步；信心每一步各自有，備註是整顆的，只列在它的第一步。 */
   const rows = $derived.by(() => {
     const filter = annotation.filter;
     const seen = new Set<string>();
     return annotation.steps.filter((step) => {
+      // 分支以步驟為單位，起點與滑行可能分屬不同的線：確認狀態看這一步自己的標註。
+      const own = annotation.stepMark(step);
       const human = annotation.mark(step.note);
       const first = !seen.has(step.note.id);
       seen.add(step.note.id);
       switch (filter) {
         case 'todo':
-          return !isStepDone(step, human);
+          return !isStepDone(step, own);
         case 'prefilled':
-          return human?.prefilled === true && stepValue(step, human) !== undefined;
+          return own?.prefilled === true && stepValue(step, own) !== undefined;
         case 'diff':
-          return stepDiffers(step, human);
+          return stepDiffers(step, own);
         case 'memo':
           return first && !!human?.memo;
-        case 'unsure':
-          return first && (human?.confidence === 'unsure' || human?.confidence === 'either');
+        case 'unsure': {
+          const confidence = stepConfidence(step.note, human, step.part);
+          return confidence === 'unsure' || confidence === 'either';
+        }
         default:
           return true;
       }
     });
   });
+
+  // ---- 打法分支 ----
+  const branches = $derived(annotation.draft.branches);
+  const hasBranches = $derived(branches.length > 0);
+  const lanes = $derived(assignLanes(branches));
+  const laneCount = $derived(Math.max(1, ...lanes.values()) + 1);
+  /** 清單每一列的分支圖；範圍以目前看得到的列計算。 */
+  const listLanes = $derived(
+    hasBranches
+      ? laneRows(
+          rows.map((step) => step.time),
+          spansByTime(
+            rows.map((step) => step.time),
+            branches,
+          ),
+          branches,
+          lanes,
+          rows.map((step) => annotation.lineOfStep(step.note, step.part)),
+        )
+      : [],
+  );
+  /** 目前這一步歸哪條線、這一步有哪些打法可選（分支以步驟為單位）。 */
+  const stepLine = $derived(current ? annotation.lineOfStep(current.note, current.part) : MAIN_LINE);
+  const stepLines = $derived(current ? annotation.linesAt(current) : []);
+  /** 起點與滑行分屬不同的線時，說明各自在哪條線。 */
+  const splitText = $derived.by(() => {
+    if (!note || !split) return null;
+    const hand = annotation.lineOfStep(note, 'hand');
+    const track = annotation.lineOfStep(note, 'track');
+    return hand === track ? null : `起點在${annotation.lineName(hand)}，滑行在${annotation.lineName(track)}`;
+  });
+
+  // ---- 右鍵標記新分支：先標起點，再點終點（以步驟為單位，Slide 的起點與滑行可以分開） ----
+  const pending = $derived(annotation.pendingStep);
+  /** 標記中選到的另一步，當作終點候選。 */
+  const endCandidate = $derived(pending && current && current.key !== pending.key ? current : null);
+
+  /** 起點到終點（或只有起點）這段的時間範圍，用來在清單上標出範圍。 */
+  function pendingSpan(end: Step | null): { from: number; to: number } {
+    if (!pending) return { from: 0, to: -1 };
+    const stop = end ? end.time : pending.time;
+    return { from: Math.min(pending.time, stop), to: Math.max(pending.time, stop) };
+  }
+
+  const pendingRange = $derived(pendingSpan(endCandidate));
+
+  /** 終點候選預設併入目前路線在那一步走的線。 */
+  const endInto = $derived(endCandidate ? annotation.lineOfStep(endCandidate.note, endCandidate.part) : MAIN_LINE);
+
+  function finishBranch(end: Step) {
+    const branch = annotation.finishMark(end);
+    if (!branch) return;
+    toasts.show({
+      id: 'branch-create',
+      tone: 'ok',
+      title: `已建立「${branch.name}」`,
+      body: `${annotation.rangeText(branch.from, branch.to)}，從${annotation.lineName(branch.parent)}分出、併入${annotation.lineName(branch.merge)}，已複製目前的手順；現在的路線走這條分支。`,
+    });
+  }
+
+  function deleteBranch(id: string) {
+    const name = annotation.lineName(id);
+    const before = annotation.removeBranch(id);
+    if (!before) return;
+    toasts.show({
+      id: 'branch-remove',
+      tone: 'ok',
+      title: `已刪除「${name}」`,
+      body: '按「復原」可以還原。',
+      action: { label: '復原', run: () => annotation.restore(before) },
+    });
+  }
+
+  let menu = $state<{ stepKey: string; x: number; y: number } | null>(null);
+  const menuStep = $derived(menu ? (annotation.steps.find((step) => step.key === menu?.stepKey) ?? null) : null);
+
+  const menuItems = $derived.by<MenuItem[]>(() => {
+    const target = menuStep;
+    if (!target) return [];
+    // 分出與併入的線都看目前選的路線，選單只留標記本身。
+    const items: MenuItem[] = [];
+    if (pending) {
+      const span = pendingSpan(target);
+      items.push({ id: 'end', label: `標記分支終點（${annotation.rangeText(span.from, span.to)}）`, icon: 'flag' });
+      if (target.key !== pending.key) items.push({ id: 'start', label: '改從這一步開始', icon: 'git-branch' });
+      items.push({ id: 'cancel', label: '取消標記分支', icon: 'x' });
+    } else {
+      items.push({ id: 'start', label: '標記為新分支起點', icon: 'git-branch' });
+    }
+    // 刪除這一步所在的分支（主線不能刪）。
+    const owner = annotation.lineOfStep(target.note, target.part);
+    if (owner !== MAIN_LINE) {
+      items.push({ id: `delete:${owner}`, label: `刪除分支「${annotation.lineName(owner)}」`, icon: 'trash', danger: true });
+    }
+    return items;
+  });
+
+  function openMenu(step: Step, event: MouseEvent) {
+    event.preventDefault();
+    menu = { stepKey: step.key, x: event.clientX, y: event.clientY };
+  }
+
+  /** 列上按選單鍵或 Shift+F10，和右鍵一樣打開選單。 */
+  function onRowKeydown(step: Step, event: KeyboardEvent) {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+    event.preventDefault();
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { stepKey: step.key, x: rect.left + 24, y: rect.bottom };
+  }
+
+  function selectMenu(id: string) {
+    const target = menuStep;
+    menu = null;
+    if (!target) return;
+    const [action, line] = id.split(':');
+    if (action === 'start') annotation.markStart(target);
+    else if (action === 'end') finishBranch(target);
+    else if (action === 'cancel') annotation.cancelMark();
+    else if (action === 'delete') deleteBranch(line);
+  }
 
   /** 播放時間所在的步驟（最後一步時間不晚於目前時間的）。 */
   const currentKey = $derived.by(() => {
@@ -241,10 +378,14 @@
     void annotation.draft.updatedAt;
     return annotation.counts();
   });
-  const CLEAR_TEXT: Record<ClearScope, { button: string; ask: (c: { hands: number; memos: number }) => string }> = {
+  const CLEAR_TEXT: Record<ClearScope, { button: string; ask: (c: { hands: number; memos: number; branches: number }) => string }> = {
     hands: { button: '清除所有手順標註', ask: (c) => `清除 ${c.hands} 顆的手順？備註會保留。` },
     memos: { button: '清除所有備註', ask: (c) => `清除 ${c.memos} 則備註？手順會保留。` },
-    all: { button: '全部清除', ask: (c) => `清除全部手順（${c.hands} 顆）與備註（${c.memos} 則）？` },
+    all: {
+      button: '全部清除',
+      ask: (c) =>
+        `清除全部手順（${c.hands} 顆）與備註（${c.memos} 則）${c.branches > 0 ? `，連同 ${c.branches} 條打法分支` : ''}？`,
+    },
   };
 
   async function askClear(scope: ClearScope) {
@@ -410,6 +551,20 @@
   {#if view === 'label' && session.chart && annotation.keysReady}
     <div class="upper scroll">
       <section class="section editor" aria-label="目前音符">
+        {#if hasBranches && note}
+          <div class="route">
+            <span class="field-label">這一步的打法</span>
+            {#if stepLines.length > 1}
+              <LineChips lines={stepLines} current={stepLine} label="這一步的打法，按下切換路線" />
+              <span class="xsmall muted"><kbd>B</kbd> 切換</span>
+            {:else}
+              <span class="small">只有{annotation.lineName(stepLine)}</span>
+            {/if}
+            {#if splitText}
+              <span class="xsmall muted split-note">{splitText}</span>
+            {/if}
+          </div>
+        {/if}
         {#if note}
           <div class="row">
             <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
@@ -485,20 +640,23 @@
             {/if}
           {/if}
 
-          <div class="line">
-            <span class="line-label">信心</span>
-            <div class="choices" role="group" aria-label="信心程度">
-              {#each CONFIDENCES as value (value)}
-                <button
-                  class="btn choice"
-                  aria-pressed={(mark?.confidence ?? 'sure') === value && !!mark}
-                  onclick={() => note && annotation.setConfidence(note, value)}
-                >
-                  {CONFIDENCE_LABEL[value]}
-                </button>
-              {/each}
+          <!-- 有起點的 Slide 起點與滑行各有自己的信心，例如起點確定、滑行兩手皆可。 -->
+          {#each confidenceParts as part (part ?? 'one')}
+            <div class="line" class:is-active={split && current?.part === part}>
+              <span class="line-label">{part === 'hand' ? '起點信心' : part === 'track' ? '滑行信心' : '信心'}</span>
+              <div class="choices" role="group" aria-label={part === 'track' ? '滑行的信心' : part === 'hand' ? '起點的信心' : '信心程度'}>
+                {#each CONFIDENCES as value (value)}
+                  <button
+                    class="btn choice"
+                    aria-pressed={!!mark && annotation.confidenceOf(note, part ?? undefined) === value}
+                    onclick={() => note && annotation.setConfidence(note, value, part ?? undefined)}
+                  >
+                    {CONFIDENCE_LABEL[value]}
+                  </button>
+                {/each}
+              </div>
             </div>
-          </div>
+          {/each}
 
           <label class="field">
             <span class="field-label">備註</span>
@@ -528,7 +686,7 @@
           <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
         {/if}
         <p class="xsmall muted keys">
-          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
+          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
         </p>
       </section>
 
@@ -570,37 +728,85 @@
           {/each}
         </select>
         <span class="xsmall muted">{rows.length} 步</span>
+        {#if pending}
+          <span class="badge" role="status">選取分支終點</span>
+          <span class="spacer"></span>
+          <button class="btn btn--ghost" onclick={() => annotation.cancelMark()} title="取消標記分支（Esc）">取消</button>
+        {/if}
       </div>
+      {#if pending}
+        <div class="mark-bar">
+          <span class="small">
+            {endCandidate
+              ? `${annotation.rangeText(pendingRange.from, pendingRange.to)}，共 ${annotation.stepsIn(pendingRange.from, pendingRange.to).length} 步，從${annotation.lineName(annotation.pendingFromLine)}分出`
+              : `起點：第 ${annotation.stepRef(pending)} 顆，從${annotation.lineName(annotation.pendingFromLine)}分出。點選要結束的那一步，或在那一列按右鍵。要併入別條線就先切換路線。`}
+          </span>
+          {#if endCandidate}
+            <span class="spacer"></span>
+            <button class="btn btn--primary" onclick={() => endCandidate && finishBranch(endCandidate)}>
+              <Icon name="flag" size={14} />標記新分支終點（第 {annotation.stepRef(endCandidate)} 顆，併入{annotation.lineName(endInto)}）
+            </button>
+          {/if}
+        </div>
+      {/if}
       <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
-        {#each rows as step (step.key)}
+        {#each rows as step, index (step.key)}
           {@const human = annotation.mark(step.note)}
+          {@const own = annotation.stepMark(step)}
           {@const text = stepSummary(step, human)}
           {@const first = step.part === 'hand' || !step.note.hasHead}
+          {@const number = annotation.noteNumber(step.note)}
           <button
             class="item"
+            class:is-pending={!!pending && inBranch(pendingRange, step.time)}
             class:is-selected={current?.key === step.key}
             class:is-current={currentKey === step.key}
             data-step={step.key}
+            style={hasBranches ? `padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : undefined}
             role="option"
             aria-selected={current?.key === step.key}
             onclick={() => annotation.selectStep(step)}
+            oncontextmenu={(event) => openMenu(step, event)}
+            onkeydown={(event) => onRowKeydown(step, event)}
           >
+            {#if listLanes[index]}<LaneGraph row={listLanes[index]} lanes={laneCount} />{/if}
+            <!-- 有起點的 Slide 分兩步標：滑行那一列是同一顆的第二步，編號前加箭頭區分。 -->
+            <span class="mono xsmall muted num" title={first ? `第 ${number} 顆` : `第 ${number} 顆的滑行（同一顆的第二步）`}>
+              {first ? number : `↳${number}`}
+            </span>
             <span class="mono xsmall muted time">{formatClock(step.time)}</span>
             <span class="what small">{stepLabel(step, session.pathById)}</span>
-            <span class="hands small mono" class:is-prefilled={human?.prefilled && !!text} class:is-empty={!text}>
+            <span class="hands small mono" class:is-prefilled={own?.prefilled && !!text} class:is-empty={!text}>
               {text || '未標'}
             </span>
             <span class="flags xsmall">
-              {#if stepDiffers(step, human)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
-              {#if first && human?.confidence && human.confidence !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[human.confidence]}</span>{/if}
+              {#if stepDiffers(step, own)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
+              {#if human && stepConfidence(step.note, human, step.part) !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[stepConfidence(step.note, human, step.part)]}</span>{/if}
               {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
-              {#if human?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
+              {#if own?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
+              {#if pending?.key === step.key}<span class="badge">分支起點</span>{/if}
             </span>
           </button>
         {:else}
           <p class="small muted empty">沒有符合條件的步驟。</p>
         {/each}
       </div>
+    </div>
+    {#if menu && menuStep}
+      <ContextMenu
+        items={menuItems}
+        x={menu.x}
+        y={menu.y}
+        label={`第 ${annotation.stepRef(menuStep)} 顆的動作`}
+        onSelect={selectMenu}
+        onClose={() => (menu = null)}
+      />
+    {/if}
+  {/if}
+
+  {#if view === 'branch' && session.chart && annotation.keysReady}
+    <div class="upper scroll">
+      <BranchPanel />
     </div>
   {/if}
 
@@ -728,7 +934,10 @@
   {#if view === 'compare'}
     <section class="section stack-sm">
       <div class="section-title">和模型比對</div>
-      <p class="small muted">用「參數」分頁目前的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認且信心為「確定」的音符。</p>
+      <p class="small muted">用「參數」分頁目前的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認且信心為「確定」的步驟（Slide 的起點與滑行分開看）。</p>
+      {#if hasBranches}
+        <p class="small">比對的路線：<strong>{annotation.lineName(annotation.draft.active)}</strong>（到「打法」分頁切換）</p>
+      {/if}
       <button class="btn btn--primary" disabled={!session.desktop || annotation.evaluating || stats.done === 0} onclick={() => void annotation.evaluate()}>
         <Icon name={annotation.evaluating ? 'loader' : 'compare'} size={14} spin={annotation.evaluating} />
         {annotation.evaluating ? '比對中…' : '開始比對'}
@@ -817,7 +1026,7 @@
 
   .views {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: var(--space-1);
   }
 
@@ -842,7 +1051,7 @@
 
   .line {
     display: grid;
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 56px minmax(0, 1fr);
     align-items: start;
     gap: var(--space-2);
   }
@@ -961,12 +1170,45 @@
     min-height: 0;
   }
 
+  .route {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  .split-note {
+    flex-basis: 100%;
+  }
+
+  .mark-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-control);
+  }
+
+  /* 標記中的新分支範圍：淺底色標出，不用色條。 */
+  .item.is-pending {
+    background: var(--c-control);
+  }
+
+  .item :global(.lanes) {
+    left: var(--space-4);
+  }
+
   .item {
+    position: relative;
     display: grid;
-    grid-template-columns: 72px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(20px, auto) 60px minmax(0, 1fr) auto;
     grid-template-areas:
-      'time what hands'
-      'time flags flags';
+      'num time what hands'
+      'num time flags flags';
     align-items: center;
     column-gap: var(--space-2);
     width: 100%;
@@ -988,6 +1230,11 @@
 
   .item.is-selected {
     background: var(--c-control-hover);
+  }
+
+  .num {
+    grid-area: num;
+    text-align: right;
   }
 
   .time {

@@ -79,8 +79,12 @@ pub struct NoteAnnotation {
     pub track: Option<TrackHand>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub handovers: Vec<HandoverMark>,
+    /// 接觸那一步（Tap／Hold／Touch、Slide 起點；沒有起點的 Slide 則是滑行）的信心。
     #[serde(default)]
     pub confidence: Confidence,
+    /// 有起點的 Slide 滑行那一步的信心；省略時沿用 confidence（舊標註檔整顆共用一個信心）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_confidence: Option<Confidence>,
     /// 由模型預填、還沒有人確認；不當作真人資料。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefilled: bool,
@@ -88,6 +92,13 @@ pub struct NoteAnnotation {
     pub memo: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub by: String,
+}
+
+impl NoteAnnotation {
+    /// 滑行那一步的信心：起點與滑行可以分開設定（例如起點確定、滑行兩手皆可）。
+    pub fn slide_confidence(&self) -> Confidence {
+        self.track_confidence.unwrap_or(self.confidence)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -250,20 +261,17 @@ fn as_track(hand: Hand) -> TrackHand {
     }
 }
 
-/// 把確定的標註轉成求解限制（音符 id）。
+/// 把確定的標註轉成求解限制（音符 id）；接觸與滑行各看自己那一步的信心。
 fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
     let mut rules = HandRules::default();
     for (index, mark) in marks {
-        if mark.confidence != Confidence::Sure {
-            continue;
-        }
         let note = &chart.notes[*index];
         if let Some(hand) = mark.hand {
-            if note.has_head || note.path_id.is_none() {
+            if mark.confidence == Confidence::Sure && (note.has_head || note.path_id.is_none()) {
                 rules.contact.insert(note.id.clone(), hand);
             }
         }
-        if note.path_id.is_none() {
+        if note.path_id.is_none() || mark.slide_confidence() != Confidence::Sure {
             continue;
         }
         match mark.track {
@@ -357,9 +365,6 @@ pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
     if let Some(model) = &model {
         response.model = Some(evaluated(model));
         for (index, mark) in &marks {
-            if mark.confidence != Confidence::Sure {
-                continue;
-            }
             let note = &chart.notes[*index];
             let (contact, track) = model_hands(model, &note.id);
             let mut compare = |part: &str, human: TrackHand, model: Option<TrackHand>| {
@@ -380,10 +385,14 @@ pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
                     });
                 }
             };
-            if let Some(hand) = mark.hand {
+            // 只比對信心為「確定」的那一步。
+            if let Some(hand) = mark.hand.filter(|_| mark.confidence == Confidence::Sure) {
                 compare("hand", as_track(hand), contact.map(as_track));
             }
-            if let Some(track_hand) = mark.track {
+            if let Some(track_hand) = mark
+                .track
+                .filter(|_| mark.slide_confidence() == Confidence::Sure)
+            {
                 compare("track", track_hand, track);
             }
         }
