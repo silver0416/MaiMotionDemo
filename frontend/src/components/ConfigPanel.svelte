@@ -115,7 +115,7 @@
         />
         <NumberField
           label="快速移動容忍"
-          hint="超過這個速度才增加高速負擔，並依移動距離累計，越短促越吃力；優先於左右分工。預設 6.5 約為 137 BPM 8 分音符跨兩個鍵的速度。低於此速度仍計移動距離。"
+          hint="超過這個速度才增加高速負擔，並依移動距離累計，越短促越吃力；優先於左右分工。預設 5.2 依真人標註擬合。低於此速度仍計移動距離。"
           value={config.v3.travelComfort}
           min={R.travelComfort.min}
           max={R.travelComfort.max}

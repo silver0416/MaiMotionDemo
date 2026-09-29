@@ -20,7 +20,7 @@
       "slidePickupSeconds": 0.12,
       "slideShortcut": false,
       "topK": 3,
-      "travelComfort": 6.5
+      "travelComfort": 5.2
     },
     "source": "(120){4}1-5[4:1]/8h[4:3],{16},B2,E"
   },
@@ -500,7 +500,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-1",
@@ -835,9 +835,9 @@
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.2755320713028645,
+          "movement": 0.0,
           "posture": 0.04518968393421062,
-          "total": 0.32072175523707513
+          "total": 0.04518968393421062
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -848,7 +848,7 @@
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.2755320713028645,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
@@ -906,7 +906,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-2",
@@ -1241,20 +1241,20 @@
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.5091168824543142,
-          "posture": 0.6737635819401155,
-          "total": 1.1828804643944297
+          "movement": 0.0,
+          "posture": 17.925662325417196,
+          "total": 17.925662325417196
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 0.5768677526895482,
+          "crossExposure": 17.82876649616663,
           "excursion": 0.09689582925056736,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.5091168824543142,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",

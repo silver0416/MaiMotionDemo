@@ -97,9 +97,11 @@ export const SOLVER_REVISION = 'note-key-7';
  *   同一鍵重打不洗掉回頭方向（間隔從到達算起）；連打負荷權重 3 → 4。
  * v3-3：Slide 預設沿星星路徑畫到終點，不抄近、不為少畫一段提早離手（抄近改為 slideShortcut 選項）；
  *   同時的 Slide／WiFi 由手掌沿星星覆蓋；追 Slide 的手掌範圍內的 Tap 可順手點到。
+ * v3-4：權重依真人標註擬合（接觸交叉加重、單手負荷歸零、星星起點與滑行換手加成本），
+ *   快速移動容忍預設 6.5 → 5.2。
  */
 export const SCORING_REVISION: Partial<Record<ScoringModel, string>> = {
-  'human-motion-v3': 'v3-3',
+  'human-motion-v3': 'v3-4',
 };
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */

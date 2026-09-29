@@ -157,11 +157,14 @@ impl<'a> Context<'a> {
         let mut cursor = &next.assignments;
         while cursor.len > old.assignments.len {
             let link = cursor.head.as_ref().unwrap();
-            fresh.push(&link.value);
+            fresh.push(link);
             cursor = &link.prev;
         }
         fresh.reverse();
-        for assignment in fresh {
+        let star: f64 = fresh.iter().map(|link| self.star_switch(link)).sum();
+        next.v3.parts.ownership_switch += star;
+        for link in fresh {
+            let assignment = &link.value;
             // Touch Group 連帶判定沒有實際接觸，不計分工。
             if assignment.part == "slide" || assignment.part == "group" {
                 continue;
@@ -191,6 +194,40 @@ impl<'a> Context<'a> {
             next.v3.parts.handover += self.engine.handover(handover.swap);
         }
         self.refresh(next)
+    }
+
+    /// 星星由一手拍下、第一次接上滑行的卻是另一手。只看這顆 Slide 的第一筆滑行；
+    /// 往回找同一顆的起點，最多到起點時刻前 1 秒或 256 筆。
+    fn star_switch(&self, link: &Link<Assignment>) -> f64 {
+        let weight = crate::scoring_v3::tuning().star_switch;
+        let slide = &link.value;
+        if weight == 0.0 || slide.part != "slide" {
+            return 0.0;
+        }
+        let note = self.notes[slide.note_id.as_str()];
+        if !note.has_head {
+            return 0.0;
+        }
+        let mut cursor = &link.prev;
+        for _ in 0..256 {
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.end_seconds < note.time_seconds - 1.0 {
+                break;
+            }
+            if a.note_id == slide.note_id {
+                match a.part.as_str() {
+                    "slide" => return 0.0,
+                    "head" if a.hand != slide.hand => return weight,
+                    "head" => return 0.0,
+                    _ => {}
+                }
+            }
+            cursor = &prev.prev;
+        }
+        0.0
     }
 
     /// One physical action with V3.1 ownership and roles. Only genuine button
@@ -479,6 +516,11 @@ impl<'a> Context<'a> {
             if re <= le {
                 j += 1;
             }
+        }
+        let mut cursor = &state.assignments;
+        while let Some(link) = cursor.head.as_ref() {
+            expected.ownership_switch += self.star_switch(link);
+            cursor = &link.prev;
         }
         let mut histories = [HandHistory::default(), HandHistory::default()];
         let mut roles = RoleState::default();

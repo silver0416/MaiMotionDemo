@@ -20,7 +20,7 @@
       "slidePickupSeconds": 0.12,
       "slideShortcut": false,
       "topK": 3,
-      "travelComfort": 6.5
+      "travelComfort": 5.2
     },
     "source": "(120){4}C/B1/E1/7,E"
   },
@@ -478,7 +478,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-1",
@@ -541,8 +541,8 @@
         "palmPlacements": [
           {
             "center": {
-              "x": 0.1779477960497668,
-              "y": -0.42960398261774835
+              "x": 1.974742963625107e-17,
+              "y": -0.3225
             },
             "coveredNoteIds": [
               "n0",
@@ -568,8 +568,8 @@
               },
               {
                 "timeSeconds": 0.0,
-                "x": 0.1779477960497668,
-                "y": -0.42960398261774835
+                "x": 1.974742963625107e-17,
+                "y": -0.3225
               }
             ],
             "startSeconds": -1.0
@@ -581,13 +581,13 @@
             "samples": [
               {
                 "timeSeconds": 0.0,
-                "x": 0.1779477960497668,
-                "y": -0.42960398261774835
+                "x": 1.974742963625107e-17,
+                "y": -0.3225
               },
               {
                 "timeSeconds": 0.03,
-                "x": 0.1779477960497668,
-                "y": -0.42960398261774835
+                "x": 1.974742963625107e-17,
+                "y": -0.3225
               }
             ],
             "startSeconds": 0.0
@@ -599,13 +599,13 @@
             "samples": [
               {
                 "timeSeconds": 0.03,
-                "x": 0.1779477960497668,
-                "y": -0.42960398261774835
+                "x": 1.974742963625107e-17,
+                "y": -0.3225
               },
               {
                 "timeSeconds": 0.5,
-                "x": 0.1779477960497668,
-                "y": -0.42960398261774835
+                "x": 1.974742963625107e-17,
+                "y": -0.3225
               }
             ],
             "startSeconds": 0.03
@@ -613,9 +613,9 @@
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.13453307574454298,
+          "movement": 0.0,
           "posture": 0.0,
-          "total": 0.13453307574454298
+          "total": 0.0
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -626,7 +626,7 @@
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.13453307574454298,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
@@ -684,7 +684,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-2",
@@ -819,20 +819,20 @@
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.4685414823773535,
-          "posture": 0.5015985517509003,
-          "total": 0.9701400341282538
+          "movement": 0.0,
+          "posture": 3.047854394684506,
+          "total": 3.047854394684506
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 0.004250844479021044,
+          "crossExposure": 2.5505066874126268,
           "excursion": 0.49734770727187927,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.4685414823773535,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",

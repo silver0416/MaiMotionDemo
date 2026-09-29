@@ -5,9 +5,6 @@ use crate::{Chart, Hand, Point};
 
 pub const LOOKAHEAD_MAX_GROUPS: usize = 8;
 pub const LOOKAHEAD_MAX_SECONDS: f64 = 0.8;
-/// Below BASE_TRAVEL_WEIGHT (0.18/unit): each part is a distance the hands
-/// still have to cover in some form, so the bias stays mild and optimistic.
-pub const FUTURE_ROLE_WEIGHT: f64 = 0.15;
 /// A later point this close to an earlier contact counts as the same target.
 const SAME_TARGET_RADIUS: f64 = 0.12;
 const EPS: f64 = 1e-8;
@@ -108,7 +105,7 @@ pub struct FutureParts {
 }
 impl FutureParts {
     pub fn total(&self) -> f64 {
-        FUTURE_ROLE_WEIGHT
+        crate::scoring_v3::tuning().future_role
             * (self.ownership_readiness + self.anchor_readiness + self.return_readiness)
     }
 }

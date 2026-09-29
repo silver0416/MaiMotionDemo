@@ -104,7 +104,7 @@ export const DEFAULT_PREFERENCES: PreferenceControls = {
 /** 與 src/scoring_v3.rs 的 PreferenceConfigV3::default() 一致。 */
 export const DEFAULT_V3_PREFERENCES: V3PreferenceControls = {
   homePreference: 60,
-  travelComfort: 6.5,
+  travelComfort: 5.2,
   jackTolerance: 60,
   handoverWillingness: 40,
 };
@@ -155,10 +155,10 @@ function finiteNumber(value: unknown): value is number {
  * 各版之間不互相換算。
  */
 /**
- * V3.1 以前的 V3 預設快速移動容忍。當時的負擔按秒數累積，90 半徑/秒實際上從不觸發；
- * 改為按距離計算後，保存的舊預設值換成新預設，使用者自訂的其他值保留。
+ * 過去的 V3 預設快速移動容忍：90（V3.1 以前按秒數累積，實際上從不觸發）與 6.5（依真人標註擬合前）。
+ * 保存的舊預設值換成新預設，使用者自訂的其他值保留。
  */
-const LEGACY_V3_TRAVEL_COMFORT = 90;
+const LEGACY_V3_TRAVEL_COMFORT = [90, 6.5];
 
 export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft {
   const next = cloneDraft(current);
@@ -178,7 +178,7 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
   if (v3 && typeof v3 === 'object') {
     for (const key of V3_PREFERENCE_KEYS) {
       const value = (v3 as Record<string, unknown>)[key];
-      if (key === 'travelComfort' && value === LEGACY_V3_TRAVEL_COMFORT) continue;
+      if (key === 'travelComfort' && LEGACY_V3_TRAVEL_COMFORT.includes(value as number)) continue;
       if (finiteNumber(value)) next.v3[key] = value;
     }
   }

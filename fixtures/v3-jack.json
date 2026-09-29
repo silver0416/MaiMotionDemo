@@ -20,7 +20,7 @@
       "slidePickupSeconds": 0.12,
       "slideShortcut": false,
       "topK": 3,
-      "travelComfort": 6.5
+      "travelComfort": 5.2
     },
     "source": "(240){24}1,1,1,1,E"
   },
@@ -447,14 +447,14 @@
           },
           {
             "endSeconds": 0.11333333333333333,
-            "hand": "L",
+            "hand": "R",
             "noteId": "n2",
             "part": "contact",
             "startSeconds": 0.08333333333333333
           },
           {
             "endSeconds": 0.155,
-            "hand": "L",
+            "hand": "R",
             "noteId": "n3",
             "part": "contact",
             "startSeconds": 0.125
@@ -478,14 +478,14 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-1",
         "leftSegments": [
           {
-            "endSeconds": 0.08333333333333333,
-            "mode": "travel",
+            "endSeconds": 0.16666666666666666,
+            "mode": "idle",
             "noteId": null,
             "samples": [
               {
@@ -494,84 +494,12 @@
                 "y": -0.38268343236508967
               },
               {
-                "timeSeconds": 0.08333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
+                "timeSeconds": 0.16666666666666666,
+                "x": -0.9238795325112868,
+                "y": -0.38268343236508967
               }
             ],
             "startSeconds": -1.0
-          },
-          {
-            "endSeconds": 0.11333333333333333,
-            "mode": "tap",
-            "noteId": "n2",
-            "samples": [
-              {
-                "timeSeconds": 0.08333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.11333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.08333333333333333
-          },
-          {
-            "endSeconds": 0.125,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.11333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.125,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.11333333333333333
-          },
-          {
-            "endSeconds": 0.155,
-            "mode": "tap",
-            "noteId": "n3",
-            "samples": [
-              {
-                "timeSeconds": 0.125,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.155,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.125
-          },
-          {
-            "endSeconds": 0.16666666666666666,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.155,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.16666666666666666,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.155
           }
         ],
         "palmPlacements": [],
@@ -649,7 +577,7 @@
             "startSeconds": 0.041666666666666664
           },
           {
-            "endSeconds": 0.16666666666666666,
+            "endSeconds": 0.08333333333333333,
             "mode": "idle",
             "noteId": null,
             "samples": [
@@ -659,30 +587,102 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.16666666666666666,
+                "timeSeconds": 0.08333333333333333,
                 "x": 0.38268343236508984,
                 "y": -0.9238795325112867
               }
             ],
             "startSeconds": 0.07166666666666666
+          },
+          {
+            "endSeconds": 0.11333333333333333,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 0.08333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.11333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.08333333333333333
+          },
+          {
+            "endSeconds": 0.125,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.11333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.125,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.11333333333333333
+          },
+          {
+            "endSeconds": 0.155,
+            "mode": "tap",
+            "noteId": "n3",
+            "samples": [
+              {
+                "timeSeconds": 0.125,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.155,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.125
+          },
+          {
+            "endSeconds": 0.16666666666666666,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.155,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.16666666666666666,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.155
           }
         ],
         "score": {
-          "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.47212425722256274,
-          "total": 0.8644487341011522
+          "fatigue": 0.09388888888888888,
+          "movement": 0.0,
+          "posture": 0.0,
+          "total": 0.09388888888888888
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
           "crossExposure": 0.0,
-          "excursion": 0.04496186549248389,
+          "excursion": 0.0,
           "handover": 0.0,
-          "jackFatigue": 0.0,
-          "ownershipSwitch": 0.42716239173007886,
+          "jackFatigue": 0.09388888888888888,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
@@ -709,14 +709,14 @@
           },
           {
             "endSeconds": 0.11333333333333333,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n2",
             "part": "contact",
             "startSeconds": 0.08333333333333333
           },
           {
             "endSeconds": 0.155,
-            "hand": "R",
+            "hand": "L",
             "noteId": "n3",
             "part": "contact",
             "startSeconds": 0.125
@@ -740,7 +740,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-2",
@@ -818,7 +818,7 @@
             "startSeconds": 0.041666666666666664
           },
           {
-            "endSeconds": 0.16666666666666666,
+            "endSeconds": 0.08333333333333333,
             "mode": "idle",
             "noteId": null,
             "samples": [
@@ -828,33 +828,12 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.16666666666666666,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.07166666666666666
-          }
-        ],
-        "palmPlacements": [],
-        "rightSegments": [
-          {
-            "endSeconds": 0.08333333333333333,
-            "mode": "travel",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": -1.0,
-                "x": 0.9238795325112867,
-                "y": -0.3826834323650898
-              },
-              {
                 "timeSeconds": 0.08333333333333333,
                 "x": 0.38268343236508984,
                 "y": -0.9238795325112867
               }
             ],
-            "startSeconds": -1.0
+            "startSeconds": 0.07166666666666666
           },
           {
             "endSeconds": 0.11333333333333333,
@@ -929,22 +908,43 @@
             "startSeconds": 0.155
           }
         ],
+        "palmPlacements": [],
+        "rightSegments": [
+          {
+            "endSeconds": 0.16666666666666666,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": -1.0,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              },
+              {
+                "timeSeconds": 0.16666666666666666,
+                "x": 0.9238795325112867,
+                "y": -0.3826834323650898
+              }
+            ],
+            "startSeconds": -1.0
+          }
+        ],
         "score": {
-          "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.47212425722256274,
-          "total": 0.8644487341011522
+          "fatigue": 0.09388888888888888,
+          "movement": 0.0,
+          "posture": 0.04496186549248389,
+          "total": 0.1388507543813728
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
           "crossExposure": 0.0,
           "excursion": 0.04496186549248389,
           "handover": 0.0,
-          "jackFatigue": 0.0,
-          "ownershipSwitch": 0.42716239173007886,
+          "jackFatigue": 0.09388888888888888,
+          "ownershipSwitch": 0.0,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",
@@ -971,7 +971,7 @@
           },
           {
             "endSeconds": 0.11333333333333333,
-            "hand": "L",
+            "hand": "R",
             "noteId": "n2",
             "part": "contact",
             "startSeconds": 0.08333333333333333
@@ -1002,7 +1002,7 @@
           "slidePickupSeconds": 0.12,
           "slideShortcut": false,
           "topK": 3,
-          "travelComfort": 6.5
+          "travelComfort": 5.2
         },
         "handovers": [],
         "id": "solution-3",
@@ -1044,7 +1044,7 @@
             "startSeconds": 0.0
           },
           {
-            "endSeconds": 0.08333333333333333,
+            "endSeconds": 0.16666666666666666,
             "mode": "idle",
             "noteId": null,
             "samples": [
@@ -1054,48 +1054,12 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.08333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.03
-          },
-          {
-            "endSeconds": 0.11333333333333333,
-            "mode": "tap",
-            "noteId": "n2",
-            "samples": [
-              {
-                "timeSeconds": 0.08333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
-                "timeSeconds": 0.11333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              }
-            ],
-            "startSeconds": 0.08333333333333333
-          },
-          {
-            "endSeconds": 0.16666666666666666,
-            "mode": "idle",
-            "noteId": null,
-            "samples": [
-              {
-                "timeSeconds": 0.11333333333333333,
-                "x": 0.38268343236508984,
-                "y": -0.9238795325112867
-              },
-              {
                 "timeSeconds": 0.16666666666666666,
                 "x": 0.38268343236508984,
                 "y": -0.9238795325112867
               }
             ],
-            "startSeconds": 0.11333333333333333
+            "startSeconds": 0.03
           }
         ],
         "palmPlacements": [],
@@ -1137,7 +1101,7 @@
             "startSeconds": 0.041666666666666664
           },
           {
-            "endSeconds": 0.125,
+            "endSeconds": 0.08333333333333333,
             "mode": "idle",
             "noteId": null,
             "samples": [
@@ -1147,12 +1111,48 @@
                 "y": -0.9238795325112867
               },
               {
-                "timeSeconds": 0.125,
+                "timeSeconds": 0.08333333333333333,
                 "x": 0.38268343236508984,
                 "y": -0.9238795325112867
               }
             ],
             "startSeconds": 0.07166666666666666
+          },
+          {
+            "endSeconds": 0.11333333333333333,
+            "mode": "tap",
+            "noteId": "n2",
+            "samples": [
+              {
+                "timeSeconds": 0.08333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.11333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.08333333333333333
+          },
+          {
+            "endSeconds": 0.125,
+            "mode": "idle",
+            "noteId": null,
+            "samples": [
+              {
+                "timeSeconds": 0.11333333333333333,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              },
+              {
+                "timeSeconds": 0.125,
+                "x": 0.38268343236508984,
+                "y": -0.9238795325112867
+              }
+            ],
+            "startSeconds": 0.11333333333333333
           },
           {
             "endSeconds": 0.155,
@@ -1193,9 +1193,9 @@
         ],
         "score": {
           "fatigue": 0.0,
-          "movement": 0.3923244768785894,
-          "posture": 0.6857054530876022,
-          "total": 1.0780299299661915
+          "movement": 0.0,
+          "posture": 0.2585430613575233,
+          "total": 0.2585430613575233
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -1203,10 +1203,10 @@
           "excursion": 0.04496186549248389,
           "handover": 0.0,
           "jackFatigue": 0.0,
-          "ownershipSwitch": 0.6407435875951183,
+          "ownershipSwitch": 0.21358119586503943,
           "reversal": 0.0,
           "speedStrain": 0.0,
-          "travel": 0.3923244768785894,
+          "travel": 0.0,
           "workload": 0.0
         },
         "scoringModel": "human-motion-v3",

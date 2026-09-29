@@ -8,42 +8,96 @@ use std::cmp::Ordering;
 pub const SCORING_MODEL_V3: &str = "human-motion-v3";
 const RANK_PRECISION: f64 = 1e-6;
 const HOME_NEUTRAL_MARGIN: f64 = 0.15;
-const HOME_EXPOSURE_RATE: f64 = 0.10;
-const BASE_TRAVEL_WEIGHT: f64 = 0.18;
-/// Burst speed burden per unit distance moved above the comfort speed.
-pub const SPEED_STRAIN_WEIGHT: f64 = 1.0;
-/// Per second while both hands are past the midline margin on the opposite
-/// side, scaled by the shallower of the two depths. Working together on one
-/// side is free; a brief swap is cheap, staying swapped accumulates.
-pub const SWAPPED_POSTURE_WEIGHT: f64 = 3.0;
-const REVERSAL_WEIGHT: f64 = 0.28;
 const REVERSAL_WINDOW: f64 = 0.60;
 const REVERSAL_MIN_DISTANCE: f64 = 0.12;
 const REVERSAL_FULL_DISTANCE: f64 = 0.75;
 const JACK_SAME_POINT_RADIUS: f64 = 0.12;
-const JACK_MAX_WEIGHT: f64 = 0.45;
 /// Same-key restrikes up to this streak are normal play, never jack fatigue.
 const JACK_FREE_STREAK: u32 = 3;
-const WORKLOAD_TAU: f64 = 0.45;
-const WORKLOAD_FREE_LEVEL: f64 = 1.25;
-/// Sharing work between the hands comes from this density term, not from raw
-/// speed: a hand repeating at 16th spacing tires far faster than at 8th spacing.
-const WORKLOAD_WEIGHT: f64 = 4.0;
 // V3.1 short-term ownership. Internal Demo calibration, not UI parameters.
 pub const OWNERSHIP_TAU: f64 = 0.8;
 pub const OWNERSHIP_INITIAL: f64 = 0.5;
 pub const OWNERSHIP_GAIN: f64 = 0.6;
 pub const OWNERSHIP_MAX: f64 = 1.0;
 pub const OWNERSHIP_MIN: f64 = 0.05;
-pub const OWNERSHIP_SWITCH_WEIGHT: f64 = 0.45;
-/// Cost of pulling a hand off a key it is about to play again.
-pub const ANCHOR_HOLD_WEIGHT: f64 = 0.45;
-/// A chord with several buttons forces a split, so taking an owned key costs less.
-pub const CHORD_SWITCH_DISCOUNT: f64 = 0.3;
 /// Two targets closer than this can share a temporary local lane.
 pub const LOCAL_CLUSTER_RADIUS: f64 = 1.0;
 /// Returning to a live anchor after a finished excursion keeps this share of reversal.
 pub const ANCHOR_REVERSAL_DISCOUNT: f64 = 0.2;
+
+/// V3 preference weights. Defaults were fitted (coordinate search) to player
+/// hand annotations: 9 charts plus the earlier speed_first_full references,
+/// see examples/annotation_batch.rs. A tuning run may install different values
+/// once per process before solving.
+#[doc(hidden)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub struct TuningV3 {
+    pub travel: f64,
+    pub speed_strain: f64,
+    /// Per second while both hands are past the midline margin on the opposite
+    /// side, scaled by the shallower of the two depths. Working together on one
+    /// side is free; a brief swap is cheap, staying swapped accumulates.
+    pub swapped_posture: f64,
+    /// Multiplier on the shared active-contact crossing integral.
+    pub contact_cross: f64,
+    pub home_entry: f64,
+    pub home_exposure: f64,
+    pub reversal: f64,
+    pub jack: f64,
+    /// Sharing work between the hands comes from this density term, not from
+    /// raw speed: a hand repeating at 16th spacing tires far faster than at 8th.
+    pub workload: f64,
+    pub workload_tau: f64,
+    pub workload_free: f64,
+    /// Load share of restriking the point the hand just struck.
+    pub same_point_load: f64,
+    pub same_point_window: f64,
+    pub ownership_switch: f64,
+    /// Cost of pulling a hand off a key it is about to play again.
+    pub anchor_hold: f64,
+    /// A chord with several buttons forces a split, so taking an owned key costs less.
+    pub chord_switch_discount: f64,
+    /// Tapping a star with one hand and sliding it with the other (posture).
+    pub star_switch: f64,
+    /// Rank-only lookahead bias; kept mild.
+    pub future_role: f64,
+}
+impl Default for TuningV3 {
+    fn default() -> Self {
+        Self {
+            travel: 0.0,
+            speed_strain: 0.5,
+            swapped_posture: 3.0,
+            contact_cross: 600.0,
+            home_entry: 1.0,
+            home_exposure: 0.10,
+            reversal: 0.28,
+            jack: 0.45,
+            workload: 0.0,
+            workload_tau: 0.72,
+            workload_free: 1.25,
+            same_point_load: 0.1,
+            same_point_window: 0.3,
+            ownership_switch: 0.45,
+            anchor_hold: 0.0,
+            chord_switch_discount: 0.3,
+            star_switch: 2.0,
+            future_role: 0.15,
+        }
+    }
+}
+static TUNING: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+/// Installs tuning weights for this process; returns false once weights are
+/// already fixed (set earlier or read by any V3 score).
+#[doc(hidden)]
+pub fn set_tuning(tuning: TuningV3) -> bool {
+    TUNING.set(tuning).is_ok()
+}
+#[doc(hidden)]
+pub fn tuning() -> &'static TuningV3 {
+    TUNING.get_or_init(TuningV3::default)
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
@@ -57,7 +111,7 @@ impl Default for PreferenceConfigV3 {
     fn default() -> Self {
         Self {
             home_preference: 60.0,
-            travel_comfort: 6.5,
+            travel_comfort: 5.2,
             jack_tolerance: 60.0,
             handover_willingness: 40.0,
         }
@@ -172,7 +226,7 @@ impl ScoringV3 {
     }
     /// Instantaneous swapped-posture rate (per second) for two hand points.
     pub fn swapped_rate(&self, left: Point, right: Point) -> f64 {
-        let weight = SWAPPED_POSTURE_WEIGHT;
+        let weight = tuning().swapped_posture;
         weight * opposite_depth(Hand::L, left).min(opposite_depth(Hand::R, right))
     }
     /// `until`: the last visible demand ends here; resting after the chart is
@@ -183,8 +237,8 @@ impl ScoringV3 {
         right: &MotionSegment,
         until: f64,
     ) -> Result<f64, String> {
-        let shared = self.shared.crossing(left, right)?;
-        let weight = SWAPPED_POSTURE_WEIGHT;
+        let shared = tuning().contact_cross * self.shared.crossing(left, right)?;
+        let weight = tuning().swapped_posture;
         checked(shared + weight * swapped_integral(left, right, until)?)
     }
     pub fn handover(&self, swap: bool) -> f64 {
@@ -223,7 +277,7 @@ impl ScoringV3 {
                     }
                     let z = (d / dt / self.config.travel_comfort - 1.).max(0.);
                     let psi = if z <= 1. { z * z } else { 2. * z - 1. };
-                    speed += SPEED_STRAIN_WEIGHT * psi * d;
+                    speed += tuning().speed_strain * psi * d;
                 }
             }
         }
@@ -236,11 +290,13 @@ impl ScoringV3 {
             }
         }
         Ok(MotionTermsV3 {
-            travel: BASE_TRAVEL_WEIGHT * shared.free_distance,
+            travel: tuning().travel * shared.free_distance,
             speed_strain: checked(speed)?,
             tracking_strain: shared.tracking_strain,
             excursion: checked(
-                weight * (entry + HOME_EXPOSURE_RATE * shared.side_exposure / 0.25),
+                weight
+                    * (tuning().home_entry * entry
+                        + tuning().home_exposure * shared.side_exposure / 0.25),
             )?,
         })
     }
@@ -271,15 +327,24 @@ impl ScoringV3 {
         }
         let dt = event.time_seconds - h.workload_time.unwrap_or(event.time_seconds);
         checked(dt)?;
-        let decayed = h.workload * (-dt / WORKLOAD_TAU).exp();
-        let load = match event.kind {
-            ActionKind::Strike => 1.,
-            ActionKind::ContinuousContact => 0.65,
-            ActionKind::Palm => 1.1,
-        };
+        let t = tuning();
+        let decayed = h.workload * (-dt / t.workload_tau).exp();
+        // 剛打過的同一點再打（連打）幾乎不需要移動，負荷較輕。
+        let same_point = h
+            .last_point
+            .is_some_and(|p| p.distance(event.point) <= JACK_SAME_POINT_RADIUS)
+            && h.last_time
+                .is_some_and(|last| event.time_seconds - last < t.same_point_window);
+        let share = if same_point { t.same_point_load } else { 1. };
+        let load = share
+            * match event.kind {
+                ActionKind::Strike => 1.,
+                ActionKind::ContinuousContact => 0.65,
+                ActionKind::Palm => 1.1,
+            };
         // Only using the busy hand has a marginal cost. An idle hand is never penalized.
         let mut p = ScoreBreakdownV3 {
-            workload: WORKLOAD_WEIGHT * (decayed - WORKLOAD_FREE_LEVEL).max(0.).powi(2) * load,
+            workload: t.workload * (decayed - t.workload_free).max(0.).powi(2) * load,
             ..Default::default()
         };
         // 回頭的間隔從手到達目前這個鍵算起：在鍵上重打一陣子才離開，不算剛到就折返。
@@ -301,7 +366,7 @@ impl ScoringV3 {
             } else {
                 1
             };
-            p.jack_fatigue = JACK_MAX_WEIGHT
+            p.jack_fatigue = t.jack
                 * (1. - self.config.jack_tolerance / 100.)
                 * (h.jack_streak.saturating_sub(JACK_FREE_STREAK) as f64).powf(1.5)
                 * (1. - gap / repetition_seconds).clamp(0., 1.).powi(2);
@@ -397,7 +462,7 @@ pub fn reversal(prev: Point, last: Point, current: Point, gap: f64) -> Result<f6
         + (last.y - prev.y) * (current.y - last.y))
         / (d1 * d2);
     checked(
-        REVERSAL_WEIGHT
+        tuning().reversal
             * (-cosine.clamp(-1., 1.)).max(0.).powi(2)
             * (1. - gap / REVERSAL_WINDOW).clamp(0., 1.).powi(2)
             * (d1.min(d2) / REVERSAL_FULL_DISTANCE).clamp(0., 1.),
@@ -516,7 +581,7 @@ impl OwnershipState {
     }
     pub fn switch_cost(&self, key: ContactKey, hand: Hand, time: f64) -> f64 {
         match self.get(key, time) {
-            Some((owner, s)) if owner != hand => OWNERSHIP_SWITCH_WEIGHT * s,
+            Some((owner, s)) if owner != hand => tuning().ownership_switch * s,
             _ => 0.,
         }
     }
@@ -592,7 +657,7 @@ impl RoleState {
     ) -> f64 {
         let mut cost = self.ownership.switch_cost(key, hand, time);
         if chord {
-            cost *= CHORD_SWITCH_DISCOUNT;
+            cost *= tuning().chord_switch_discount;
         }
         let own = self.roles[hand.index()];
         let other = self.roles[1 - hand.index()];
@@ -604,7 +669,7 @@ impl RoleState {
                 && other.expires_at < own.expires_at - 1e-9
                 && other.point.distance(point) <= LOCAL_CLUSTER_RADIUS;
             if !other.live(time) || nested {
-                cost += ANCHOR_HOLD_WEIGHT * own.strength;
+                cost += tuning().anchor_hold * own.strength;
             }
         }
         cost

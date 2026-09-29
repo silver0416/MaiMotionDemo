@@ -156,7 +156,7 @@ export interface PreferenceControls {
 export interface V3PreferenceControls {
   /** 左右分工傾向 0–100；直接控制跨區（excursion）成本，0 表示不收跨區成本 */
   homePreference: number;
-  /** 快速移動容忍 1–200 半徑/秒（預設 6.5）；超過才依移動距離加高速負擔，低於此速度仍計移動距離 */
+  /** 快速移動容忍 1–200 半徑/秒（預設 5.2）；超過才依移動距離加高速負擔，低於此速度仍計移動距離 */
   travelComfort: number;
   /** 同點連打容忍 0–100；越高越接受同一隻手高速重複敲同一位置 */
   jackTolerance: number;
