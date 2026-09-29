@@ -14,6 +14,7 @@
   import SettingsDialog from './components/SettingsDialog.svelte';
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
+  import ImportDialog from './components/ImportDialog.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
   import { reducedMotion, squash } from './lib/press';
   import { playback } from './state/playback.svelte';
@@ -437,6 +438,7 @@
   />
   <SearchDialog bind:open={searchOpen} />
   <SettingsDialog bind:open={settingsOpen} />
+  <ImportDialog />
   <Toaster />
 </div>
 

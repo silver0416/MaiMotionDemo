@@ -10,6 +10,7 @@
   import { DISTRIBUTION_LABEL, updateState } from '../state/update.svelte';
   import { cacheEvents } from '../state/cacheEvents.svelte';
   import { records } from '../state/records.svelte';
+  import { exportPrefs } from '../state/exportPrefs.svelte';
   import { SOLVER_REVISION, session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { VideoLibrary } from '../state/videoLibrary.svelte';
@@ -563,6 +564,45 @@
       </section>
     {/if}
 
+    {#if session.desktop}
+      <section class="block" aria-labelledby="settings-export">
+        <div class="block-head">
+          <h3 id="settings-export">匯出</h3>
+        </div>
+
+        <div class="data-row">
+          <div class="data-text">
+            <div class="data-title">預設匯出資料夾</div>
+            <p class="xsmall muted mono path">{exportPrefs.dir || '未指定（另存新檔從系統預設位置開始）'}</p>
+            <p class="field-hint">匯出標記檔時，另存新檔會先開在這個資料夾。</p>
+          </div>
+          <div class="data-actions">
+            <button class="btn" onclick={() => void exportPrefs.pickDir()}>
+              <Icon name="folder-open" />選擇
+            </button>
+            {#if exportPrefs.dir}
+              <button class="btn" onclick={() => exportPrefs.setDir('')}>
+                <Icon name="x" />清除
+              </button>
+            {/if}
+          </div>
+        </div>
+
+        <label class="check" class:is-disabled={!exportPrefs.dir}>
+          <input
+            type="checkbox"
+            checked={exportPrefs.skipAsk}
+            disabled={!exportPrefs.dir}
+            onchange={(event) => exportPrefs.setSkipAsk(event.currentTarget.checked)}
+          />
+          <span>
+            不再詢問位置，直接存到預設資料夾
+            <span class="field-hint">同名檔案已存在時自動加上編號，不會覆寫。需要先指定預設資料夾。</span>
+          </span>
+        </label>
+      </section>
+    {/if}
+
     <section class="block" aria-labelledby="settings-data">
       <div class="block-head">
         <h3 id="settings-data">資料管理</h3>
@@ -702,6 +742,15 @@
     justify-content: space-between;
     gap: var(--space-3);
     min-height: 30px;
+  }
+
+  .path {
+    overflow-wrap: anywhere;
+  }
+
+  .check.is-disabled {
+    color: var(--c-text-dim);
+    cursor: not-allowed;
   }
 
   .block-head h3 {

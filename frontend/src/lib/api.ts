@@ -35,6 +35,12 @@ export async function evaluateAnnotation(request: EvaluateRequest): Promise<Eval
   return await invoke<EvaluateResponse>('evaluate_annotation', { request });
 }
 
+/** 只解析譜面，回傳依判定時間排列的音符穩定鍵（與標註分頁同序；批量匯出標註檔用，不求解）。 */
+export async function chartNoteKeys(source: string): Promise<string[]> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<string[]>('chart_note_keys', { source });
+}
+
 /** 經由 Rust 搜尋 Majdata；前端不直接連線外部網站。失敗時 reject 可讀的字串。 */
 export async function searchMajdataCharts(query: string): Promise<MajdataChartSummary[]> {
   const { invoke } = await import('@tauri-apps/api/core');

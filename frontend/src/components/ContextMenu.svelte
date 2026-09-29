@@ -7,6 +7,8 @@
     icon: IconName;
     danger?: boolean;
     disabled?: boolean;
+    /** 在這個項目上方畫一條分隔線 */
+    divider?: boolean;
   }
 </script>
 
@@ -113,6 +115,9 @@
   oncontextmenu={(event) => event.preventDefault()}
 >
   {#each items as item (item.id)}
+    {#if item.divider}
+      <div class="menu-divider" role="separator"></div>
+    {/if}
     <button
       class="menu-item"
       class:is-danger={item.danger}
@@ -176,6 +181,12 @@
 
   .menu-item:focus-visible {
     outline-offset: -2px;
+  }
+
+  .menu-divider {
+    height: 1px;
+    margin: var(--space-1) 0;
+    background: var(--c-border);
   }
 
   .menu-item.is-danger {

@@ -1,8 +1,10 @@
-import type { AnnotationDraft } from '../lib/annotation';
+import { isHumanLabeled, type AnnotationDraft } from '../lib/annotation';
 import {
   STORE_RECORDS,
+  STORE_SETTINGS,
   dbDelete,
   dbDeleteAnalysesBySource,
+  dbGet,
   dbGetAll,
   dbPut,
   hashText,
@@ -65,6 +67,95 @@ export interface ChartRecord {
   markers?: TimelineMarker[];
   /** 真人手順標註草稿（lib/annotation.ts）；舊紀錄沒有。 */
   annotation?: AnnotationDraft;
+  /** 所在資料夾 id；沒有表示「未分類」。一筆只放一個資料夾。 */
+  folder?: string;
+  /** 標籤名稱（顏色在 Records.tags），依加入順序。 */
+  tags?: string[];
+  /** 最後一次開啟的時間（epoch 毫秒）；舊紀錄沒有。 */
+  openedAt?: number;
+}
+
+/** 譜面紀錄的資料夾，只有一層。 */
+export interface RecordFolder {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+/** 標籤；紀錄以名稱引用，重新命名時一併改掉。 */
+export interface RecordTag {
+  name: string;
+  color: string;
+}
+
+/** 標籤色盤：在深色底上清楚，避開左右手的粉紅與藍色。 */
+export const TAG_COLORS = ['#f0b429', '#5fc98a', '#a78bfa', '#f08a4b', '#3fc1b0', '#c9d36a', '#8ea3ff', '#e87c9a', '#b0a58f'];
+
+export function nextTagColor(used: string[]): string {
+  return TAG_COLORS.find((color) => !used.includes(color)) ?? TAG_COLORS[used.length % TAG_COLORS.length];
+}
+
+export function isTagColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+/** 資料夾與標籤清單存在 settings store 的這個鍵。 */
+const ORGANIZE_KEY = 'records.organize';
+
+interface StoredOrganize {
+  folders: RecordFolder[];
+  tags: RecordTag[];
+}
+
+/** 資料夾與標籤名稱：連續空白併成一個、去頭尾，最多 40 字。 */
+export function cleanName(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+function cleanFolders(value: unknown): RecordFolder[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: RecordFolder[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { id, name, createdAt } = item as Partial<RecordFolder>;
+    if (typeof id !== 'string' || typeof name !== 'string' || !cleanName(name) || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: cleanName(name), createdAt: Number.isFinite(createdAt) ? (createdAt as number) : 0 });
+  }
+  return out;
+}
+
+function cleanTagList(value: unknown): RecordTag[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: RecordTag[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { name, color } = item as Partial<RecordTag>;
+    const clean = typeof name === 'string' ? cleanName(name) : '';
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push({ name: clean, color: isTagColor(color) ? color : TAG_COLORS[0] });
+  }
+  return out;
+}
+
+/** 真人已確認的標註數（主線）；排序「標註進度」用。 */
+export function recordLabeled(record: ChartRecord): number {
+  const notes = record.annotation?.notes;
+  return notes ? Object.values(notes).filter(isHumanLabeled).length : 0;
+}
+
+/** 排序用的難度：最高一個難度的數值，「+」加 0.5；沒有難度為 -1。 */
+export function recordTopLevel(record: ChartRecord): number {
+  let top = -1;
+  for (const level of recordLevels(record)) {
+    if (!level) continue;
+    const value = Number.parseFloat(level);
+    if (Number.isFinite(value)) top = Math.max(top, value + (level.includes('+') ? 0.5 : 0));
+  }
+  return top;
 }
 
 export interface TimelineMarker {
@@ -188,6 +279,8 @@ export interface AddOptions {
   name?: string;
   majdata?: MajdataOrigin;
   wiki?: WikiOrigin;
+  /** 預設新增後就切過去；批量匯入時不切換目前的譜面。 */
+  activate?: boolean;
 }
 
 /**
@@ -197,7 +290,19 @@ export interface AddOptions {
 export class Records {
   /** 新的在前。 */
   items = $state<ChartRecord[]>([]);
-  activeId = $state<string | null>(null);
+  folders = $state<RecordFolder[]>([]);
+  tags = $state<RecordTag[]>([]);
+  #activeId = $state<string | null>(null);
+
+  /** 目前開啟的紀錄；切換時記下開啟時間（排序「最近開啟」用）。 */
+  get activeId(): string | null {
+    return this.#activeId;
+  }
+
+  set activeId(id: string | null) {
+    this.#activeId = id;
+    if (id) this.#patch(id, { openedAt: Date.now() });
+  }
   /** 資料庫讀取完成前清單是空的，畫面用來區分「載入中」與「沒有紀錄」。 */
   loaded = $state(false);
 
@@ -206,6 +311,10 @@ export class Records {
   }
 
   async #load(): Promise<void> {
+    const organize = await dbGet<StoredOrganize>(STORE_SETTINGS, ORGANIZE_KEY);
+    // 讀取期間新建的資料夾與標籤保留在後面。
+    this.folders = cleanFolders([...(organize?.folders ?? []), ...this.folders]);
+    this.tags = cleanTagList([...(organize?.tags ?? []), ...this.tags]);
     const stored = await dbGetAll<unknown>(STORE_RECORDS);
     let items = (stored ?? []).filter(isRecord);
     const legacy = loadLegacy();
@@ -231,6 +340,18 @@ export class Records {
       if (record.sourceHash) continue;
       record.sourceHash = await hashText(record.source);
       void dbPut(STORE_RECORDS, record);
+    }
+    // 資料夾已不存在的改回未分類；標籤只留字串，缺顏色的補上。
+    const folderIds = new Set(this.folders.map((folder) => folder.id));
+    for (const record of items) {
+      if (record.folder !== undefined && !folderIds.has(record.folder)) delete record.folder;
+      if (record.tags !== undefined) {
+        record.tags = Array.isArray(record.tags)
+          ? [...new Set(record.tags.filter((tag) => typeof tag === 'string').map(cleanName).filter(Boolean))]
+          : [];
+        if (record.tags.length === 0) delete record.tags;
+        for (const name of record.tags ?? []) this.#ensureTag(name);
+      }
     }
     items.sort((a, b) => b.createdAt - a.createdAt);
     // 讀取期間新增的紀錄保留在最前面。
@@ -279,7 +400,7 @@ export class Records {
       ...(options.wiki ? { wiki: options.wiki } : {}),
     };
     this.items = [record, ...this.items];
-    this.activeId = record.id;
+    if (options.activate !== false) this.activeId = record.id;
     void dbPut(STORE_RECORDS, $state.snapshot(record));
     return record;
   }
@@ -330,7 +451,194 @@ export class Records {
   /** 清除使用者資料後呼叫：只清記憶體，資料庫由呼叫端清空。 */
   reset(): void {
     this.items = [];
-    this.activeId = null;
+    this.folders = [];
+    this.tags = [];
+    this.#activeId = null;
+  }
+
+  /** 改一筆紀錄的部分欄位並寫回資料庫；值為 undefined 的欄位會被移除。 */
+  #patch(id: string, changes: Partial<ChartRecord>): void {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const next: ChartRecord = { ...this.items[index], ...changes };
+    for (const key of Object.keys(changes) as (keyof ChartRecord)[]) {
+      if (changes[key] === undefined) delete next[key];
+    }
+    this.items[index] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
+  }
+
+  #saveOrganize(): void {
+    void dbPut(STORE_SETTINGS, $state.snapshot({ folders: this.folders, tags: this.tags }), ORGANIZE_KEY);
+  }
+
+  // ---- 資料夾 ----
+
+  folderById(id: string | undefined): RecordFolder | null {
+    return id ? (this.folders.find((folder) => folder.id === id) ?? null) : null;
+  }
+
+  folderByName(name: string): RecordFolder | null {
+    const clean = cleanName(name);
+    return this.folders.find((folder) => folder.name === clean) ?? null;
+  }
+
+  /** 建立資料夾；同名的已存在就回傳它。名稱空白回傳 null。 */
+  createFolder(name: string): RecordFolder | null {
+    const clean = cleanName(name);
+    if (!clean) return null;
+    const existing = this.folderByName(clean);
+    if (existing) return existing;
+    const folder: RecordFolder = {
+      id: `fld-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      name: clean,
+      createdAt: Date.now(),
+    };
+    this.folders = [...this.folders, folder];
+    this.#saveOrganize();
+    return folder;
+  }
+
+  /** 重新命名；名稱空白或與其他資料夾同名時不改，回傳 false。 */
+  renameFolder(id: string, name: string): boolean {
+    const clean = cleanName(name);
+    const other = this.folderByName(clean);
+    if (!clean || (other && other.id !== id)) return false;
+    this.folders = this.folders.map((folder) => (folder.id === id ? { ...folder, name: clean } : folder));
+    this.#saveOrganize();
+    return true;
+  }
+
+  /** 刪除資料夾；裡面的紀錄改回「未分類」，紀錄本身不刪。回傳被移出的紀錄 id（復原用）。 */
+  deleteFolder(id: string): string[] {
+    const moved = this.items.filter((item) => item.folder === id).map((item) => item.id);
+    this.folders = this.folders.filter((folder) => folder.id !== id);
+    for (const record of moved) this.#patch(record, { folder: undefined });
+    this.#saveOrganize();
+    return moved;
+  }
+
+  /** 把資料夾放回去（刪除後復原）。 */
+  restoreFolder(folder: RecordFolder, ids: string[]): void {
+    if (!this.folderById(folder.id)) {
+      this.folders = [...this.folders, folder].sort((a, b) => a.createdAt - b.createdAt);
+      this.#saveOrganize();
+    }
+    this.moveTo(ids, folder.id);
+  }
+
+  /** 把紀錄移到資料夾；null 表示「未分類」。 */
+  moveTo(ids: string[], folderId: string | null): void {
+    for (const id of ids) this.#patch(id, { folder: folderId ?? undefined });
+  }
+
+  // ---- 標籤 ----
+
+  tagColor(name: string): string {
+    return this.tags.find((tag) => tag.name === name)?.color ?? TAG_COLORS[TAG_COLORS.length - 1];
+  }
+
+  /** 標籤不存在就建立（沒給顏色時自動配色）；回傳正規化後的名稱，空白回傳 null。 */
+  #ensureTag(name: string, color?: string): string | null {
+    const clean = cleanName(name);
+    if (!clean) return null;
+    if (!this.tags.some((tag) => tag.name === clean)) {
+      const pick = isTagColor(color) ? color : nextTagColor(this.tags.map((tag) => tag.color));
+      this.tags = [...this.tags, { name: clean, color: pick }];
+      this.#saveOrganize();
+    }
+    return clean;
+  }
+
+  createTag(name: string, color?: string): string | null {
+    return this.#ensureTag(name, color);
+  }
+
+  setTagColor(name: string, color: string): void {
+    if (!isTagColor(color)) return;
+    this.tags = this.tags.map((tag) => (tag.name === name ? { ...tag, color } : tag));
+    this.#saveOrganize();
+  }
+
+  /** 重新命名；新名稱已是另一個標籤時兩者合併。名稱空白回傳 false。 */
+  renameTag(from: string, to: string): boolean {
+    const clean = cleanName(to);
+    if (!clean) return false;
+    if (clean === from) return true;
+    const merging = this.tags.some((tag) => tag.name === clean);
+    this.tags = merging
+      ? this.tags.filter((tag) => tag.name !== from)
+      : this.tags.map((tag) => (tag.name === from ? { ...tag, name: clean } : tag));
+    for (const record of this.items.filter((item) => item.tags?.includes(from))) {
+      this.#patch(record.id, { tags: [...new Set(record.tags!.map((tag) => (tag === from ? clean : tag)))] });
+    }
+    this.#saveOrganize();
+    return true;
+  }
+
+  /** 刪除標籤並從所有紀錄拿掉；回傳原本帶這個標籤的紀錄 id（復原用）。 */
+  deleteTag(name: string): string[] {
+    const tagged = this.items.filter((item) => item.tags?.includes(name)).map((item) => item.id);
+    this.tags = this.tags.filter((tag) => tag.name !== name);
+    for (const id of tagged) {
+      const tags = this.get(id)!.tags!.filter((tag) => tag !== name);
+      this.#patch(id, { tags: tags.length > 0 ? tags : undefined });
+    }
+    this.#saveOrganize();
+    return tagged;
+  }
+
+  /** 替這些紀錄加上（on）或拿掉標籤；加上時標籤不存在就建立。 */
+  setTag(ids: string[], name: string, on: boolean, color?: string): void {
+    const clean = on ? this.#ensureTag(name, color) : cleanName(name);
+    if (!clean) return;
+    for (const id of ids) {
+      const current = this.get(id)?.tags ?? [];
+      if (current.includes(clean) === on) continue;
+      const tags = on ? [...current, clean] : current.filter((tag) => tag !== clean);
+      this.#patch(id, { tags: tags.length > 0 ? tags : undefined });
+    }
+  }
+
+  /** 併入時間軸標籤：同一時間（1 毫秒內）同名的不重複加入。回傳新增數量。 */
+  addMarkers(id: string, markers: { time: number; label: string }[]): number {
+    const current = cleanMarkers(this.get(id)?.markers);
+    const added = markers.filter(
+      (marker) => !current.some((item) => Math.abs(item.time - marker.time) < 0.001 && item.label === marker.label),
+    );
+    if (added.length === 0) return 0;
+    const stamp = Date.now().toString(36);
+    this.setMarkers(id, [
+      ...current,
+      ...added.map((marker, index) => ({
+        id: `mk-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+        time: marker.time,
+        label: marker.label,
+      })),
+    ]);
+    return added.length;
+  }
+
+  /** 一次刪除多筆；回傳被刪掉的紀錄，交給 restore() 復原。 */
+  removeMany(ids: string[]): ChartRecord[] {
+    const removed = this.items
+      .filter((item) => ids.includes(item.id))
+      .map((item) => $state.snapshot(item) as ChartRecord);
+    for (const record of removed) this.remove(record.id);
+    return removed;
+  }
+
+  /** 復原刪除的紀錄；分析快取已經清掉，重新開啟時會再分析一次。 */
+  restore(removed: ChartRecord[]): void {
+    const known = new Set(this.items.map((item) => item.id));
+    const folderIds = new Set(this.folders.map((folder) => folder.id));
+    const back = removed.filter((record) => !known.has(record.id));
+    for (const record of back) {
+      if (record.folder && !folderIds.has(record.folder)) delete record.folder;
+      for (const name of record.tags ?? []) this.#ensureTag(name);
+      void dbPut(STORE_RECORDS, record);
+    }
+    this.items = [...this.items, ...back].sort((a, b) => b.createdAt - a.createdAt);
   }
 
   /** 取代某筆紀錄的真人手順標註並寫回資料庫。 */

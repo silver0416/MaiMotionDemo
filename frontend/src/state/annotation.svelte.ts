@@ -989,7 +989,7 @@ export class AnnotationStore {
       source,
       sha256: await hashText(source),
       firstSeconds: session.result?.firstSeconds ?? session.firstSeconds,
-      notes: this.ordered,
+      keys: this.ordered.map((note) => note.key ?? ''),
     });
   }
 

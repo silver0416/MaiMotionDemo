@@ -661,16 +661,27 @@ function stamp(value: number): string {
   return value > 0 ? new Date(value).toISOString() : '';
 }
 
-/** 草稿轉成標註檔；只輸出有內容的音符，依譜面順序排列。 */
+/** 音符穩定鍵開頭的秒數；沒有解析結果時用來依時間排列。 */
+function keyTime(key: string): number {
+  const time = Number.parseFloat(key);
+  return Number.isFinite(time) ? time : Infinity;
+}
+
+/**
+ * 草稿轉成標註檔；只輸出有內容的音符，依譜面順序排列。
+ * keys 是依譜面順序的音符穩定鍵（Rust 解析結果）；拿不到時傳 null，改依鍵開頭的秒數排列、
+ * noteCount 記 0。
+ */
 export function toFile(
   draft: AnnotationDraft,
-  chart: { source: string; sha256: string; firstSeconds: number; notes: Note[] },
+  chart: { source: string; sha256: string; firstSeconds: number; keys: string[] | null },
 ): HandAnnotation {
-  const order = new Map(chart.notes.map((note, index) => [note.key ?? '', index]));
+  const order = new Map((chart.keys ?? []).map((key, index) => [key, index]));
+  const rank = (key: string) => order.get(key) ?? (chart.keys ? Infinity : keyTime(key));
   const video = linkToFile(draft.video);
   const sorted = (marks: Record<string, NoteAnnotation>) =>
     Object.values(marks)
-      .sort((a, b) => (order.get(a.key) ?? Infinity) - (order.get(b.key) ?? Infinity) || (a.key < b.key ? -1 : 1))
+      .sort((a, b) => rank(a.key) - rank(b.key) || (a.key < b.key ? -1 : 1))
       .map((mark) => ({ ...mark }));
   const branches: AnnotationBranchFile[] = draft.branches.map((branch) => ({
     id: branch.id,
@@ -693,7 +704,7 @@ export function toFile(
     chart: {
       sha256: chart.sha256,
       firstSeconds: chart.firstSeconds,
-      noteCount: chart.notes.length,
+      noteCount: chart.keys?.length ?? 0,
       source: chart.source,
     },
     memo: draft.memo,
@@ -745,6 +756,18 @@ export function parseFile(input: string): ParseResult {
   } catch {
     return { ok: false, error: '不是有效的 JSON。請貼上完整的標註檔內容。' };
   }
+  if (isRecordObject(raw) && raw.format === 'maimotion-hand-annotation-bundle') {
+    return { ok: false, error: '這是多份譜面的整包標記檔，請在「新增」視窗貼上或用「開啟標記檔」匯入。' };
+  }
+  return parseValue(raw);
+}
+
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/** 已經 JSON.parse 過的標註檔（整包標註檔裡的每一份也用這個）。 */
+export function parseValue(raw: unknown): ParseResult {
   if (typeof raw !== 'object' || raw === null) return { ok: false, error: '標註檔內容是空的。' };
   const data = raw as Record<string, unknown>;
   if (data.format !== ANNOTATION_FORMAT) {

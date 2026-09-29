@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { saveExport, showSaved } from '../state/exportPrefs.svelte';
   import { tick } from 'svelte';
   import BranchPanel from './BranchPanel.svelte';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
@@ -422,20 +423,19 @@
       id: 'annotation-copy',
       tone: ok ? 'ok' : 'error',
       title: ok ? '已複製標註' : '無法寫入剪貼簿',
-      body: ok ? `${stats.done} 顆已確認，連同原譜一起，可以直接貼給其他人。` : '請改用下載檔案。',
+      body: ok ? `${stats.done} 顆已確認，連同原譜一起，可以直接貼給其他人。` : '請改用匯出檔案。',
     });
   }
 
   async function download() {
     const text = await annotation.exportText();
     if (!text) return;
-    const blob = new Blob([text], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName(annotation.draft.title);
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      const path = await saveExport(text, fileName(annotation.draft.title));
+      if (path) showSaved('annotation-save', '已匯出標註檔', path);
+    } catch (error) {
+      toasts.show({ id: 'annotation-save', tone: 'error', title: '匯出失敗', body: String(error) });
+    }
   }
 
   async function pickFile(event: Event) {
@@ -897,7 +897,7 @@
           <Icon name="copy" size={14} />複製標註
         </button>
         <button class="btn" disabled={!annotation.keysReady || !session.chart} onclick={download}>
-          <Icon name="download" size={14} />下載檔案
+          <Icon name="download" size={14} />匯出檔案
         </button>
       </div>
     </section>

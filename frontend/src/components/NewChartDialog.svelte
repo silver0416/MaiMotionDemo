@@ -15,6 +15,8 @@
     type ChartRecord,
   } from '../state/records.svelte';
   import { annotation, checkSource } from '../state/annotation.svelte';
+  import { parseImport } from '../lib/bundle';
+  import { importRequest, parseImportTexts } from '../state/recordsIO.svelte';
   import { errorLog } from '../state/errorLog.svelte';
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
@@ -51,7 +53,13 @@
 
   const analyzing = $derived(session.phase === 'analyzing');
   /** 貼上的是真人手順標註檔（JSON）：新增時改用檔案附的原譜，並匯入標註。 */
-  const annotationFile = $derived(draft.trimStart().startsWith('{') ? parseFile(draft) : null);
+  /** 貼上的是多份譜面的整包標記檔：交給匯入視窗，不經過這裡的分析。 */
+  const bundlePaste = $derived.by(() => {
+    if (mode !== 'new' || !draft.trimStart().startsWith('{')) return null;
+    const parsed = parseImport(draft);
+    return parsed.ok && parsed.kind === 'bundle' ? parsed : null;
+  });
+  const annotationFile = $derived(draft.trimStart().startsWith('{') && !bundlePaste ? parseFile(draft) : null);
   const importing = $derived(annotationFile?.ok ? annotationFile : null);
   /** 匯入時原譜被改過之類的錯誤；改草稿就清掉。 */
   let importError = $state<{ text: string; source: string } | null>(null);
@@ -74,7 +82,7 @@
   const canSave = $derived(
     record !== null && dirty && !analyzing && (!sourceChanged || canAnalyze),
   );
-  const canGenerate = $derived(mode === 'edit' ? canSave : canAnalyze);
+  const canGenerate = $derived(mode === 'edit' ? canSave : bundlePaste !== null || canAnalyze);
   const rejectedStatus = $derived<AnalyzeStatus | null>(
     (rejected?.response.status as AnalyzeStatus) ?? null,
   );
@@ -253,6 +261,12 @@
       return;
     }
     if (!canGenerate) return;
+    if (bundlePaste) {
+      importRequest.show(bundlePaste.items, bundlePaste.tags, bundlePaste.errors);
+      draft = '';
+      open = false;
+      return;
+    }
     if (importing) {
       await importAnnotation();
       return;
@@ -265,6 +279,24 @@
     rejected = null;
     failed = null;
     open = false;
+  }
+
+  // 開啟標記檔（可多選，整包或單份都可以）：交給匯入視窗確認。
+  let fileInput = $state<HTMLInputElement | null>(null);
+
+  async function pickFiles(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    input.value = '';
+    if (files.length === 0) return;
+    const texts = await Promise.all(files.map(async (file) => ({ name: file.name, text: await file.text() })));
+    const { items, tags, errors } = parseImportTexts(texts);
+    if (items.length === 0) {
+      toasts.show({ id: 'records-import', tone: 'error', title: '沒有可匯入的標記檔', body: errors.join('；') });
+      return;
+    }
+    open = false;
+    importRequest.show(items, tags, errors);
   }
 
   function locate(diagnostic: Diagnostic) {
@@ -376,6 +408,13 @@
         onkeydown={onKeydown}
         placeholder="(120)&#123;4&#125;1,2,3,4,E"
       ></textarea>
+      {#if bundlePaste}
+        <p class="field-hint">
+          偵測到整包標記檔：{bundlePaste.items.length} 份譜面{bundlePaste.errors.length > 0
+            ? `（${bundlePaste.errors.length} 份無法讀取）`
+            : ''}。按「匯入標記檔」後會先列出每一份是新紀錄還是合併到既有紀錄，確認後才匯入。
+        </p>
+      {/if}
       {#if annotationFile}
         {#if !annotationFile.ok}
           <p class="field-error">{annotationFile.error}</p>
@@ -394,7 +433,7 @@
         {/if}
       {/if}
 
-      {#if !session.desktop}
+      {#if !session.desktop && !bundlePaste}
         <p class="field-error">
           {mode === 'edit'
             ? '瀏覽器預覽沒有 Rust 核心：可以查看原文與修改名稱，但改過的原文無法儲存。'
@@ -474,6 +513,20 @@
   </div>
 
   <footer class="dialog-foot">
+    {#if mode === 'new'}
+      <button class="btn" onclick={() => fileInput?.click()} title="開啟一個或多個標記檔（整包或單份），確認後匯入">
+        <Icon name="upload" />開啟標記檔
+      </button>
+      <input
+        class="sr-only"
+        type="file"
+        accept=".json,application/json"
+        multiple
+        bind:this={fileInput}
+        onchange={pickFiles}
+        tabindex="-1"
+      />
+    {/if}
     <span class="muted xsmall mono">{draft.length} 字元</span>
     <span class="muted xsmall">Ctrl + Enter {mode === 'edit' ? '儲存' : '生成'}</span>
     <span class="spacer"></span>
@@ -485,8 +538,8 @@
         <Icon name={analyzing ? 'loader' : sourceChanged ? 'zap' : 'check'} spin={analyzing} />
         {analyzing ? '分析中' : sourceChanged ? '重新分析並儲存' : '儲存'}
       {:else}
-        <Icon name={analyzing ? 'loader' : importing ? 'file-text' : 'zap'} spin={analyzing} />
-        {analyzing ? '分析中' : importing ? '新增並匯入標註' : '生成並新增'}
+        <Icon name={analyzing ? 'loader' : bundlePaste ? 'upload' : importing ? 'file-text' : 'zap'} spin={analyzing} />
+        {analyzing ? '分析中' : bundlePaste ? '匯入標記檔' : importing ? '新增並匯入標註' : '生成並新增'}
       {/if}
     </button>
   </footer>

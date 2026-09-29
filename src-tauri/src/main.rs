@@ -63,6 +63,81 @@ async fn evaluate_annotation(
     .map_err(|e| format!("比對工作失敗：{e}"))
 }
 
+/// 批量匯出標註檔用：只解析譜面（不求解），回傳音符穩定鍵。順序與標註分頁相同：
+/// 依判定時間，同時的依音符編號；這樣開著與沒開著的譜面匯出的順序一致。
+#[tauri::command]
+async fn chart_note_keys(source: String) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        mai_motion_core::parse_chart(&source, 0.0)
+            .map(|parsed| {
+                let number = |id: &str| id[1..].parse::<usize>().unwrap_or(usize::MAX);
+                let mut notes = parsed.chart.notes;
+                notes.sort_by(|a, b| {
+                    a.time_seconds
+                        .total_cmp(&b.time_seconds)
+                        .then_with(|| number(&a.id).cmp(&number(&b.id)))
+                });
+                notes.into_iter().map(|n| n.key).collect()
+            })
+            .map_err(|d| d.message)
+    })
+    .await
+    .map_err(|e| format!("解析工作失敗：{e}"))?
+}
+
+/// 匯出的文字檔只允許 .json，避免前端誤寫其他類型的檔案。
+fn export_path_ok(path: &std::path::Path) -> Result<(), String> {
+    let json = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    if json {
+        Ok(())
+    } else {
+        Err("只能存成 .json 檔".into())
+    }
+}
+
+/// 存到使用者在另存新檔對話框選的位置（對話框已確認覆寫）。
+#[tauri::command]
+async fn save_text_file(path: String, contents: String) -> Result<String, String> {
+    let target = std::path::PathBuf::from(&path);
+    export_path_ok(&target)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::write(&target, contents).map_err(|e| format!("無法寫入 {path}：{e}"))?;
+        Ok(path)
+    })
+    .await
+    .map_err(|e| format!("存檔工作失敗：{e}"))?
+}
+
+/// 存到預設資料夾：同名檔已存在時加上「 (2)」「 (3)」…，不覆寫。回傳實際路徑。
+#[tauri::command]
+async fn save_text_in_dir(dir: String, name: String, contents: String) -> Result<String, String> {
+    let folder = std::path::PathBuf::from(&dir);
+    if !folder.is_dir() {
+        return Err(format!("預設匯出資料夾不存在：{dir}"));
+    }
+    if name.contains(['/', '\\']) || name.is_empty() {
+        return Err("檔名不正確".into());
+    }
+    let first = folder.join(&name);
+    export_path_ok(&first)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let stem = name.strip_suffix(".json").unwrap_or(&name).to_string();
+        let mut target = first;
+        let mut n = 2;
+        while target.exists() {
+            target = folder.join(format!("{stem} ({n}).json"));
+            n += 1;
+        }
+        std::fs::write(&target, contents).map_err(|e| format!("無法寫入 {}：{e}", target.display()))?;
+        Ok(target.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| format!("存檔工作失敗：{e}"))?
+}
+
 #[tauri::command]
 async fn search_majdata_charts(
     query: String,
@@ -184,6 +259,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
             evaluate_annotation,
+            chart_note_keys,
+            save_text_file,
+            save_text_in_dir,
             app_distribution,
             check_update,
             search_majdata_charts,
