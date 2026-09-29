@@ -1786,8 +1786,8 @@ fn brush_touch(
     c: &SolverConfig,
 ) -> Option<State> {
     let note = &chart.notes[task.note];
-    // V3：Tap 也能用螢幕外圈 A 區觸發。追著 Slide 的手在 Tap 判定時刻（±1 幀）正好碰得到
-    // 該鍵的 A 區時，可順手點下去，不另外派手。
+    // V3：Tap 也能用螢幕外圈 A 區觸發。追著 Slide 的手在 Tap 判定時刻（±1 幀）手掌正好
+    // 蓋得到該鍵的 A 區時，可順手點下去，不另外派手。
     let tap = c.is_v3() && note.kind == "tap";
     if task.mode != "tap" || !(tap || note.kind == "touch" && c.palm_radius > 0.0) {
         return None;
@@ -1825,8 +1825,9 @@ fn brush_touch(
         if tap && !tracking {
             continue;
         }
+        // 追 Slide 的手是張開貼在螢幕上的：手掌範圍內的 A 區都碰得到（至少指尖可及）。
         let radius = if tap {
-            crate::judge::finger_reach('A')
+            crate::judge::finger_reach('A').max(c.palm_radius)
         } else if tracking {
             c.palm_radius
         } else {
@@ -2453,24 +2454,31 @@ fn solve_traced(
     } else {
         chart
     };
-    match solve_with(chart, c, false, trace.as_deref_mut(), rules) {
-        Err(first) if first.code == "no_solution" || first.code == "annotation_infeasible" => {
-            let mut solutions = solve_with(chart, c, true, trace, rules)?;
-            for solution in &mut solutions {
-                solution.warnings.push(
-                    "準時接觸優先的搜尋無解，此方案允許 Touch 在判定區間內任意晚接觸。".into(),
-                );
-            }
-            Ok(solutions)
-        }
-        other => other,
+    let retry = |e: &Diagnostic| e.code == "no_solution" || e.code == "annotation_infeasible";
+    match solve_with(chart, c, false, false, trace.as_deref_mut(), rules) {
+        Err(e) if retry(&e) => {}
+        other => return other,
     }
+    // V3 預設畫完：放寬時先只允許 Touch 晚接，仍然無解才允許 Slide 進最後判定區就離手。
+    let draw = c.is_v3() && !c.slide_shortcut;
+    let mut solutions = match solve_with(chart, c, true, !draw, trace.as_deref_mut(), rules) {
+        Err(e) if draw && retry(&e) => solve_with(chart, c, true, true, trace, rules),
+        other => other,
+    }?;
+    for solution in &mut solutions {
+        solution
+            .warnings
+            .push("準時接觸優先的搜尋無解，此方案允許 Touch 在判定區間內任意晚接觸。".into());
+    }
+    Ok(solutions)
 }
 
 fn solve_with(
     chart: &Chart,
     c: &SolverConfig,
     relaxed: bool,
+    // 允許 Slide 進最後判定區後、為了別的音符就離手（不管是否必要）。
+    leave: bool,
     trace: Option<&mut Vec<String>>,
     rules: Option<&HandRules>,
 ) -> Result<Vec<Solution>, Diagnostic> {
@@ -2862,10 +2870,10 @@ fn solve_with(
                         let from = onsets.partition_point(|t| *t <= task.start + EPS);
                         onsets.get(from).is_some_and(|t| *t < end - EPS)
                     }));
-            if task.mode == "slide"
-                && (relaxed || needed_elsewhere)
-                && slide_judged(&state, task, chart)
-            {
+            // V3 預設畫完：不為了少畫一段而提早離手（交接、暫停接回照常），
+            // 只有整譜重試時才放寬。
+            let may_leave = leave || needed_elsewhere && (!c.is_v3() || c.slide_shortcut);
+            if task.mode == "slide" && may_leave && slide_judged(&state, task, chart) {
                 let mut done = state.clone();
                 done.finished.insert(task.note);
                 done.owners.remove(&task.note);
@@ -3033,21 +3041,24 @@ fn solve_with(
         if c.is_v3() {
             warnings[1] = "人類動作 V3：動作效率、跨區與短期負荷是 Demo 偏好；Beam Search 不保證全域最佳，不代表人體極限或機率。".into();
         }
-        if c.is_v3() && chart.notes.iter().any(|n| n.path_id.is_some()) {
+        if c.is_v3() && c.slide_shortcut && chart.notes.iter().any(|n| n.path_id.is_some()) {
             warnings.push("Slide 依判定區抄近（MajdataPlay 判定佇列）：可跳過單一判定區、不必追到星星終點，手在最後判定區的正解時刻完成；感應區大小與指尖半徑是 Demo 近似。".into());
         }
         if chart.paths.iter().any(|path| path.branches.len() == 2) {
-            warnings.push(if c.is_v3() {
+            warnings.push(if c.is_v3() && c.slide_shortcut {
                 "WiFi 依三條判定佇列分工：一手張開覆蓋中央與一側、另一手覆蓋另一側，或單手張開覆蓋三條；手掌半徑沿用設定值。".into()
             } else {
                 "WiFi 以雙手同步 2+1 覆蓋近似：一手沿中央與相鄰側線的中點移動，另一手沿剩餘側線；手掌半徑沿用設定值。".into()
             });
         }
         if used_bundle {
-            warnings.push(
+            warnings.push(if c.slide_shortcut {
                 "部分同時出發的 Slide 由一隻手張開同時覆蓋兩條（掌心手掌半徑內的感應區都算碰到）。"
-                    .into(),
-            );
+                    .into()
+            } else {
+                "部分同時出發的 Slide 由一隻手張開同時覆蓋兩條：掌心沿兩顆星星的中點畫到終點，兩顆星星都在手掌半徑內。"
+                    .into()
+            });
         }
         if used_touch_sweep {
             warnings.push(

@@ -212,6 +212,9 @@ pub struct SolverConfig {
     pub glide_distance: f64,
     /// 手掌圓形近似的半徑，盤面半徑為 1；0 表示關閉同時 Touch 覆蓋。
     pub palm_radius: f64,
+    /// V3：Slide 依判定佇列抄近（可跳區、進最後判定區就算完成）。預設 false：
+    /// 手沿星星路徑畫到終點，偷懶只靠手掌範圍同時覆蓋多條 Slide 或順手點到 Tap。
+    pub slide_shortcut: bool,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -241,6 +244,7 @@ struct SolverConfigWire {
     slide_pickup_seconds: f64,
     glide_distance: f64,
     palm_radius: f64,
+    slide_shortcut: bool,
     preparation_seconds: f64,
     speed_reference: f64,
     repetition_seconds: f64,
@@ -275,6 +279,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             slide_pickup_seconds: c.slide_pickup_seconds,
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
+            slide_shortcut: c.slide_shortcut,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -306,6 +311,7 @@ impl From<SolverConfigWire> for SolverConfig {
             slide_pickup_seconds: c.slide_pickup_seconds,
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
+            slide_shortcut: c.slide_shortcut,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -346,8 +352,14 @@ impl<'de> Deserialize<'de> for SolverConfig {
         }
         let forbidden: Vec<&str> = match model {
             "human-motion-v3" => LEGACY_KEYS.into_iter().chain(["repeatTolerance"]).collect(),
-            "hand-affinity-v2" => LEGACY_KEYS.into_iter().chain(["jackTolerance"]).collect(),
-            _ => V2_KEYS.into_iter().chain(["jackTolerance"]).collect(),
+            "hand-affinity-v2" => LEGACY_KEYS
+                .into_iter()
+                .chain(["jackTolerance", "slideShortcut"])
+                .collect(),
+            _ => V2_KEYS
+                .into_iter()
+                .chain(["jackTolerance", "slideShortcut"])
+                .collect(),
         };
         if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
             return Err(serde::de::Error::custom(format!(
@@ -371,6 +383,9 @@ impl Serialize for SolverConfig {
         let mut value = serde_json::to_value(SolverConfigWire::from(self))
             .map_err(serde::ser::Error::custom)?;
         let map = value.as_object_mut().unwrap();
+        if !self.is_v3() {
+            map.remove("slideShortcut");
+        }
         if !self.is_legacy() {
             map.remove(if self.is_v3() {
                 "repeatTolerance"
@@ -409,6 +424,7 @@ impl Default for SolverConfig {
             slide_pickup_seconds: 0.12,
             glide_distance: 0.8,
             palm_radius: 0.5,
+            slide_shortcut: false,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -468,6 +484,9 @@ impl SolverConfig {
             "legacy-v1" | "hand-affinity-v2" | "human-motion-v3"
         ) {
             return Err("未知 scoringModel".into());
+        }
+        if self.slide_shortcut && !self.is_v3() {
+            return Err("slideShortcut 只適用 human-motion-v3".into());
         }
         if !self.is_legacy() {
             if self.is_v3() {

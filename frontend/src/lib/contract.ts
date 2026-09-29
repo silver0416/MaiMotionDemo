@@ -115,6 +115,7 @@ export const DEFAULT_DRAFT: ConfigDraft = {
   ...DEFAULT_LEGACY,
   ...DEFAULT_PREFERENCES,
   v3: { ...DEFAULT_V3_PREFERENCES },
+  slideShortcut: false,
 };
 
 export const BASE_KEYS = Object.keys(DEFAULT_BASE) as (keyof BaseSolverConfig)[];
@@ -124,7 +125,7 @@ export const V3_PREFERENCE_KEYS = Object.keys(DEFAULT_V3_PREFERENCES) as (keyof 
 
 /**
  * 依評分版本精確投影成送給 Rust 的 solverConfig：
- * V3 只帶共用欄位與 V3 四個控制（jackTolerance，不帶 repeatTolerance）；
+ * V3 只帶共用欄位、V3 四個控制（jackTolerance，不帶 repeatTolerance）與 slideShortcut；
  * V2 只帶共用欄位與 V2 四個控制；V1 只帶共用欄位、速度基準與六個權重。
  */
 export function projectConfig(draft: ConfigDraft): SolverConfig {
@@ -133,6 +134,7 @@ export function projectConfig(draft: ConfigDraft): SolverConfig {
   switch (draft.scoringModel) {
     case 'human-motion-v3':
       for (const key of V3_PREFERENCE_KEYS) base[key] = draft.v3[key];
+      base.slideShortcut = draft.slideShortcut;
       return { scoringModel: 'human-motion-v3', ...base } as unknown as V3SolverConfig;
     case 'hand-affinity-v2':
       for (const key of PREFERENCE_KEYS) base[key] = draft[key];
@@ -171,6 +173,7 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
     }
   }
   if (isScoringModel(raw.scoringModel)) next.scoringModel = raw.scoringModel;
+  if (typeof raw.slideShortcut === 'boolean') next.slideShortcut = raw.slideShortcut;
   const v3 = raw.v3;
   if (v3 && typeof v3 === 'object') {
     for (const key of V3_PREFERENCE_KEYS) {

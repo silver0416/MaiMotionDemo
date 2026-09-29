@@ -233,7 +233,9 @@ fn slide_judgment_point_depends_on_shape() {
 
 #[test]
 fn slide_hand_leaves_after_entering_the_last_judgment_area() {
-    for c in configs() {
+    // V3 預設畫完，提早離手只在「依判定區抄近」時開放（預設的行為見 v3_default_draws_the_slide_to_its_end）。
+    for mut c in configs() {
+        c.slide_shortcut = c.is_v3();
         // 1-5 在 0.5–1.0 秒移動，約 0.924 秒進入 A5；另一手按住 8。0.95 秒的 4 要同一隻手。
         let source = "(120){4}1-5[4:1]/8h[4:3],{40},,,,,,,,,4,E";
         let r = ok(source, c.clone());
@@ -269,5 +271,51 @@ fn slide_hand_leaves_after_entering_the_last_judgment_area() {
             .map(|a| a.end_seconds)
             .fold(0.0, f64::max);
         assert!((end - if v3 { judge } else { 1.0 }).abs() < 1e-9, "{end}");
+    }
+}
+
+#[test]
+fn v3_default_draws_the_slide_to_its_end() {
+    // V3 預設不提早離手：Slide 畫到星星終點。0.875 秒的 5 在追 Slide 的手掌範圍內
+    // （手在 5 方向半徑 0.5 處，A5 約 0.33），順手蓋到，不另外派手、不另外產生動作段。
+    let source = "(120){4}1-5[4:1]/8h[4:3],{16},,,5,E";
+    let r = ok(source, SolverConfig::v3());
+    let chart = r.chart.as_ref().unwrap();
+    let slide = &chart.notes[0];
+    for s in &r.solutions {
+        let traced: Vec<_> = s
+            .assignments
+            .iter()
+            .filter(|a| a.note_id == slide.id && a.part == "slide")
+            .collect();
+        let end = traced.iter().map(|a| a.end_seconds).fold(0.0, f64::max);
+        assert!((end - slide.motion_end.unwrap()).abs() < 1e-9, "{end}");
+        let tap = s
+            .assignments
+            .iter()
+            .find(|a| a.note_id != slide.id && a.part == "contact" && a.start_seconds > 0.8)
+            .unwrap();
+        assert_eq!(tap.hand, traced[0].hand);
+        assert!(!s
+            .left_segments
+            .iter()
+            .chain(&s.right_segments)
+            .any(|g| g.note_id.as_deref() == Some(tap.note_id.as_str())));
+        assert!(!s
+            .warnings
+            .iter()
+            .any(|w| w.contains("最後判定區") || w.contains("抄近")));
+    }
+    // 手掌蓋不到（0.95 秒的 4 離手約 0.61）時，準時搜尋不會為了它提早離手；
+    // 只有整譜放寬重試才允許，並且明確標示。
+    let r = ok(
+        "(120){4}1-5[4:1]/8h[4:3],{40},,,,,,,,,4,E",
+        SolverConfig::v3(),
+    );
+    for s in &r.solutions {
+        assert!(s
+            .warnings
+            .iter()
+            .any(|w| w.contains("準時接觸優先的搜尋無解")));
     }
 }

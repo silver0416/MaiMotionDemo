@@ -157,6 +157,19 @@
             <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
           </span>
         </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={config.slideShortcut}
+            onchange={(event) => set('slideShortcut', event.currentTarget.checked)}
+          />
+          <span>
+            Slide 依判定區抄近
+            <span class="field-hint">
+              打開後手只照判定區走捷徑：可跳過判定區、進最後判定區就離手。預設關閉，手沿星星畫到終點，偷懶只靠手掌同時蓋住多條 Slide 或 Tap。
+            </span>
+          </span>
+        </label>
       </div>
       <p class="field-hint" style="margin-top: var(--space-3)">
         數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；

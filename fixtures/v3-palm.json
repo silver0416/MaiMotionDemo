@@ -18,6 +18,7 @@
       "repetitionSeconds": 0.15,
       "scoringModel": "human-motion-v3",
       "slidePickupSeconds": 0.12,
+      "slideShortcut": false,
       "topK": 3,
       "travelComfort": 6.5
     },
@@ -475,6 +476,7 @@
           "repetitionSeconds": 0.15,
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
+          "slideShortcut": false,
           "topK": 3,
           "travelComfort": 6.5
         },
@@ -680,6 +682,7 @@
           "repetitionSeconds": 0.15,
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
+          "slideShortcut": false,
           "topK": 3,
           "travelComfort": 6.5
         },

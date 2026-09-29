@@ -630,6 +630,8 @@
               <dd>{solution.configSnapshot.jackTolerance}</dd>
               <dt>Slide 換手意願</dt>
               <dd>{solution.configSnapshot.handoverWillingness}</dd>
+              <dt>Slide 路線</dt>
+              <dd>{solution.configSnapshot.slideShortcut ? '依判定區抄近' : '沿星星畫完'}</dd>
             {:else if isV2Solution(solution)}
               <dt>左右分工傾向</dt>
               <dd>{solution.configSnapshot.homePreference}</dd>

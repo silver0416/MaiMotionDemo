@@ -1,8 +1,10 @@
-//! V3 的「追蹤用譜面」：依判定佇列把每條 Slide 的手部路線換成抄近路線，
-//! 並讓手在尾判正解時刻完成最後一區，而不是追到星星終點。
+//! V3 的「追蹤用譜面」：求解器照舊使用 motion_start／motion_end 與路徑取樣，
+//! 這裡只換掉內部譜面的手部路線與結束時間；回傳給前端的譜面仍是原本的星星路徑。
 //!
-//! 求解器其餘部分照舊使用 motion_start／motion_end 與路徑取樣，因此只要換掉
-//! 這份內部譜面的路徑與結束時間；回傳給前端的譜面仍是原本的星星路徑。
+//! - 預設（畫完）：單條 Slide 沿星星路徑畫到終點，不改動。真人的偷懶是用手掌範圍
+//!   同時解決多個音符，因此同時出發、同時結束的 Slide 若一隻手掌蓋得住兩顆星星，
+//!   就多一條「掌心沿兩顆星星中點走完」的共用路線。
+//! - `slideShortcut`：依判定佇列把路線換成抄近路線，手在尾判正解時刻完成最後一區。
 
 use super::{slide_critical_window, EPS, JUDGE_FRAME};
 use crate::judge::{self, Route};
@@ -121,6 +123,26 @@ fn same(a: f64, b: f64) -> bool {
     (a - b).abs() < EPS
 }
 
+/// 同時出發、同時結束的兩條 Slide 由一隻手掌覆蓋、兩條都畫到終點：掌心沿兩顆星星的
+/// 中點走，任何時刻兩顆星星都要在手掌半徑內。
+fn palm_trace(a: &crate::SlidePath, b: &crate::SlidePath, palm: f64) -> Option<Vec<PathSample>> {
+    const STEPS: usize = 128;
+    let mut us: Vec<f64> = (0..=STEPS).map(|k| k as f64 / STEPS as f64).collect();
+    us.extend(a.samples.iter().chain(&b.samples).map(|s| s.u));
+    us.sort_by(f64::total_cmp);
+    us.dedup_by(|x, y| (*x - *y).abs() < 1e-9);
+    let mut out = Vec::with_capacity(us.len());
+    for u in us {
+        let (p, q) = (a.at(u), b.at(u));
+        if p.distance(q) * 0.5 > palm + EPS {
+            return None;
+        }
+        let m = p.lerp(q, 0.5);
+        out.push(PathSample { u, x: m.x, y: m.y });
+    }
+    Some(out)
+}
+
 pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
     let mut out = chart.clone();
     let slides: Vec<usize> = (0..chart.notes.len())
@@ -161,6 +183,12 @@ pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
         let mut parts = vec![first];
         while let Some(&next) = child.get(parts.last().unwrap()) {
             parts.push(next);
+        }
+        if !c.slide_shortcut {
+            if parts.len() == 1 {
+                singles.push(first);
+            }
+            continue;
         }
         let queues: Vec<&[JudgeArea]> = parts
             .iter()
@@ -222,6 +250,21 @@ pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
             }
         }
         for group in groups.into_iter().filter(|g| g.len() >= 2) {
+            if !c.slide_shortcut {
+                // 畫完：結束時間不變，掌心沿兩顆星星的中點走到終點。
+                for (x, &i) in group.iter().enumerate() {
+                    for &j in group.iter().skip(x + 1) {
+                        let Some(samples) = palm_trace(path(i), path(j), palm) else {
+                            continue;
+                        };
+                        let (pi, pj) =
+                            (path_index(chart, i).unwrap(), path_index(chart, j).unwrap());
+                        out.paths[pi].hand_routes.bundles.push((j, samples.clone()));
+                        out.paths[pj].hand_routes.bundles.push((i, samples));
+                    }
+                }
+                continue;
+            }
             let windows: Vec<(f64, (f64, f64))> =
                 group.iter().map(|i| judge_window(chart, *i)).collect();
             let finish = windows.iter().map(|(j, _)| j).sum::<f64>() / windows.len() as f64;
@@ -257,6 +300,59 @@ pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
                 }
             }
         }
+    }
+
+    // 畫完的 WiFi：三顆星星都走到終點。中央＋一側由同一手掌沿兩顆星星的中點覆蓋、
+    // 另一側由另一手；或單手張開沿中央星星畫完，手掌範圍在正解區間內碰完三條佇列。
+    if !c.slide_shortcut {
+        for &i in slides.iter().filter(|i| wifi(**i)) {
+            let p = path(i);
+            if p.judge_areas.is_empty() || p.branch_judge_areas.len() != 2 {
+                continue;
+            }
+            let mut routes = crate::HandRoutes::default();
+            let side = |s: usize| crate::SlidePath {
+                samples: p.branches[s].clone(),
+                ..p.clone()
+            };
+            for s in 0..2 {
+                routes.wifi_pair[s] = palm_trace(p, &side(s), c.palm_radius);
+                routes.wifi_single[s] = Some(p.branches[s].clone());
+            }
+            if let Some(palm) = palm {
+                // 單手：掌心沿兩條側線星星的中點掃過整個扇形直到終點（不抄近、不提早停），
+                // 手掌範圍內的感應區都算碰到；三條佇列都要在正解區間內完成。
+                let (_, window) = judge_window(chart, i);
+                let n = &chart.notes[i];
+                let (start, end) = (n.motion_start.unwrap(), n.motion_end.unwrap());
+                let Some(sweep) = palm_trace(&side(0), &side(1), f64::INFINITY) else {
+                    continue;
+                };
+                let points: Vec<Point> = sweep.iter().map(|s| Point { x: s.x, y: s.y }).collect();
+                let total = judge::polyline_length(&points);
+                let queues = [
+                    p.judge_areas.as_slice(),
+                    p.branch_judge_areas[0].as_slice(),
+                    p.branch_judge_areas[1].as_slice(),
+                ];
+                let in_window =
+                    judge::simulate_route(&points, &queues, Some(palm)).is_some_and(|done| {
+                        total > EPS
+                            && done.iter().all(|d| {
+                                let t = start + d / total * (end - start);
+                                t >= window.0 - EPS && t <= window.1 + EPS
+                            })
+                    });
+                if in_window {
+                    routes.wifi_all = Some(sweep);
+                }
+            }
+            let usable = (0..2).any(|s| routes.wifi_pair[s].is_some()) || routes.wifi_all.is_some();
+            if usable {
+                out.paths[path_index(chart, i).unwrap()].hand_routes = routes;
+            }
+        }
+        return out;
     }
 
     // WiFi：三條判定佇列。中央＋一側由同一手覆蓋、另一側由另一手，或單手張開覆蓋三條。

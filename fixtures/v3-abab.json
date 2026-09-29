@@ -18,6 +18,7 @@
       "repetitionSeconds": 0.15,
       "scoringModel": "human-motion-v3",
       "slidePickupSeconds": 0.12,
+      "slideShortcut": false,
       "topK": 3,
       "travelComfort": 6.5
     },
@@ -553,6 +554,7 @@
           "repetitionSeconds": 0.15,
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
+          "slideShortcut": false,
           "topK": 3,
           "travelComfort": 6.5
         },
@@ -816,10 +818,10 @@
           }
         ],
         "score": {
-          "fatigue": 0.4420420180496498,
+          "fatigue": 0.5893893573995331,
           "movement": 0.2545584412271571,
           "posture": 0.04496186549248389,
-          "total": 0.7415623247692908
+          "total": 0.888909664119174
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -831,7 +833,7 @@
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.2545584412271571,
-          "workload": 0.4420420180496498
+          "workload": 0.5893893573995331
         },
         "scoringModel": "human-motion-v3",
         "warnings": [
@@ -900,6 +902,7 @@
           "repetitionSeconds": 0.15,
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
+          "slideShortcut": false,
           "topK": 3,
           "travelComfort": 6.5
         },
@@ -1163,10 +1166,10 @@
           }
         ],
         "score": {
-          "fatigue": 0.4420420180496498,
+          "fatigue": 0.5893893573995331,
           "movement": 0.47036266735549553,
           "posture": 0.497347707271879,
-          "total": 1.4097523926770243
+          "total": 1.5570997320269075
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -1178,7 +1181,7 @@
           "reversal": 0.0,
           "speedStrain": 0.0,
           "travel": 0.47036266735549553,
-          "workload": 0.4420420180496498
+          "workload": 0.5893893573995331
         },
         "scoringModel": "human-motion-v3",
         "warnings": [
@@ -1247,6 +1250,7 @@
           "repetitionSeconds": 0.15,
           "scoringModel": "human-motion-v3",
           "slidePickupSeconds": 0.12,
+          "slideShortcut": false,
           "topK": 3,
           "travelComfort": 6.5
         },
@@ -1510,10 +1514,10 @@
           }
         ],
         "score": {
-          "fatigue": 0.0067923919305443725,
+          "fatigue": 0.009056522574059164,
           "movement": 2.5597974577381652,
           "posture": 0.9073101610730356,
-          "total": 3.4739000107417453
+          "total": 3.47616414138526
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
@@ -1525,7 +1529,7 @@
           "reversal": 0.0,
           "speedStrain": 2.0297069452081438,
           "travel": 0.5300905125300217,
-          "workload": 0.0067923919305443725
+          "workload": 0.009056522574059164
         },
         "scoringModel": "human-motion-v3",
         "warnings": [

@@ -7,6 +7,14 @@ fn run(source: &str, solver_config: SolverConfig) -> AnalyzeResponse {
         solver_config,
     })
 }
+/// V3 依判定區抄近（slideShortcut）；預設是畫完。
+fn shortcut() -> SolverConfig {
+    SolverConfig {
+        slide_shortcut: true,
+        ..SolverConfig::v3()
+    }
+}
+
 fn continuity(segments: &[MotionSegment]) {
     for pair in segments.windows(2) {
         assert!((pair[0].end_seconds - pair[1].start_seconds).abs() < 1e-7);
@@ -89,7 +97,7 @@ fn v3_wifi_follows_the_three_judge_queues() {
     for palm in [0.5, 0.2] {
         for start in 1..=8 {
             let end = (start + 3) % 8 + 1;
-            let mut c = SolverConfig::v3();
+            let mut c = shortcut();
             c.palm_radius = palm;
             let r = run(&format!("(120){{4}}{start}w{end}[4:2],E"), c);
             assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
@@ -109,7 +117,7 @@ fn v3_wifi_follows_the_three_judge_queues() {
 
 #[test]
 fn v3_one_spread_hand_can_play_wifi_while_the_other_holds() {
-    let r = run("(120){4}1w5[4:2]/8h[4:8],E", SolverConfig::v3());
+    let r = run("(120){4}1w5[4:2]/8h[4:8],E", shortcut());
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     assert_wifi_judged(&r, 0.5);
     for s in &r.solutions {
@@ -125,7 +133,7 @@ fn v3_one_spread_hand_can_play_wifi_while_the_other_holds() {
             .filter(|a| a.part == "slide")
             .all(|a| a.hand != hold));
     }
-    let mut narrow = SolverConfig::v3();
+    let mut narrow = shortcut();
     narrow.palm_radius = 0.2;
     assert_eq!(
         run("(120){4}1w5[4:2]/8h[4:8],E", narrow).status,
@@ -261,7 +269,7 @@ fn wifi_is_deterministic_and_late_pickup_stays_synchronous() {
     // Heads at 0.5 occupy both hands until 0.53; WiFi must start both at 0.53.
     // 手掌 0.2 張不開，必須雙手分工，才能檢查兩手同步晚接。
     let source = "(120){4}1w5[4:2],1/8,E";
-    let mut c = SolverConfig::v3();
+    let mut c = shortcut();
     c.top_k = 1;
     c.palm_radius = 0.2;
     let r = run(source, c.clone());
@@ -288,4 +296,55 @@ fn mixed_wifi_path_is_reported_with_source_location_instead_of_dropping_sides() 
         .diagnostics
         .iter()
         .any(|d| d.source_span.is_some() && d.message.contains("WiFi")));
+}
+
+#[test]
+fn v3_default_wifi_is_drawn_to_the_end_by_palms() {
+    // 預設畫完：三顆星星都走到終點。另一手按住 8 時，單手張開掃過整個扇形直到終點，
+    // 三條判定佇列仍要完成；手掌張不開（0.2）時不能單手，也不能抄近。
+    let r = run("(120){4}1w5[4:2]/8h[4:8],E", SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    let (note, path) = (&chart.notes[0], &chart.paths[0]);
+    let queues: Vec<&[JudgeArea]> = [
+        &path.judge_areas,
+        &path.branch_judge_areas[0],
+        &path.branch_judge_areas[1],
+    ]
+    .into_iter()
+    .map(|q| q.as_slice())
+    .collect();
+    for s in &r.solutions {
+        continuity(&s.left_segments);
+        continuity(&s.right_segments);
+        let slides: Vec<_> = s
+            .assignments
+            .iter()
+            .filter(|a| a.part == "slide" && a.note_id == note.id)
+            .collect();
+        assert_eq!(slides.len(), 1);
+        assert!((slides[0].end_seconds - note.motion_end.unwrap()).abs() < 1e-9);
+        let segments = if slides[0].hand == Hand::L {
+            &s.left_segments
+        } else {
+            &s.right_segments
+        };
+        let points = traced(segments, &note.id);
+        assert!(simulate_route(&points, &queues, Some(0.5)).is_some());
+        assert!(!s.warnings.iter().any(|w| w.contains("判定佇列")));
+    }
+    // 沒有 Hold 時雙手 2+1：中央＋一側由同一手掌沿兩顆星星中點、另一手沿側線，都到終點。
+    let r = run("(120){4}1w5[4:2],E", SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    for s in &r.solutions {
+        for a in s.assignments.iter().filter(|a| a.part == "slide") {
+            assert!((a.end_seconds - note.motion_end.unwrap()).abs() < 1e-9);
+        }
+    }
+    let mut narrow = SolverConfig::v3();
+    narrow.palm_radius = 0.2;
+    assert_eq!(
+        run("(120){4}1w5[4:2]/8h[4:8],E", narrow).status,
+        "no_solution"
+    );
 }

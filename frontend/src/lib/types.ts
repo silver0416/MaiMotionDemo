@@ -177,6 +177,11 @@ export interface V2SolverConfig extends BaseSolverConfig, PreferenceControls {
 /** V3：schemaVersion 4。平面物件，scoringModel 必填。 */
 export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
   scoringModel: 'human-motion-v3';
+  /**
+   * Slide 依判定佇列抄近（可跳區、進最後判定區就算完成）。預設 false：手沿星星路徑畫到終點，
+   * 偷懶只靠手掌範圍同時覆蓋多條 Slide 或順手點到 Tap。只有 V3 接受；舊快照沒有這個欄位。
+   */
+  slideShortcut?: boolean;
 }
 
 /** 實際送給 Rust、也是 configSnapshot 的形狀。 */
@@ -190,6 +195,8 @@ export type SolverConfig = LegacySolverConfig | V2SolverConfig | V3SolverConfig;
 export interface ConfigDraft extends BaseSolverConfig, LegacyWeights, PreferenceControls {
   scoringModel: ScoringModel;
   v3: V3PreferenceControls;
+  /** V3 專用，只在投影成 V3 時送出。 */
+  slideShortcut: boolean;
 }
 
 export interface AnalyzeRequest {

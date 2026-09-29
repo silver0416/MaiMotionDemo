@@ -10,6 +10,14 @@ fn run(source: &str, solver_config: SolverConfig) -> AnalyzeResponse {
     })
 }
 
+/// V3 依判定區抄近（slideShortcut）；預設是畫完。
+fn shortcut() -> SolverConfig {
+    SolverConfig {
+        slide_shortcut: true,
+        ..SolverConfig::v3()
+    }
+}
+
 fn names(queue: &[JudgeArea]) -> String {
     queue
         .iter()
@@ -109,7 +117,7 @@ fn v3_hand_cuts_across_skippable_areas_and_finishes_at_the_judgment_time() {
         "(120){4}3<3[2:1],E",
         "(120){4}6^8[4:1],E",
     ] {
-        let r = run(source, SolverConfig::v3());
+        let r = run(source, shortcut());
         assert_eq!(r.status, "ok", "{source}: {:?}", r.diagnostics);
         let chart = r.chart.as_ref().unwrap();
         let note = &chart.notes[0];
@@ -168,7 +176,7 @@ fn v3_hand_cuts_across_skippable_areas_and_finishes_at_the_judgment_time() {
 
 #[test]
 fn v3_chained_slides_share_one_continuous_shortcut() {
-    let r = run("(120){4}1-3[4:1]-5[4:1],E", SolverConfig::v3());
+    let r = run("(120){4}1-3[4:1]-5[4:1],E", shortcut());
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     let chart = r.chart.as_ref().unwrap();
     let (first, second) = (&chart.notes[0], &chart.notes[1]);
@@ -276,7 +284,7 @@ fn v3_tracking_hand_taps_a_button_whose_outer_area_it_is_touching() {
     // 1-3 的最後判定區是 A3；時長讓正解時刻剛好落在 1.0 秒，那時 3 鍵有 Tap。
     // 另一手按住 7，只有追 Slide 的手可以在完成的同時用 A3 觸發這顆 Tap。
     let source = "(120){4}1-3[#0.61125]/7h[1:1],,3,E";
-    let r = run(source, SolverConfig::v3());
+    let r = run(source, shortcut());
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     for s in &r.solutions {
         let slide = s
@@ -300,7 +308,113 @@ fn v3_tracking_hand_taps_a_button_whose_outer_area_it_is_touching() {
 #[test]
 fn v3_routes_are_deterministic() {
     let source = "(150){8}1pp5[4:1],3,4*-7[8:1],,2w6[4:1],,,,1-5[4:1]*-4[4:1],E";
-    let a = serde_json::to_value(run(source, SolverConfig::v3())).unwrap();
-    let b = serde_json::to_value(run(source, SolverConfig::v3())).unwrap();
-    assert_eq!(a, b);
+    for c in [SolverConfig::v3(), shortcut()] {
+        let a = serde_json::to_value(run(source, c.clone())).unwrap();
+        let b = serde_json::to_value(run(source, c)).unwrap();
+        assert_eq!(a, b);
+    }
+}
+
+#[test]
+fn v3_default_hand_draws_the_whole_star_path() {
+    for source in [
+        "(120){4}1-5[4:1],E",
+        "(120){4}1>5[4:1],E",
+        "(120){4}1pp5[4:1],E",
+        "(120){4}1V72[4:1],E",
+        "(120){4}1s5[4:1],E",
+        "(120){4}2q6[4:1],E",
+        "(120){4}3<3[2:1],E",
+        "(120){4}6^8[4:1],E",
+        "(120){4}1-3[4:1]-5[4:1],E",
+    ] {
+        let r = run(source, SolverConfig::v3());
+        assert_eq!(r.status, "ok", "{source}: {:?}", r.diagnostics);
+        let chart = r.chart.as_ref().unwrap();
+        let last = chart
+            .notes
+            .iter()
+            .filter(|n| n.path_id.is_some())
+            .next_back()
+            .unwrap();
+        let nominal: f64 = chart
+            .paths
+            .iter()
+            .map(|p| {
+                length(
+                    &p.samples
+                        .iter()
+                        .map(|s| Point { x: s.x, y: s.y })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .sum();
+        for s in &r.solutions {
+            continuity(&s.left_segments);
+            continuity(&s.right_segments);
+            let end = s
+                .assignments
+                .iter()
+                .filter(|a| a.part == "slide")
+                .map(|a| a.end_seconds)
+                .fold(0.0, f64::max);
+            assert!(
+                (end - last.motion_end.unwrap()).abs() < 1e-9,
+                "{source}: 要畫到終點 {end}"
+            );
+            // 兩手在 Slide 上的軌跡長度合計就是星星路徑長，沒有抄近。
+            let drawn: f64 = s
+                .left_segments
+                .iter()
+                .chain(&s.right_segments)
+                .filter(|g| g.mode == "slide" || g.mode == "handover")
+                .map(|g| length(&g.samples.iter().map(|p| p.point()).collect::<Vec<_>>()))
+                .sum();
+            assert!(
+                drawn >= nominal - 1e-6,
+                "{source}: 畫了 {drawn} / {nominal}"
+            );
+            assert!(!s
+                .warnings
+                .iter()
+                .any(|w| w.contains("抄近") || w.contains("最後判定區")));
+        }
+    }
+}
+
+#[test]
+fn v3_default_palm_covers_two_close_slides_along_both_stars() {
+    // 同 v3_one_spread_hand_covers_two_close_simultaneous_slides 的譜面：預設下掌心沿兩顆星星
+    // 的中點畫到終點，任何時刻兩顆星星都在手掌半徑內。
+    let source = "(120){4}1-5[4:1]*-4[4:1]/7h[1:1],E";
+    let r = run(source, SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    let palm = SolverConfig::v3().palm_radius;
+    for s in &r.solutions {
+        let slides: Vec<_> = s.assignments.iter().filter(|a| a.part == "slide").collect();
+        let lead = slides[0].hand;
+        assert!(slides.iter().all(|a| a.hand == lead));
+        let end = slides.iter().map(|a| a.end_seconds).fold(0.0, f64::max);
+        assert!((end - chart.notes[0].motion_end.unwrap()).abs() < 1e-9);
+        let segments = if lead == Hand::L {
+            &s.left_segments
+        } else {
+            &s.right_segments
+        };
+        for g in segments.iter().filter(|g| g.mode == "slide") {
+            for sample in &g.samples {
+                for note in &chart.notes[..2] {
+                    let path = chart
+                        .paths
+                        .iter()
+                        .find(|p| Some(&p.id) == note.path_id.as_ref())
+                        .unwrap();
+                    let (a, b) = (note.motion_start.unwrap(), note.motion_end.unwrap());
+                    let star = path.at((sample.time_seconds - a) / (b - a));
+                    assert!(star.distance(sample.point()) <= palm + 1e-6);
+                }
+            }
+        }
+    }
 }
