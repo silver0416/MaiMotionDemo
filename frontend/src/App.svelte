@@ -21,6 +21,7 @@
   import { errorLog } from './state/errorLog.svelte';
   import { markers } from './state/markers.svelte';
   import { annotation } from './state/annotation.svelte';
+  import { cancelGroup, markGroupAt } from './state/groups';
   import { records } from './state/records.svelte';
   import type { ChartRecord } from './state/records.svelte';
   import { session } from './state/session.svelte';
@@ -279,6 +280,17 @@
         event.preventDefault();
         playback.setLoopEnd(playback.time);
         if (!playback.loopEnabled) playback.setLoop(true);
+        break;
+      case 'g':
+      case 'G':
+        if (!annotation.groupsAvailable) break;
+        event.preventDefault();
+        markGroupAt(playback.time);
+        break;
+      case 'Escape':
+        if (annotation.groupStart === null) break;
+        event.preventDefault();
+        cancelGroup();
         break;
       case 'm':
       case 'M':

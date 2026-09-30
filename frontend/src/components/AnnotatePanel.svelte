@@ -32,6 +32,7 @@
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { videoSync } from '../state/videoSync.svelte';
+  import { groupRange, markGroupAt, playGroup, removeGroup } from '../state/groups';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
@@ -852,6 +853,34 @@
       <input class="input" placeholder="這段的說明" bind:value={rangeMemo} onkeydown={(event) => event.key === 'Enter' && addRange()} />
       <button class="btn" disabled={!rangeValid || !records.activeId} onclick={addRange}>
         <Icon name="plus" size={14} />加入區段備註
+      </button>
+    </section>
+    <section class="section stack-sm" aria-label="分組">
+      <div class="section-title">分組</div>
+      <p class="xsmall muted">
+        看譜時覺得「這幾顆是一組」就標起來：播放列按「分組」或按 <kbd>G</kbd> 標起點，移到這組最後一顆再按一次。
+        兩端會吸附到最近的音符，名稱可以不填。分組會跟著標註一起匯出，用來研究人怎麼拆解譜面，目前不影響模型。
+      </p>
+      {#each annotation.draft.groups as group, index (`${group.from}-${group.to}`)}
+        <div class="range">
+          <button class="linkish mono small" onclick={() => playGroup(group)} title="循環播放這組">{groupRange(group)}</button>
+          <span class="xsmall muted" style="white-space: nowrap">{annotation.groupNoteCount(group)} 顆</span>
+          <input
+            class="input grow"
+            aria-label={`分組 ${groupRange(group)} 的名稱`}
+            placeholder="名稱（選填）"
+            value={group.label ?? ''}
+            onchange={(event) => annotation.renameGroup(index, event.currentTarget.value)}
+          />
+          <button class="btn btn--icon" onclick={() => removeGroup(index)} aria-label="刪除這個分組" title="刪除">
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
+      {:else}
+        <p class="small muted">還沒有分組。</p>
+      {/each}
+      <button class="btn" disabled={!annotation.groupsAvailable} onclick={() => markGroupAt(playback.time)}>
+        <Icon name="brackets" size={14} />{annotation.groupStart === null ? `在 ${formatClock(playback.time)} 標分組起點` : `在 ${formatClock(playback.time)} 結束分組`}
       </button>
     </section>
   {/if}

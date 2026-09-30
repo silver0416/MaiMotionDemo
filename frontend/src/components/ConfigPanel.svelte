@@ -170,6 +170,19 @@
             </span>
           </span>
         </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            checked={config.holdEarlyRelease}
+            onchange={(event) => set('holdEarlyRelease', event.currentTarget.checked)}
+          />
+          <span>
+            Hold 可以提早放手
+            <span class="field-hint">
+              打開後 Hold 結尾 12 幀不必按住、很短的 Hold 只看頭判，手可以先放開去接別的音符。預設關閉，Hold 一律按到結尾。
+            </span>
+          </span>
+        </label>
       </div>
       <p class="field-hint" style="margin-top: var(--space-3)">
         數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；

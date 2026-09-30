@@ -35,6 +35,9 @@ fn engine() -> ScoringV3 {
         phrase_template: 0.0,
         glide_speed: 1.0,
         future_role: 0.15,
+        arc_side: 0.0,
+        split_upper: 0.0,
+        split_window: 0.5,
     });
     ScoringV3::new(PreferenceConfigV3 {
         travel_comfort: 6.5,

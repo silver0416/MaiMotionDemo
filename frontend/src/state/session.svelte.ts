@@ -86,8 +86,9 @@ function stableJson(value: unknown): string {
  * slide-judge-queue-6：V3 依 Slide 判定佇列抄近並在尾判正解時刻完成；同時 Slide／WiFi 可一手張開覆蓋；
  *   追 Slide 的手可用 A 區順手點 Tap；Beam 合併未來等價的狀態。
  * note-key-7：音符輸出穩定鍵 key（真人標註對應用）；舊快取沒有這個欄位。
+ * hold-full-8：Hold 預設按到結尾，提早放手改為 holdEarlyRelease 選項。
  */
-export const SOLVER_REVISION = 'note-key-7';
+export const SOLVER_REVISION = 'hold-full-8';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。

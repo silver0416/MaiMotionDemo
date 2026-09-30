@@ -84,6 +84,19 @@ pub struct TuningV3 {
     pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
     pub future_role: f64,
+    /// How "which side" is measured for excursion and crossing. 0: horizontal
+    /// position only. 1: position along the ring, cut at the top and joined at
+    /// the bottom, so a hand helping on the other half is shallow on the lower
+    /// buttons (4, 3 for the left hand) and deep on the upper ones (1, 2).
+    /// Players sharing one half keep the owning hand above and bring the other
+    /// hand in from below.
+    pub arc_side: f64,
+    /// Both hands working one half within split_window: the hand that belongs
+    /// to that half keeps the upper buttons and the helping hand comes in from
+    /// below (right half: R on 1–2, L on 3–4). Cost per unit of height when the
+    /// helper strikes above the owner, fading over the window.
+    pub split_upper: f64,
+    pub split_window: f64,
 }
 impl Default for TuningV3 {
     fn default() -> Self {
@@ -116,6 +129,9 @@ impl Default for TuningV3 {
             phrase_template: 0.5,
             glide_speed: 1.0,
             future_role: 0.15,
+            arc_side: 0.0,
+            split_upper: 0.0,
+            split_window: 0.5,
         }
     }
 }
@@ -269,7 +285,7 @@ impl ScoringV3 {
         right: &MotionSegment,
         until: f64,
     ) -> Result<f64, String> {
-        let shared = tuning().contact_cross * self.shared.crossing(left, right)?;
+        let shared = tuning().contact_cross * contact_crossing(left, right)?;
         let weight = tuning().swapped_posture;
         checked(shared + weight * swapped_integral(left, right, until)?)
     }
@@ -326,14 +342,23 @@ impl ScoringV3 {
                 .max(0.);
             }
         }
+        // Held contact on the other side, the V2 exposure integral on side_coord.
+        let mut exposure = 0.;
+        if !matches!(s.mode.as_str(), "tap" | "travel" | "idle") {
+            for pair in s.samples.windows(2) {
+                exposure += positive_square_integral(
+                    side_depth(hand, pair[0].point()),
+                    side_depth(hand, pair[1].point()),
+                    pair[1].time_seconds - pair[0].time_seconds,
+                );
+            }
+        }
         Ok(MotionTermsV3 {
             travel: tuning().travel * shared.free_distance,
             speed_strain: checked(speed)?,
             tracking_strain: shared.tracking_strain,
             excursion: checked(
-                weight
-                    * (tuning().home_entry * entry
-                        + tuning().home_exposure * shared.side_exposure / 0.25),
+                weight * (tuning().home_entry * entry + tuning().home_exposure * exposure),
             )?,
         })
     }
@@ -474,9 +499,68 @@ fn swapped_integral(
     }
     checked(total)
 }
-fn opposite_depth(hand: Hand, p: Point) -> f64 {
+/// Signed side of a point: positive on the right hand's side. Blends the
+/// horizontal position with the position along the ring (see TuningV3::arc_side):
+/// 1 just right of the top, 0 at the bottom, -1 just left of the top, scaled by
+/// the distance from the centre so the centre stays neutral.
+fn side_coord(p: Point) -> f64 {
+    let a = tuning().arc_side;
+    if a == 0. {
+        return p.x;
+    }
+    // y grows downward; clockwise angle from the top in [0, 2π).
+    let theta = p.x.atan2(-p.y).rem_euclid(std::f64::consts::TAU);
+    let arc = p.x.hypot(p.y).min(1.) * (1. - theta / std::f64::consts::PI);
+    (1. - a) * p.x + a * arc
+}
+/// Unclamped: negative on the hand's own side (the exposure integral needs the zero crossing).
+fn side_depth(hand: Hand, p: Point) -> f64 {
     let sign = if hand == Hand::L { 1. } else { -1. };
-    ((sign * p.x - HOME_NEUTRAL_MARGIN) / (1. - HOME_NEUTRAL_MARGIN)).clamp(0., 1.)
+    (sign * side_coord(p) - HOME_NEUTRAL_MARGIN) / (1. - HOME_NEUTRAL_MARGIN)
+}
+fn opposite_depth(hand: Hand, p: Point) -> f64 {
+    side_depth(hand, p).clamp(0., 1.)
+}
+/// Both hands in active contact with the left hand on the right hand's side
+/// (V2's crossing integral, measured on side_coord). Equal to V2 when arc_side = 0.
+fn contact_crossing(left: &MotionSegment, right: &MotionSegment) -> Result<f64, String> {
+    let active = |m: &str| matches!(m, "tap" | "hold" | "palm" | "slide" | "handover" | "glide");
+    if !active(&left.mode) || !active(&right.mode) {
+        return Ok(0.);
+    }
+    let (l, r) = (&left.samples, &right.samples);
+    let (mut i, mut j) = (0, 0);
+    let mut cost = 0.;
+    while i + 1 < l.len() && j + 1 < r.len() {
+        let start = l[i].time_seconds.max(r[j].time_seconds);
+        let end = l[i + 1].time_seconds.min(r[j + 1].time_seconds);
+        if end > start {
+            let gap = |t: f64| (side_coord(point_at(l, i, t)) - side_coord(point_at(r, j, t))) / 2.;
+            cost += positive_square_integral(gap(start), gap(end), end - start);
+        }
+        let (le, re) = (l[i + 1].time_seconds, r[j + 1].time_seconds);
+        if le <= re {
+            i += 1;
+        }
+        if re <= le {
+            j += 1;
+        }
+    }
+    checked(cost)
+}
+/// Integral of max(0, lerp(a, b, t))² over dt, split at the zero crossing.
+fn positive_square_integral(a: f64, b: f64, dt: f64) -> f64 {
+    if dt == 0. || (a <= 0. && b <= 0.) {
+        return 0.;
+    }
+    if a >= 0. && b >= 0. {
+        return dt * (a * a + a * b + b * b) / 3.;
+    }
+    if a > 0. {
+        dt * (a / (a - b)) * a * a / 3.
+    } else {
+        dt * (b / (b - a)) * b * b / 3.
+    }
 }
 fn checked(v: f64) -> Result<f64, String> {
     if v.is_finite() && v >= 0. {
@@ -557,6 +641,10 @@ impl HandHistory {
     /// (point before the last action, last action point).
     pub fn recent_points(&self) -> (Option<Point>, Option<Point>) {
         (self.prev_point, self.last_point)
+    }
+    /// Where and when this hand last acted.
+    pub fn last_action(&self) -> Option<(Point, f64)> {
+        Some((self.last_point?, self.last_time?))
     }
 }
 

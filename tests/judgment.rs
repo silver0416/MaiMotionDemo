@@ -102,7 +102,8 @@ fn contact_can_glide_after_one_judgment_frame() {
 
 #[test]
 fn hold_can_release_within_unchecked_tail() {
-    for c in configs() {
+    for mut c in configs() {
+        c.hold_early_release = true;
         // 兩手按住到 1.0 秒；0.9 秒的雙押在結尾 12 幀（0.2 秒）內，可提早放手。
         let r = ok("(120){4}1h[4:2]/8h[4:2],{20},,,,3/6,E", c.clone());
         let hold = note(&r, |n| n.kind == "hold");
@@ -128,7 +129,8 @@ fn hold_can_release_within_unchecked_tail() {
 
 #[test]
 fn touch_may_be_hit_late_inside_critical_perfect() {
-    for c in configs() {
+    for mut c in configs() {
+        c.hold_early_release = true;
         // 兩手要到 0.8 秒才能放開 Hold；0.75 秒的 Touch 晚接仍在 +9 幀內。
         let r = ok("(120){4}1h[4:2]/8h[4:2],{40},,,,,B3,E", c.clone());
         let touch = note(&r, |n| n.kind == "touch");
@@ -145,6 +147,29 @@ fn touch_may_be_hit_late_inside_critical_perfect() {
             run("(120){4}1h[4:2]/8h[4:2],{40},,,B3,E", c).status,
             "no_solution"
         );
+    }
+}
+
+#[test]
+fn holds_are_kept_to_the_end_by_default() {
+    const FORCED: &str = "Hold 一律按到結尾";
+    for c in configs() {
+        // 另一手有空：Hold 按到結尾，不註明。
+        let r = ok("(120){4}1h[4:2],{20},,,,3,E", c.clone());
+        let hold = note(&r, |n| n.kind == "hold");
+        let end = contacts(&r, &hold.id)
+            .iter()
+            .map(|a| a.end_seconds)
+            .fold(f64::MIN, f64::max);
+        assert!(
+            (end - hold.end_seconds).abs() < 1e-9,
+            "{end} {}",
+            hold.end_seconds
+        );
+        assert!(!r.solutions[0].warnings.iter().any(|w| w.contains(FORCED)));
+        // 0.9 秒的雙押落在兩手 Hold 的結尾 12 幀內：按完就接不到，才退而提早放手並註明。
+        let r = ok("(120){4}1h[4:2]/8h[4:2],{20},,,,3/6,E", c);
+        assert!(r.solutions[0].warnings.iter().any(|w| w.contains(FORCED)));
     }
 }
 

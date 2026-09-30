@@ -213,8 +213,11 @@ struct Relief {
     glided: bool,
 }
 
-/// Hold／Touch Hold 最早可以放手而不影響判定的時間。
+/// Hold／Touch Hold 最早可以放手而不影響判定的時間。關閉 holdEarlyRelease 時一律按到結尾。
 fn earliest_release(note: &Note, c: &SolverConfig) -> f64 {
+    if !c.hold_early_release {
+        return note.end_seconds;
+    }
     let head = if note.kind == "touchHold" {
         TOUCH_HOLD_HEAD_FRAMES
     } else {
@@ -2443,6 +2446,35 @@ pub fn trace_v3(chart: &Chart, c: &SolverConfig) -> Result<Vec<String>, Diagnost
 }
 
 fn solve_traced(
+    chart: &Chart,
+    c: &SolverConfig,
+    mut trace: Option<&mut Vec<String>>,
+    rules: Option<&HandRules>,
+) -> Result<Vec<Solution>, Diagnostic> {
+    let result = solve_chain(chart, c, trace.as_deref_mut(), rules);
+    // Hold 一律按完是偏好不是硬規則：整首都找不到方案時才允許提早放手，並註明。
+    match result {
+        Err(e)
+            if !c.hold_early_release
+                && matches!(e.code.as_str(), "no_solution" | "annotation_infeasible") =>
+        {
+            let relaxed = SolverConfig {
+                hold_early_release: true,
+                ..c.clone()
+            };
+            let mut solutions = solve_chain(chart, &relaxed, trace, rules).map_err(|_| e)?;
+            for solution in &mut solutions {
+                solution.warnings.push(
+                    "Hold 一律按到結尾時找不到可行方案，此方案允許 Hold 在結尾不檢查的區間內提早放手。".into(),
+                );
+            }
+            Ok(solutions)
+        }
+        other => other,
+    }
+}
+
+fn solve_chain(
     chart: &Chart,
     c: &SolverConfig,
     mut trace: Option<&mut Vec<String>>,

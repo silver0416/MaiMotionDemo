@@ -80,6 +80,7 @@ export const DEFAULT_BASE: BaseSolverConfig = {
   preparationSeconds: 1,
   repetitionSeconds: 0.15,
   palmRadius: 0.5,
+  holdEarlyRelease: false,
 };
 
 /** 與 SolverConfig::default() 的 V1 權重一致。 */

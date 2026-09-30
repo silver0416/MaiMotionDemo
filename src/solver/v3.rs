@@ -238,7 +238,8 @@ impl<'a> Context<'a> {
         self.refresh(next)
     }
 
-    /// 星星由一手拍下、第一次接上滑行的卻是另一手。只看這顆 Slide 的第一筆滑行；
+    /// 星星由一手拍下、第一次接上滑行的卻是另一手。
+    /// （上下分工見檔尾的 split_upper。）只看這顆 Slide 的第一筆滑行；
     /// 往回找同一顆的起點，最多到起點時刻前 1 秒或 256 筆。
     fn star_switch(&self, link: &Link<Assignment>) -> f64 {
         let weight = crate::scoring_v3::tuning().star_switch;
@@ -428,6 +429,11 @@ impl<'a> Context<'a> {
                 event.kind != ActionKind::Palm
                     && matches!(key, crate::scoring_v3::ContactKey::Button(_))
             });
+        let split = if key.is_some() {
+            split_upper(hand, point, time, &histories[1 - hand.index()])
+        } else {
+            0.0
+        };
         let history = &mut histories[hand.index()];
         let (mut switch, mut scale) = (0.0, 1.0);
         if let Some(key) = key {
@@ -447,7 +453,7 @@ impl<'a> Context<'a> {
             Some(key) => roles.observe(hand, point, key, self.lookahead.revisit(key, time), time),
             None => roles.release(hand),
         }
-        terms.ownership_switch = switch;
+        terms.ownership_switch = switch + split;
         Ok(terms)
     }
 
@@ -1010,4 +1016,35 @@ fn shape_repeats(chart: &Chart) -> BTreeMap<&str, ShapeRepeat<'_>> {
         );
     }
     result
+}
+
+/// 兩手在短時間內都在同一半邊：這半邊的主人手守上面、來幫忙的手從下面進來。
+/// 幫忙的手打在主人手上方時，依高度差收費，隨間隔在 splitWindow 內遞減。
+fn split_upper(hand: Hand, point: Point, time: f64, other: &HandHistory) -> f64 {
+    let tuning = crate::scoring_v3::tuning();
+    if tuning.split_upper == 0.0 {
+        return 0.0;
+    }
+    let Some((other_point, other_time)) = other.last_action() else {
+        return 0.0;
+    };
+    let gap = time - other_time;
+    const SIDE_MARGIN: f64 = 0.15;
+    if !(0.0..tuning.split_window).contains(&gap)
+        || point.x * other_point.x <= 0.0
+        || point.x.abs() < SIDE_MARGIN
+        || other_point.x.abs() < SIDE_MARGIN
+    {
+        return 0.0;
+    }
+    let owner = if point.x > 0.0 { Hand::R } else { Hand::L };
+    let (owner_point, helper_point) = if hand == owner {
+        (point, other_point)
+    } else {
+        (other_point, point)
+    };
+    // y 向下增加：幫忙的手 y 比較小就是在上方。
+    tuning.split_upper
+        * (owner_point.y - helper_point.y).max(0.0)
+        * (1.0 - gap / tuning.split_window)
 }

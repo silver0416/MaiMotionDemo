@@ -632,6 +632,8 @@
               <dd>{solution.configSnapshot.handoverWillingness}</dd>
               <dt>Slide 路線</dt>
               <dd>{solution.configSnapshot.slideShortcut ? '依判定區抄近' : '沿星星畫完'}</dd>
+              <dt>Hold</dt>
+              <dd>{solution.configSnapshot.holdEarlyRelease === false ? '按到結尾' : '可提早放手'}</dd>
             {:else if isV2Solution(solution)}
               <dt>左右分工傾向</dt>
               <dd>{solution.configSnapshot.homePreference}</dd>

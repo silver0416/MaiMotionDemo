@@ -19,11 +19,15 @@ fn annotation(source: &str, notes: serde_json::Value) -> HandAnnotation {
 }
 
 fn evaluate(source: &str, notes: serde_json::Value) -> EvaluateResponse {
+    evaluate_with(source, notes, SolverConfig::v3())
+}
+
+fn evaluate_with(source: &str, notes: serde_json::Value, c: SolverConfig) -> EvaluateResponse {
     evaluate_annotation(EvaluateRequest {
         request_id: "eval".into(),
         source: source.into(),
         first_seconds: 0.0,
-        solver_config: SolverConfig::v3(),
+        solver_config: c,
         annotation: annotation(source, notes),
     })
 }
@@ -126,7 +130,7 @@ fn impossible_annotation_reports_where_it_breaks() {
 }
 
 /// 四月の雨 開頭：右手按住的 Hold 3 結束的同一瞬間，同一隻手從 2 開始滑 2q7。
-/// 真人會提早放開 Hold 移過去，照標註求解不能因此判定做不到。
+/// 真人會提早放開 Hold 移過去；打開 holdEarlyRelease 時照標註求解不能因此判定做不到。
 #[test]
 fn hold_ending_as_the_same_hands_slide_starts_is_released_early() {
     let source = "(79){16}7,,,,2q7[8:1]/6h[16:1],5h[16:1],4h[16:1],3h[16:1],,,,,,,,,E";
@@ -139,7 +143,7 @@ fn hold_ending_as_the_same_hands_slide_starts_is_released_early() {
     };
     let (slide, hold3) = (find("slide", 2), find("hold", 3));
     assert!((c.notes[hold3].end_seconds - c.notes[slide].motion_start.unwrap()).abs() < 1e-9);
-    let r = evaluate(
+    let r = evaluate_with(
         source,
         json!([
             {"key": key(source, find("tap", 7)), "hand": "L"},
@@ -149,6 +153,10 @@ fn hold_ending_as_the_same_hands_slide_starts_is_released_early() {
             {"key": key(source, find("hold", 4)), "hand": "R"},
             {"key": key(source, hold3), "hand": "R"},
         ]),
+        SolverConfig {
+            hold_early_release: true,
+            ..SolverConfig::v3()
+        },
     );
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     assert!(r.human.is_some());

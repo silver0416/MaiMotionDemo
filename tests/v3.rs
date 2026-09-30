@@ -735,8 +735,16 @@ fn ownership_switch_is_reported_and_debug_trace_shows_roles() {
 fn short_hold_is_left_early_instead_of_forcing_one_hand_and_crossing() {
     // 137 BPM: 4/5 short holds, then 1,8,1,8 16ths, then 4/5 and 2/7 chords
     // (0-based n715..n726 of tests/charts/speed_first_full.txt).
-    let r =
-        ok("(137){16}2hx[16:3]/7hx[16:3],,,,4x/5x,4hx[8:1]/5hx[8:1],,,1x,8,1,8,,4x/5x,,2b/7b,E");
+    let source =
+        "(137){16}2hx[16:3]/7hx[16:3],,,,4x/5x,4hx[8:1]/5hx[8:1],,,1x,8,1,8,,4x/5x,,2b/7b,E";
+    let r = run(
+        source,
+        SolverConfig {
+            hold_early_release: true,
+            ..SolverConfig::v3()
+        },
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     let chart = r.chart.as_ref().unwrap();
     let h = owners(&r);
     let buttons: Vec<u8> = chart.notes.iter().map(|n| n.button).collect();

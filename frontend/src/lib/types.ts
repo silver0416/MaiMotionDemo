@@ -128,6 +128,11 @@ export interface BaseSolverConfig {
    * 覆蓋是否成立一律由 Rust 判定，前端不自行計算覆蓋組合。
    */
   palmRadius: number;
+  /**
+   * Hold／Touch Hold 可以提早放手（結尾 12 幀不檢查、短 Hold 只看頭判）。
+   * 預設 false：一律按到結尾。舊快照沒有這個欄位，當時是可以提早放手。
+   */
+  holdEarlyRelease: boolean;
 }
 
 export interface LegacyWeights {
@@ -510,6 +515,18 @@ export interface RangeMemo {
   by?: string;
 }
 
+/**
+ * 分組：玩家看譜時覺得「這幾顆是一組」的時間範圍（含兩端的音符）。
+ * 用來研究人類怎麼拆解譜面；目前模型不讀。
+ */
+export interface NoteGroup {
+  from: number;
+  to: number;
+  /** 選填名稱，例如「交替」「階梯」 */
+  label?: string;
+  by?: string;
+}
+
 export interface HandAnnotation {
   format: typeof ANNOTATION_FORMAT;
   version: typeof ANNOTATION_VERSION;
@@ -527,6 +544,8 @@ export interface HandAnnotation {
   /** 主線的手順 */
   notes: NoteAnnotation[];
   ranges: RangeMemo[];
+  /** 分組（沒有時省略） */
+  groups?: NoteGroup[];
   /** 對照用的 YouTube 影片與同步偏移（影片時間 = 譜面時間 + offset） */
   video?: AnnotationVideo;
   /** 其他打法：某一段換成不同手順的分支（只有前端讀；Rust 比對時只收到展開後的單一路線） */

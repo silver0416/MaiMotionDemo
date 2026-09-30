@@ -18,6 +18,7 @@ import {
   MAIN_LINE,
   merge,
   modelMark,
+  sameGroup,
   nextLineColor,
   neededParts,
   newBranchId,
@@ -46,6 +47,7 @@ import type {
   HandoverMark,
   Note,
   NoteAnnotation,
+  NoteGroup,
   TrackHand,
 } from '../lib/types';
 import { playback } from './playback.svelte';
@@ -163,6 +165,7 @@ export class AnnotationStore {
     this.flush();
     this.recordId = record?.id ?? null;
     this.pendingStart = null;
+    this.groupStart = null;
     this.draft = (record && cleanDraft(record.annotation)) ?? emptyDraft(record ? recordTitle(record) : '');
     if (record && !this.draft.title) this.draft.title = recordTitle(record);
     if (this.#syncAlignment()) this.#scheduleSave();
@@ -681,6 +684,7 @@ export class AnnotationStore {
     if (scope === 'all') {
       this.draft.notes = {};
       this.draft.ranges = [];
+      this.draft.groups = [];
       this.draft.memo = '';
       this.draft.branches = [];
       this.draft.active = MAIN_LINE;
@@ -980,6 +984,95 @@ export class AnnotationStore {
     this.#touch();
   }
 
+  // ---- 分組 ----
+  //
+  // 像時間軸標籤一樣標：按 G（或播放列的「分組」）記下起點，再按一次記下終點。
+  // 兩端吸附到最近的音符，範圍含兩端的音符。
+
+  /** 正在標的分組起點（譜面時間）；null 表示沒有在標。 */
+  groupStart = $state<number | null>(null);
+
+  /** 盤面上的結果就是這筆紀錄的原文，才可以標分組。 */
+  get groupsAvailable(): boolean {
+    const record = records.get(this.recordId);
+    return !!record && session.result?.source === record.source;
+  }
+
+  /** 吸附到 0.15 秒內最近的音符判定時間；附近沒有音符就取到毫秒。 */
+  #snapTime(time: number): number {
+    let best = Math.round(time * 1000) / 1000;
+    let gap = 0.15;
+    for (const note of session.notes) {
+      const d = Math.abs(note.timeSeconds - time);
+      if (d < gap) {
+        gap = d;
+        best = note.timeSeconds;
+      }
+    }
+    return best;
+  }
+
+  /** 範圍內（含兩端）的音符數。 */
+  groupNoteCount(group: { from: number; to: number }): number {
+    return session.notes.filter((note) => note.timeSeconds >= group.from - 1e-3 && note.timeSeconds <= group.to + 1e-3)
+      .length;
+  }
+
+  /**
+   * 第一次呼叫記下起點，第二次以兩點建立分組。兩點吸附到同一顆音符時
+   * 不建立（一組至少兩顆）。回傳結果給呼叫端顯示提示。
+   */
+  markGroup(time: number): { kind: 'start' | 'created' | 'exists' | 'too-short'; group?: NoteGroup } | null {
+    if (!this.groupsAvailable) return null;
+    const at = this.#snapTime(time);
+    if (this.groupStart === null) {
+      this.groupStart = at;
+      return { kind: 'start' };
+    }
+    const group: NoteGroup = {
+      from: Math.min(this.groupStart, at),
+      to: Math.max(this.groupStart, at),
+      ...(this.annotator ? { by: this.annotator } : {}),
+    };
+    if (this.groupNoteCount(group) < 2) return { kind: 'too-short' };
+    this.groupStart = null;
+    if (this.draft.groups.some((item) => sameGroup(item, group))) return { kind: 'exists', group };
+    this.draft.groups.push(group);
+    this.draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
+    this.#touch();
+    return { kind: 'created', group };
+  }
+
+  cancelGroup(): void {
+    this.groupStart = null;
+  }
+
+  renameGroup(index: number, label: string): void {
+    const group = this.draft.groups[index];
+    if (!group) return;
+    const text = label.trim().slice(0, 40);
+    if ((group.label ?? '') === text) return;
+    if (text) group.label = text;
+    else delete group.label;
+    this.#touch();
+  }
+
+  /** 刪除並回傳刪掉的分組，供復原。 */
+  removeGroup(index: number): NoteGroup | null {
+    const [removed] = this.draft.groups.splice(index, 1);
+    if (!removed) return null;
+    this.#touch();
+    return removed;
+  }
+
+  /** 把刪掉的分組放回來（已經有同一組就不重複）。 */
+  restoreGroup(group: NoteGroup): void {
+    if (this.draft.groups.some((item) => sameGroup(item, group))) return;
+    this.draft.groups.push({ ...group });
+    this.draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
+    this.#touch();
+  }
+
   /** 目前草稿連同原譜轉成標註檔。 */
   async toFile(): Promise<HandAnnotation | null> {
     const source = session.result?.source ?? session.source;
@@ -1109,6 +1202,10 @@ export class AnnotationStore {
       this.cancelMark();
       return true;
     }
+    if (event.key === 'Escape' && this.groupStart !== null) {
+      this.groupStart = null;
+      return true;
+    }
     if (key === 'n') {
       this.nextTodo();
       return true;
@@ -1154,6 +1251,7 @@ export class AnnotationStore {
       .filter((mark): mark is NoteAnnotation => isHumanLabeled(mark))
       .map((mark) => ({ ...mark }));
     delete file.branches;
+    delete file.groups;
     this.evaluating = true;
     this.evaluationError = null;
     try {

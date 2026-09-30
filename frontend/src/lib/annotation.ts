@@ -11,6 +11,7 @@ import {
   type HandoverMark,
   type Note,
   type NoteAnnotation,
+  type NoteGroup,
   type RangeMemo,
   type Solution,
   type TrackHand,
@@ -24,6 +25,8 @@ export interface AnnotationDraft {
   memo: string;
   notes: Record<string, NoteAnnotation>;
   ranges: RangeMemo[];
+  /** 分組（看譜時覺得是一組的範圍） */
+  groups: NoteGroup[];
   /** 最後編輯時間（epoch 毫秒） */
   updatedAt: number;
   /** 對照用的真人影片與同步偏移 */
@@ -87,6 +90,7 @@ export function emptyDraft(title = ''): AnnotationDraft {
     memo: '',
     notes: {},
     ranges: [],
+    groups: [],
     updatedAt: 0,
     branches: [],
     active: MAIN_LINE,
@@ -272,6 +276,23 @@ function cleanRanges(value: unknown): RangeMemo[] {
   return out.sort((a, b) => a.from - b.from);
 }
 
+const GROUP_LABEL_MAX = 40;
+
+export function cleanGroups(value: unknown): NoteGroup[] {
+  if (!Array.isArray(value)) return [];
+  const out: NoteGroup[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const raw = item as Record<string, unknown>;
+    if (!finite(raw.from) || !finite(raw.to)) continue;
+    const group: NoteGroup = { from: Math.min(raw.from, raw.to), to: Math.max(raw.from, raw.to) };
+    if (text(raw.label)) group.label = text(raw.label).slice(0, GROUP_LABEL_MAX);
+    if (text(raw.by)) group.by = text(raw.by);
+    out.push(group);
+  }
+  return out.sort((a, b) => a.from - b.from || a.to - b.to);
+}
+
 function cleanNotes(value: unknown): Record<string, NoteAnnotation> {
   const notes: Record<string, NoteAnnotation> = {};
   if (typeof value !== 'object' || value === null) return notes;
@@ -377,6 +398,7 @@ export function cleanDraft(value: unknown): AnnotationDraft | null {
     memo: text(raw.memo),
     notes,
     ranges: cleanRanges(raw.ranges),
+    groups: cleanGroups(raw.groups),
     updatedAt: finite(raw.updatedAt) ? raw.updatedAt : 0,
     ...(video ? { video } : {}),
     branches,
@@ -710,6 +732,7 @@ export function toFile(
     memo: draft.memo,
     notes: sorted(draft.notes),
     ranges: draft.ranges.map((range) => ({ ...range })),
+    ...(draft.groups.length > 0 ? { groups: draft.groups.map((group) => ({ ...group })) } : {}),
     ...(video ? { video } : {}),
     ...(branches.length > 0 ? { branches } : {}),
   };
@@ -738,6 +761,7 @@ export function serialize(file: HandAnnotation): string {
     `  "memo": ${line(file.memo)},`,
     ...(file.video ? [`  "video": ${line(file.video)},`] : []),
     `  "ranges": ${list(file.ranges)},`,
+    ...(file.groups && file.groups.length > 0 ? [`  "groups": ${list(file.groups)},`] : []),
     `  "notes": ${list(file.notes)},`,
     ...(file.branches && file.branches.length > 0 ? [`  "branches": ${branchList(file.branches)},`] : []),
     `  "chart": ${line(file.chart)}`,
@@ -809,10 +833,16 @@ export function parseValue(raw: unknown): ParseResult {
       memo: text(data.memo),
       notes,
       ranges: cleanRanges(data.ranges),
+      ...(cleanGroups(data.groups).length > 0 ? { groups: cleanGroups(data.groups) } : {}),
       ...(video ? { video } : {}),
       ...(branches.length > 0 ? { branches } : {}),
     },
   };
+}
+
+/** 兩端都在 1 毫秒內視為同一組。 */
+export function sameGroup(a: NoteGroup, b: NoteGroup): boolean {
+  return Math.abs(a.from - b.from) < 1e-3 && Math.abs(a.to - b.to) < 1e-3;
 }
 
 export function sameHands(a: NoteAnnotation, b: NoteAnnotation): boolean {
@@ -872,6 +902,7 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
     ...mine,
     notes: { ...mine.notes },
     ranges: [...mine.ranges],
+    groups: [...mine.groups],
     annotators: [...mine.annotators],
     branches: mine.branches.map((branch) => ({ ...branch, notes: { ...branch.notes } })),
   };
@@ -910,6 +941,12 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
     if (!exists) draft.ranges.push({ ...range });
   }
   draft.ranges.sort((a, b) => a.from - b.from);
+  for (const group of file.groups ?? []) {
+    const same = draft.groups.find((item) => sameGroup(item, group));
+    if (!same) draft.groups.push({ ...group });
+    else if (!same.label && group.label) same.label = group.label;
+  }
+  draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
   for (const name of file.annotators) {
     if (!draft.annotators.includes(name)) draft.annotators.push(name);
   }

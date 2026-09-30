@@ -215,6 +215,9 @@ pub struct SolverConfig {
     /// V3：Slide 依判定佇列抄近（可跳區、進最後判定區就算完成）。預設 false：
     /// 手沿星星路徑畫到終點，偷懶只靠手掌範圍同時覆蓋多條 Slide 或順手點到 Tap。
     pub slide_shortcut: bool,
+    /// Hold／Touch Hold 可以提早放手：結尾 12 幀不檢查按壓、總長不超過頭尾不檢查區間的
+    /// 短 Hold 只看頭判。預設 false：一律按到結尾（真人標註裡提早放手去接別的音符很少見）。
+    pub hold_early_release: bool,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -245,6 +248,7 @@ struct SolverConfigWire {
     glide_distance: f64,
     palm_radius: f64,
     slide_shortcut: bool,
+    hold_early_release: bool,
     preparation_seconds: f64,
     speed_reference: f64,
     repetition_seconds: f64,
@@ -280,6 +284,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
             slide_shortcut: c.slide_shortcut,
+            hold_early_release: c.hold_early_release,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -312,6 +317,7 @@ impl From<SolverConfigWire> for SolverConfig {
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
             slide_shortcut: c.slide_shortcut,
+            hold_early_release: c.hold_early_release,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -425,6 +431,7 @@ impl Default for SolverConfig {
             glide_distance: 0.8,
             palm_radius: 0.5,
             slide_shortcut: false,
+            hold_early_release: false,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
