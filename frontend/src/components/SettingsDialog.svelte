@@ -1,8 +1,8 @@
 <script lang="ts">
-  import Icon from './Icon.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
   import { appVersion, clearWikiCache, wikiCacheInfo, type WikiCacheInfo } from '../lib/api';
   import { BUILD_ID, BUILD_TIME, FRONTEND_VERSION } from '../lib/build';
-  import { SCHEMA_VERSION, SCORING_LABEL, SCORING_MODELS } from '../lib/contract';
+  import { SCHEMA_VERSION, SCORING_LABEL, SCORING_V3, SCORING_VERSION } from '../lib/contract';
   import { STORE_ANALYSES, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
   import { copyText } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
@@ -22,7 +22,25 @@
 
   let { open = $bindable() }: Props = $props();
 
+  type Section = 'about' | 'errors' | 'video' | 'export' | 'data';
+  const SECTIONS: { id: Section; label: string; icon: IconName; desktop?: boolean }[] = [
+    { id: 'about', label: '版本與更新', icon: 'info' },
+    { id: 'video', label: '影片同步', icon: 'video', desktop: true },
+    { id: 'export', label: '匯出', icon: 'download', desktop: true },
+    { id: 'data', label: '資料管理', icon: 'database' },
+    { id: 'errors', label: '錯誤紀錄', icon: 'circle-alert' },
+  ];
+
   let dialog: HTMLDialogElement | null = $state(null);
+  /** 左側分類；關閉再開啟時停在上次看的分類。 */
+  let section = $state<Section>('about');
+  const sections = $derived(SECTIONS.filter((item) => !item.desktop || session.desktop));
+
+  function pickSection(id: Section) {
+    section = id;
+    // 換分類時取消還沒按第二次的危險操作。
+    confirming = null;
+  }
   let closeButton: HTMLButtonElement | null = $state(null);
   let version = $state('');
   /** 分析快取筆數；null = 讀不到資料庫。 */
@@ -163,7 +181,7 @@
       `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
       `Build：${BUILD_ID}（${BUILD_TIME}）`,
       `判定規則修訂：${SOLVER_REVISION}`,
-      `評分方式：${SCORING_MODELS.map((model) => `${SCORING_LABEL[model.id]} ${model.version}（${model.id}，schema ${SCHEMA_VERSION[model.id]}）`).join('、')}`,
+      `評分方式：${SCORING_LABEL} ${SCORING_VERSION}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
     ].join('\n');
   }
 
@@ -298,7 +316,26 @@
     </button>
   </header>
 
+  <div class="dialog-main">
+  <nav class="side" aria-label="設定分類">
+    {#each sections as item (item.id)}
+      <button
+        class="side-item"
+        class:is-active={section === item.id}
+        aria-current={section === item.id ? 'page' : undefined}
+        onclick={() => pickSection(item.id)}
+      >
+        <Icon name={item.icon} size={14} />
+        <span class="side-label">{item.label}</span>
+        {#if item.id === 'errors' && errorLog.entries.length > 0}
+          <span class="side-count mono">{errorLog.entries.length}</span>
+        {/if}
+      </button>
+    {/each}
+  </nav>
+
   <div class="dialog-body scroll">
+    {#if section === 'about'}
     <section class="block" aria-labelledby="settings-version">
       <div class="block-head">
         <h3 id="settings-version">版本資訊</h3>
@@ -321,34 +358,10 @@
         <dd>{buildTime}</dd>
         <dt>判定規則修訂</dt>
         <dd>{SOLVER_REVISION}</dd>
+        <dt>評分方式</dt>
+        <dd>{SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span> <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span></dd>
       </dl>
 
-      <table class="table models">
-        <caption class="sr-only">評分方式版本</caption>
-        <thead>
-          <tr>
-            <th scope="col">評分方式</th>
-            <th scope="col">版本</th>
-            <th scope="col">識別碼</th>
-            <th scope="col">Schema</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each SCORING_MODELS as model (model.id)}
-            <tr>
-              <td>
-                {SCORING_LABEL[model.id]}
-                {#if session.config.scoringModel === model.id}
-                  <span class="badge badge--quiet">使用中</span>
-                {/if}
-              </td>
-              <td class="mono">{model.version}</td>
-              <td class="mono">{model.id}</td>
-              <td class="mono">{SCHEMA_VERSION[model.id]}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
     </section>
 
     <section class="block" aria-labelledby="settings-update">
@@ -430,7 +443,9 @@
         </p>
       {/if}
     </section>
+    {/if}
 
+    {#if section === 'errors'}
     <section class="block" aria-labelledby="settings-errors">
       <div class="block-head">
         <h3 id="settings-errors">
@@ -465,8 +480,9 @@
         </ul>
       {/if}
     </section>
+    {/if}
 
-    {#if session.desktop}
+    {#if section === 'video' && session.desktop}
       <section class="block" aria-labelledby="settings-video">
         <div class="block-head">
           <h3 id="settings-video">影片同步</h3>
@@ -564,7 +580,7 @@
       </section>
     {/if}
 
-    {#if session.desktop}
+    {#if section === 'export' && session.desktop}
       <section class="block" aria-labelledby="settings-export">
         <div class="block-head">
           <h3 id="settings-export">匯出</h3>
@@ -603,6 +619,7 @@
       </section>
     {/if}
 
+    {#if section === 'data'}
     <section class="block" aria-labelledby="settings-data">
       <div class="block-head">
         <h3 id="settings-data">資料管理</h3>
@@ -661,12 +678,16 @@
         </div>
       </div>
     </section>
+    {/if}
+  </div>
   </div>
 </dialog>
 
 <style>
+  /* 固定高度：換分類時對話框不會跟著內容忽大忽小。 */
   .dialog {
-    width: min(680px, calc(100vw - 32px));
+    width: min(820px, calc(100vw - 32px));
+    height: min(640px, calc(100vh - 32px));
     max-height: calc(100vh - 32px);
     padding: 0;
     color: var(--c-text);
@@ -719,8 +740,86 @@
     border-bottom: 1px solid var(--c-border);
   }
 
+  .dialog-main {
+    display: grid;
+    grid-template-columns: 168px minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2);
+    border-right: 1px solid var(--c-border);
+  }
+
+  .side-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    color: var(--c-text-dim);
+    font: inherit;
+    font-size: var(--fs-sm);
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+
+  .side-item:hover {
+    color: var(--c-text);
+    background: var(--c-control);
+  }
+
+  .side-item.is-active {
+    color: var(--c-text-strong);
+    background: var(--c-control-hover);
+  }
+
+  .side-item:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: -2px;
+  }
+
+  .side-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .side-count {
+    padding: 0 var(--space-1);
+    font-size: var(--fs-xs);
+    color: var(--c-on-invert);
+    background: var(--c-danger);
+    border-radius: var(--radius-sm);
+  }
+
   .dialog-body {
     min-height: 0;
+  }
+
+  @media (max-width: 560px) {
+    .dialog-main {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .side {
+      flex-direction: row;
+      overflow-x: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--c-border);
+    }
+
+    .side-item {
+      width: auto;
+      white-space: nowrap;
+    }
   }
 
   /* 區塊之間只用分隔線，不再加一層外框。 */
@@ -765,10 +864,6 @@
     gap: var(--space-2);
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-
-  .models td {
-    vertical-align: middle;
   }
 
   .empty {

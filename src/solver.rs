@@ -8,11 +8,35 @@ mod v3_tests;
 use crate::geometry::button;
 use crate::scoring_v3::{ActionEvent, ActionKind};
 use crate::*;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const EPS: f64 = 1e-8;
+
+thread_local! {
+    /// 這個執行緒上正在跑的分析的取消旗標；搜尋迴圈定期檢查。
+    static CANCEL: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+}
+
+/// 在 `flag` 被設為 true 時中止這次求解（求解回傳 code 為 `cancelled` 的診斷）。
+/// 只影響目前執行緒，結束後恢復原狀。
+pub fn with_cancel<T>(flag: Arc<AtomicBool>, run: impl FnOnce() -> T) -> T {
+    let previous = CANCEL.with(|slot| slot.replace(Some(flag)));
+    let result = run();
+    CANCEL.with(|slot| *slot.borrow_mut() = previous);
+    result
+}
+
+fn cancelled() -> bool {
+    CANCEL.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+    })
+}
 
 /// 計算預算。狀態複製已是常數成本，上限因此由整體工作量與時間決定，
 /// 不再靠音符數量的硬性上限來遮掩搜尋成本。
@@ -2665,6 +2689,9 @@ fn solve_with(
             .map(|state| (state, vec![true; group.len()], vec![false; group.len()]))
             .collect();
         while let Some((state, remaining, auto)) = pending.pop() {
+            if cancelled() {
+                return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
+            }
             if expansions > MAX_EXPANSIONS
                 || clock.elapsed() > BUDGET
                 || pending.len() + next.len() > MAX_GROUP_STATES
@@ -2924,6 +2951,9 @@ fn solve_with(
                 let mut grouped = auto.clone();
                 grouped[i] = true;
                 pending.push((state, after, grouped));
+            }
+            if cancelled() {
+                return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
             }
             if expansions > MAX_EXPANSIONS
                 || clock.elapsed() > BUDGET

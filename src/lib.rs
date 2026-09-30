@@ -15,6 +15,8 @@ pub use model::*;
 pub use parser::{parse_chart, ParseOutput};
 /// Debug-only V3 replay of the Top-1 candidate's ownership, roles and lookahead.
 pub use solver::trace_v3;
+/// 可中斷的分析：旗標設為 true 後，進行中的求解盡快結束。
+pub use solver::with_cancel;
 /// 分組認知樣板：樂句切分（學習用）與換樣板表（評估用）。
 #[doc(hidden)]
 pub use solver::{phrase_shapes, set_templates};

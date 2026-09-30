@@ -1,16 +1,7 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
-  import {
-    ADVANCED_FIELDS,
-    CONFIG_RANGE,
-    DEFAULT_BASE,
-    FIELD_LABEL,
-    SCORING_LABEL,
-    SCORING_MODELS,
-    SCORING_V2,
-    SCORING_V3,
-  } from '../lib/contract';
+  import { ADVANCED_FIELDS, CONFIG_RANGE, DEFAULT_BASE, FIELD_LABEL } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
   import type { ConfigDraft, V3PreferenceControls } from '../lib/types';
@@ -25,17 +16,13 @@
     session.config = { ...session.config, [key]: value };
   }
 
-  /** V3 的四個控制與 V2 同名但分開保存，改 V3 不會動到 V2 的數值。 */
+  /** 四個行為控制存在草稿的 v3 底下（沿用既有保存資料的位置）。 */
   function setV3<K extends keyof V3PreferenceControls>(key: K, value: V3PreferenceControls[K]) {
     session.config = { ...session.config, v3: { ...session.config.v3, [key]: value } };
   }
 
   const config = $derived(session.config);
-  const activeModel = $derived(config.scoringModel);
   const R = CONFIG_RANGE;
-
-  /** 目前結果用的評分方式與選取的不同時，在該列標示「目前結果」。 */
-  const resultModel = $derived(session.resultScoringModel);
 
   // 進階區預設收起；裡面有欄位超出範圍時自動展開，避免錯誤藏在看不到的地方。
   let advancedOpen = $state(false);
@@ -61,285 +48,85 @@
 <div class="stack">
   <section class="section">
     <div class="section-title">
-      <span>評分方式</span>
+      <span>打法偏好</span>
       {#if session.stale}
         <span class="badge badge--quiet">需重新生成</span>
       {/if}
     </div>
-    <!-- 原生 radio：方向鍵切換、Tab 只停一次。版本增加時直接多一列，不必重排版面。 -->
-    <fieldset class="models">
-      <legend class="sr-only">評分方式</legend>
-      {#each SCORING_MODELS as model (model.id)}
-        {@const checked = config.scoringModel === model.id}
-        <label class="model" class:is-active={checked}>
-          <input
-            class="sr-only"
-            type="radio"
-            name="scoring-model"
-            value={model.id}
-            {checked}
-            onchange={() => session.setScoringModel(model.id)}
-          />
-          <span class="model-dot" aria-hidden="true"></span>
-          <span class="model-text">
-            <span class="model-name">
-              {SCORING_LABEL[model.id]}
-              <span class="model-version mono">{model.version}</span>
-              {#if resultModel === model.id && !checked}
-                <span class="badge badge--quiet">目前結果</span>
-              {/if}
-            </span>
-            <span class="model-hint">{model.hint}</span>
+    <div class="stack">
+      <NumberField
+        label="左右分工傾向"
+        hint="越高越偏好左手留在左側、右手留在右側。仍允許在較自然時由另一隻手跨區幫忙。"
+        value={config.v3.homePreference}
+        min={R.homePreference.min}
+        max={R.homePreference.max}
+        step={1}
+        error={errorOf('homePreference')}
+        onValue={(value) => setV3('homePreference', value)}
+      />
+      <NumberField
+        label="快速移動容忍"
+        hint="超過這個速度才增加高速負擔，並依移動距離累計，越短促越吃力；優先於左右分工。預設 5.2 依真人標註擬合。低於此速度仍計移動距離。"
+        value={config.v3.travelComfort}
+        min={R.travelComfort.min}
+        max={R.travelComfort.max}
+        sliderMin={1}
+        sliderMax={12}
+        step={0.5}
+        unit="半徑/秒"
+        error={errorOf('travelComfort')}
+        onValue={(value) => setV3('travelComfort', value)}
+      />
+      <NumberField
+        label="同點連打容忍"
+        hint="越高越能接受同一隻手高速重複敲同一位置。一兩顆一般不會因此被強制換手。"
+        value={config.v3.jackTolerance}
+        min={R.jackTolerance.min}
+        max={R.jackTolerance.max}
+        step={1}
+        error={errorOf('jackTolerance')}
+        onValue={(value) => setV3('jackTolerance', value)}
+      />
+      <NumberField
+        label="Slide 換手意願"
+        hint="越高越願意在 Slide 中途交給另一隻手；最高也不會鼓勵反覆換手。"
+        value={config.v3.handoverWillingness}
+        min={R.handoverWillingness.min}
+        max={R.handoverWillingness.max}
+        step={1}
+        error={errorOf('handoverWillingness')}
+        onValue={(value) => setV3('handoverWillingness', value)}
+      />
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={config.allowHandover}
+          onchange={(event) => set('allowHandover', event.currentTarget.checked)}
+        />
+        <span>
+          允許 Slide 中途換手
+          <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
+        </span>
+      </label>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={config.slideShortcut}
+          onchange={(event) => set('slideShortcut', event.currentTarget.checked)}
+        />
+        <span>
+          Slide 依判定區抄近
+          <span class="field-hint">
+            打開後手只照判定區走捷徑：可跳過判定區、進最後判定區就離手。預設關閉，手沿星星畫到終點，偷懶只靠手掌同時蓋住多條 Slide 或 Tap。
           </span>
-        </label>
-      {/each}
-    </fieldset>
-    <p class="field-hint" style="margin-top: var(--space-2)">
-      各評分方式的參數分開保存，切換時不互相換算；舊版權重沒有對應到新版偏好的精確公式。
+        </span>
+      </label>
+    </div>
+    <p class="field-hint" style="margin-top: var(--space-3)">
+      數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；
+      偏好與預設值是本 Demo 的起點，尚未經玩家校準，不代表官方判定或人體能力。
     </p>
   </section>
-
-  {#if activeModel === SCORING_V3}
-    <section class="section">
-      <div class="section-title"><span>打法偏好</span></div>
-      <div class="stack">
-        <NumberField
-          label="左右分工傾向"
-          hint="越高越偏好左手留在左側、右手留在右側。仍允許在較自然時由另一隻手跨區幫忙。"
-          value={config.v3.homePreference}
-          min={R.homePreference.min}
-          max={R.homePreference.max}
-          step={1}
-          error={errorOf('homePreference')}
-          onValue={(value) => setV3('homePreference', value)}
-        />
-        <NumberField
-          label="快速移動容忍"
-          hint="超過這個速度才增加高速負擔，並依移動距離累計，越短促越吃力；優先於左右分工。預設 5.2 依真人標註擬合。低於此速度仍計移動距離。"
-          value={config.v3.travelComfort}
-          min={R.travelComfort.min}
-          max={R.travelComfort.max}
-          sliderMin={1}
-          sliderMax={12}
-          step={0.5}
-          unit="半徑/秒"
-          error={errorOf('travelComfort')}
-          onValue={(value) => setV3('travelComfort', value)}
-        />
-        <NumberField
-          label="同點連打容忍"
-          hint="越高越能接受同一隻手高速重複敲同一位置。一兩顆一般不會因此被強制換手。"
-          value={config.v3.jackTolerance}
-          min={R.jackTolerance.min}
-          max={R.jackTolerance.max}
-          step={1}
-          error={errorOf('jackTolerance')}
-          onValue={(value) => setV3('jackTolerance', value)}
-        />
-        <NumberField
-          label="Slide 換手意願"
-          hint="越高越願意在 Slide 中途交給另一隻手；最高也不會鼓勵反覆換手。"
-          value={config.v3.handoverWillingness}
-          min={R.handoverWillingness.min}
-          max={R.handoverWillingness.max}
-          step={1}
-          error={errorOf('handoverWillingness')}
-          onValue={(value) => setV3('handoverWillingness', value)}
-        />
-        <label class="check">
-          <input
-            type="checkbox"
-            checked={config.allowHandover}
-            onchange={(event) => set('allowHandover', event.currentTarget.checked)}
-          />
-          <span>
-            允許 Slide 中途換手
-            <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
-          </span>
-        </label>
-        <label class="check">
-          <input
-            type="checkbox"
-            checked={config.slideShortcut}
-            onchange={(event) => set('slideShortcut', event.currentTarget.checked)}
-          />
-          <span>
-            Slide 依判定區抄近
-            <span class="field-hint">
-              打開後手只照判定區走捷徑：可跳過判定區、進最後判定區就離手。預設關閉，手沿星星畫到終點，偷懶只靠手掌同時蓋住多條 Slide 或 Tap。
-            </span>
-          </span>
-        </label>
-      </div>
-      <p class="field-hint" style="margin-top: var(--space-3)">
-        數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；
-        偏好與預設值是本 Demo 的起點，尚未經玩家校準，不代表官方判定或人體能力。
-      </p>
-    </section>
-  {:else if activeModel === SCORING_V2}
-    <section class="section">
-      <div class="section-title"><span>打法偏好</span></div>
-      <div class="stack">
-        <NumberField
-          label="左右分工傾向"
-          hint="越高越偏好左手打左半邊、右手打右半邊，願意多移動來維持分工。"
-          value={config.homePreference}
-          min={R.homePreference.min}
-          max={R.homePreference.max}
-          step={1}
-          error={errorOf('homePreference')}
-          onValue={(value) => set('homePreference', value)}
-        />
-        <NumberField
-          label="快速移動容忍"
-          hint="越高越能接受快速大跨度移動；超過這個速度才開始算負擔，不是速度上限。"
-          value={config.travelComfort}
-          min={R.travelComfort.min}
-          max={R.travelComfort.max}
-          step={1}
-          unit="半徑/秒"
-          error={errorOf('travelComfort')}
-          onValue={(value) => set('travelComfort', value)}
-        />
-        <NumberField
-          label="同手連打容忍"
-          hint="越高越接受同一隻手連續重新擊打。"
-          value={config.repeatTolerance}
-          min={R.repeatTolerance.min}
-          max={R.repeatTolerance.max}
-          step={1}
-          error={errorOf('repeatTolerance')}
-          onValue={(value) => set('repeatTolerance', value)}
-        />
-        <NumberField
-          label="Slide 換手意願"
-          hint="越高越願意在 Slide 中途交給另一隻手；最高也不會鼓勵反覆換手。"
-          value={config.handoverWillingness}
-          min={R.handoverWillingness.min}
-          max={R.handoverWillingness.max}
-          step={1}
-          error={errorOf('handoverWillingness')}
-          onValue={(value) => set('handoverWillingness', value)}
-        />
-        <label class="check">
-          <input
-            type="checkbox"
-            checked={config.allowHandover}
-            onchange={(event) => set('allowHandover', event.currentTarget.checked)}
-          />
-          <span>
-            允許 Slide 中途換手
-            <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
-          </span>
-        </label>
-      </div>
-      <p class="field-hint" style="margin-top: var(--space-3)">
-        數值可輸入小數。這些偏好與預設值是本 Demo 的起點，尚未經玩家校準，不代表官方判定或人體能力。
-      </p>
-    </section>
-  {:else}
-    <section class="section">
-      <div class="section-title">
-        <span>舊版成本權重</span>
-        <span class="muted xsmall">0–100，越高越在意</span>
-      </div>
-      <div class="stack">
-        <NumberField
-          label="移動距離"
-          hint="越高越偏好省力、少跑動的打法。"
-          value={config.distanceWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('distanceWeight')}
-          onValue={(value) => set('distanceWeight', value)}
-        />
-        <NumberField
-          label="移動速度負擔"
-          hint="越高越避免短時間內的大跨度移動。"
-          value={config.speedWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('speedWeight')}
-          onValue={(value) => set('speedWeight', value)}
-        />
-        <NumberField
-          label="手伸到對側"
-          hint="越高越不希望左手跑到右半邊（右手同理）。"
-          value={config.sideWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('sideWeight')}
-          onValue={(value) => set('sideWeight', value)}
-        />
-        <NumberField
-          label="雙手交叉"
-          hint="越高越避免左手越過右手的姿態。"
-          value={config.crossWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('crossWeight')}
-          onValue={(value) => set('crossWeight', value)}
-        />
-        <NumberField
-          label="同手快速連打"
-          hint="越高越偏好把連續音符分給兩手。"
-          value={config.repetitionWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('repetitionWeight')}
-          onValue={(value) => set('repetitionWeight', value)}
-        />
-        <NumberField
-          label="換手次數"
-          hint="越高越不願意在 Slide 中途換手。"
-          value={config.handoverWeight}
-          min={R.weight.min}
-          max={R.weight.max}
-          sliderMax={20}
-          step={0.1}
-          error={errorOf('handoverWeight')}
-          onValue={(value) => set('handoverWeight', value)}
-        />
-        <NumberField
-          label="速度基準"
-          hint="以每秒幾個盤面半徑為基準計算速度負擔（0.1–100）。"
-          value={config.speedReference}
-          min={R.speedReference.min}
-          max={R.speedReference.max}
-          sliderMin={0.5}
-          sliderMax={20}
-          step={0.5}
-          unit="半徑/秒"
-          error={errorOf('speedReference')}
-          onValue={(value) => set('speedReference', value)}
-        />
-        <label class="check">
-          <input
-            type="checkbox"
-            checked={config.allowHandover}
-            onchange={(event) => set('allowHandover', event.currentTarget.checked)}
-          />
-          <span>
-            允許 Slide 中途換手
-            <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
-          </span>
-        </label>
-      </div>
-      <p class="field-hint" style="margin-top: var(--space-3)">
-        舊版評分只供對照。成本是本 Demo 的啟發式規則，不是官方判定或人體模型。
-      </p>
-    </section>
-  {/if}
 
   <section class="section">
     <details class="advanced" bind:open={advancedOpen}>
@@ -539,15 +326,12 @@
       <button
         class="btn btn--primary"
         onclick={() => session.analyze()}
-        disabled={!session.desktop || session.phase === 'analyzing' || issues.length > 0}
+        disabled={!session.desktop || issues.length > 0}
       >
         <Icon name="refresh-cw" />套用並重新生成
       </button>
       <button class="btn" onclick={() => session.resetConfig()}><Icon name="rotate-ccw" />還原預設</button>
     </div>
-    <p class="field-hint" style="margin-top: var(--space-2)">
-      還原預設會保留目前的評分方式「{SCORING_LABEL[config.scoringModel]}」。
-    </p>
     {#if !session.desktop}
       <p class="field-hint" style="margin-top: var(--space-2)">瀏覽器預覽不能重跑搜尋。</p>
     {/if}
@@ -555,85 +339,6 @@
 </div>
 
 <style>
-  .models {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    margin: 0;
-    padding: 0;
-    border: none;
-    min-width: 0;
-  }
-
-  .model {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius-md);
-    background: var(--c-panel);
-    cursor: pointer;
-  }
-
-  .model:hover {
-    background: var(--c-control);
-  }
-
-  .model.is-active {
-    background: var(--c-control);
-    border-color: var(--c-text-dim);
-  }
-
-  .model:has(input:focus-visible) {
-    outline: 2px solid var(--c-focus);
-    outline-offset: 2px;
-  }
-
-  /* 單選圓點：選取時是實心圓外加一圈，不只靠顏色辨識。 */
-  .model-dot {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    margin-top: 3px;
-    border: 2px solid var(--c-border-strong);
-    border-radius: 999px;
-  }
-
-  .model.is-active .model-dot {
-    border-color: var(--c-text);
-    background: var(--c-text);
-    box-shadow: inset 0 0 0 2px var(--c-control);
-  }
-
-  .model-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .model-name {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    color: var(--c-text);
-  }
-
-  .model-version {
-    font-size: var(--fs-xs);
-    font-weight: 400;
-    color: var(--c-text-dim);
-  }
-
-  .model-hint {
-    font-size: var(--fs-xs);
-    color: var(--c-text-dim);
-  }
-
   .advanced > summary {
     list-style: none;
     display: flex;

@@ -568,6 +568,9 @@
         {/if}
         <div class="playhead" style={`left:${ratio(time)}%`}></div>
       </div>
+      {#if session.loading}
+        <div class="skeleton-veil track-veil" aria-hidden="true"><span class="skeleton"></span></div>
+      {/if}
 
       <input
         class="seek"
@@ -861,6 +864,14 @@
     border: 1px solid var(--c-border);
     border-radius: var(--radius-sm);
     pointer-events: none;
+  }
+
+  .track-veil {
+    display: flex;
+  }
+
+  .track-veil .skeleton {
+    flex: 1;
   }
 
   .marks {

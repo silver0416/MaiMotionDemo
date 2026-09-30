@@ -124,6 +124,14 @@
   const fps = $derived(link?.fps && link.fps > 0 ? link.fps : 60);
   const chartTime = $derived(offset === null ? null : current - offset);
 
+  // 標註已連結、而且已下載的 YouTube 影片自動歸到這份譜面（「已下載」預設只列這份譜面的影片）。
+  $effect(() => {
+    const id = link?.kind === 'youtube' ? link.id : undefined;
+    const recordId = chart?.recordId ?? null;
+    if (!id || !recordId || !library.entry(id)) return;
+    untrack(() => library.assign(id, recordId));
+  });
+
   $effect(() => {
     const value = $state.snapshot(cue);
     try {
@@ -565,7 +573,7 @@
 
   async function downloadLinked(): Promise<void> {
     if (link?.kind !== 'youtube' || !link.id) return;
-    await library.download({ id: link.id, title: link.title, channel: link.channel });
+    await library.download({ id: link.id, title: link.title, channel: link.channel }, chart?.recordId ?? null);
   }
 
   function unlink(): void {
@@ -789,6 +797,7 @@
           {library}
           query={chart?.query ?? ''}
           currentId={link?.kind === 'youtube' ? link.id : undefined}
+          recordId={chart?.recordId ?? null}
           onUse={useEntry}
           onLocal={() => void openLocal()}
         />

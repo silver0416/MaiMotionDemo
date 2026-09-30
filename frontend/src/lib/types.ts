@@ -103,11 +103,10 @@ export interface Chart {
 }
 
 /**
- * 評分模型版本。未傳 scoringModel 的舊 request 由 Rust 當成 legacy-v1。
- * 各版設定欄位互斥：V1 只帶六個權重與 speedReference；V2 帶 repeatTolerance、
- * V3 帶 jackTolerance，兩者都不得帶舊版權重，也不得帶對方的連打欄位。
+ * 評分模型版本。產品只剩人類動作 V3；V1（legacy-v1）與 V2（hand-affinity-v2）已從介面移除，
+ * 前端只送、只收 V3（schemaVersion 4）。
  */
-export type ScoringModel = 'legacy-v1' | 'hand-affinity-v2' | 'human-motion-v3';
+export type ScoringModel = 'human-motion-v3';
 
 /** 各版共用的搜尋、時間與手掌設定。 */
 export interface BaseSolverConfig {
@@ -130,28 +129,6 @@ export interface BaseSolverConfig {
   palmRadius: number;
 }
 
-export interface LegacyWeights {
-  speedReference: number;
-  distanceWeight: number;
-  speedWeight: number;
-  sideWeight: number;
-  crossWeight: number;
-  repetitionWeight: number;
-  handoverWeight: number;
-}
-
-/** V2 的四個行為控制。 */
-export interface PreferenceControls {
-  /** 左右分工傾向 0–100；越高越偏好各手留在本側 */
-  homePreference: number;
-  /** 快速移動容忍 1–200 半徑/秒；超過才開始計速度負擔，不是速度上限 */
-  travelComfort: number;
-  /** 同手連打容忍 0–100；越高越接受同一隻手重新擊打 */
-  repeatTolerance: number;
-  /** Slide 換手意願 0–100；越高交接附加費越小 */
-  handoverWillingness: number;
-}
-
 /** V3 的四個使用者控制；reversal、workload 等內部係數不開放。 */
 export interface V3PreferenceControls {
   /** 左右分工傾向 0–100；直接控制跨區（excursion）成本，0 表示不收跨區成本 */
@@ -162,16 +139,6 @@ export interface V3PreferenceControls {
   jackTolerance: number;
   /** Slide 換手意願 0–100 */
   handoverWillingness: number;
-}
-
-/** V1：schemaVersion 2。scoringModel 可省略。 */
-export interface LegacySolverConfig extends BaseSolverConfig, LegacyWeights {
-  scoringModel?: 'legacy-v1';
-}
-
-/** V2：schemaVersion 3。平面物件，scoringModel 必填。 */
-export interface V2SolverConfig extends BaseSolverConfig, PreferenceControls {
-  scoringModel: 'hand-affinity-v2';
 }
 
 /** V3：schemaVersion 4。平面物件，scoringModel 必填。 */
@@ -185,17 +152,14 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
 }
 
 /** 實際送給 Rust、也是 configSnapshot 的形狀。 */
-export type SolverConfig = LegacySolverConfig | V2SolverConfig | V3SolverConfig;
+export type SolverConfig = V3SolverConfig;
 
 /**
- * 前端參數頁的草稿：各版欄位同時保存，切換評分方式不互相換算。
- * 頂層的行為控制屬於 V2（沿用既有保存資料）；V3 同名欄位預設值不同，另存在 `v3`。
+ * 前端參數頁的草稿。行為控制存在 `v3`（沿用既有保存資料的位置）。
  * 不可直接送給 Rust，必須經 contract.ts 的 projectConfig() 投影。
  */
-export interface ConfigDraft extends BaseSolverConfig, LegacyWeights, PreferenceControls {
-  scoringModel: ScoringModel;
+export interface ConfigDraft extends BaseSolverConfig {
   v3: V3PreferenceControls;
-  /** V3 專用，只在投影成 V3 時送出。 */
   slideShortcut: boolean;
 }
 
@@ -273,39 +237,6 @@ export interface PalmPlacement {
   coveredNoteIds: string[];
 }
 
-export interface CostBreakdown {
-  distance: number;
-  speed: number;
-  side: number;
-  cross: number;
-  repetition: number;
-  handover: number;
-}
-
-/** V2 評分；分數是本 Demo 的相對比較值，不是機率或人體能力。 */
-export interface Score {
-  /** 左右分工與姿態：scoreBreakdown 前四項總和 */
-  intuition: number;
-  /** 動作負擔：travelStrain + compressionStrain + repetition */
-  strain: number;
-  /** 移動距離（半徑）：只在排序值幾乎相同時用來分先後 */
-  efficiency: number;
-  /** intuition + 2^(4 − 8·homePreference/100) · strain */
-  rankingValue: number;
-}
-
-/** 均已乘內部係數；freeDistance 單位為盤面半徑。 */
-export interface ScoreBreakdown {
-  assignmentAffinity: number;
-  sideExposure: number;
-  crossExposure: number;
-  handover: number;
-  travelStrain: number;
-  compressionStrain: number;
-  repetition: number;
-  freeDistance: number;
-}
-
 /** V3 三大群；total = movement + posture + fatigue，直接加總、越低越偏好。 */
 export interface V3Score {
   movement: number;
@@ -341,20 +272,6 @@ interface SolutionBase {
   warnings: string[];
 }
 
-export interface LegacySolution extends SolutionBase {
-  scoringModel?: 'legacy-v1';
-  totalCost: number;
-  costBreakdown: CostBreakdown;
-  configSnapshot: LegacySolverConfig;
-}
-
-export interface V2Solution extends SolutionBase {
-  scoringModel: 'hand-affinity-v2';
-  score: Score;
-  scoreBreakdown: ScoreBreakdown;
-  configSnapshot: V2SolverConfig;
-}
-
 /** V3 沒有 totalCost／costBreakdown。 */
 export interface V3Solution extends SolutionBase {
   scoringModel: 'human-motion-v3';
@@ -363,10 +280,10 @@ export interface V3Solution extends SolutionBase {
   configSnapshot: V3SolverConfig;
 }
 
-export type Solution = LegacySolution | V2Solution | V3Solution;
+export type Solution = V3Solution;
 
 export interface AnalyzeResponse {
-  /** legacy-v1 為 2，hand-affinity-v2 為 3，human-motion-v3 為 4 */
+  /** human-motion-v3 為 4 */
   schemaVersion: number;
   requestId: string;
   status: AnalyzeStatus | string;

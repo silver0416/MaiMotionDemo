@@ -785,9 +785,68 @@
       {/if}
     </g>
   </svg>
+  {#if session.loading}
+    <!-- 分析或載入中：舊譜面的盤面已經不相關，蓋上骨架（延遲淡入，很快載完就不會閃）。 -->
+    <div class="skeleton-veil disc-veil" role="status" aria-label={session.phase === 'analyzing' ? '分析中' : '載入中'}>
+      <svg class="stage-svg" viewBox={VIEW_BOX} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <g transform={zoomTransform}>
+          <circle class="skeleton-ring" cx={center.x} cy={center.y} r={discRadius} />
+          <circle class="skeleton-ring skeleton-ring--inner" cx={center.x} cy={center.y} r={discRadius * 0.52} />
+          {#each { length: 8 } as _, index (index)}
+            {@const angle = ((index * 45 - 67.5) * Math.PI) / 180}
+            <circle
+              class="skeleton-dot"
+              cx={center.x + discRadius * Math.cos(angle)}
+              cy={center.y + discRadius * Math.sin(angle)}
+              r={discRadius * 0.045}
+            />
+          {/each}
+        </g>
+      </svg>
+      <span class="disc-veil-label small">{session.phase === 'analyzing' ? '分析中…' : '載入中…'}</span>
+    </div>
+  {/if}
 </div>
 
 <style>
+  .disc-veil {
+    --veil-bg: #000;
+    display: grid;
+    place-items: center;
+  }
+
+  .skeleton-ring,
+  .skeleton-dot {
+    animation: skeleton-pulse 1.3s ease-in-out infinite;
+  }
+
+  .skeleton-ring {
+    fill: none;
+    stroke: var(--c-control);
+    stroke-width: 26;
+  }
+
+  .skeleton-ring--inner {
+    stroke-width: 14;
+    animation-delay: 0.2s;
+  }
+
+  .skeleton-dot {
+    fill: var(--c-control-hover);
+  }
+
+  .disc-veil-label {
+    position: relative;
+    color: var(--c-text-dim);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-ring,
+    .skeleton-dot {
+      animation: none;
+    }
+  }
+
   /* 絕對定位並置中：盤面尺寸完全由外層可用空間決定，
      永遠不會用自己的寬度把播放控制擠出視窗。 */
   .stage-frame {

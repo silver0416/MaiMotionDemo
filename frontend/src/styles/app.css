@@ -549,3 +549,57 @@ html,
     transform: scale(1, 1);
   }
 }
+
+/* 載入骨架：不透明純色方塊以明暗脈動，不用漸層光澤。
+   .skeleton-veil 蓋在舊內容上，延遲一小段才淡入：很快就完成的載入不會閃一下骨架。 */
+.skeleton {
+  display: block;
+  background: var(--c-control);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+.skeleton--line {
+  height: 10px;
+}
+
+.skeleton--block {
+  height: 44px;
+}
+
+.skeleton-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--veil-bg, var(--c-panel));
+  animation: veil-in 160ms ease-out var(--veil-delay, 120ms) both;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.45);
+  }
+}
+
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+
+  .skeleton-veil {
+    animation-duration: 1ms;
+  }
+}

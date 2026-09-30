@@ -1,6 +1,6 @@
 // 真人手順標註的編輯狀態：跟著目前開啟的譜面紀錄，改動後自動寫回紀錄。
 
-import { evaluateAnnotation, nextRequestId } from '../lib/api';
+import { CANCELLED, evaluateAnnotation, nextRequestId } from '../lib/api';
 import {
   type AnnotationBranch,
   type AnnotationDraft,
@@ -1154,18 +1154,24 @@ export class AnnotationStore {
       .filter((mark): mark is NoteAnnotation => isHumanLabeled(mark))
       .map((mark) => ({ ...mark }));
     delete file.branches;
+    // 比對期間換了譜面：結果屬於舊譜面，丟掉。
+    const recordId = this.recordId;
     this.evaluating = true;
     this.evaluationError = null;
     try {
-      this.evaluation = await evaluateAnnotation({
+      const evaluation = await evaluateAnnotation({
         requestId: nextRequestId(),
         source: file.chart.source,
         firstSeconds: file.chart.firstSeconds,
         solverConfig: projectConfig(session.config),
         annotation: file,
       });
+      if (this.recordId === recordId) this.evaluation = evaluation;
     } catch (error) {
-      this.evaluationError = typeof error === 'string' ? error : String(error);
+      // 換譜或重新分析取代了這次比對，不算錯誤。
+      if (error !== CANCELLED && this.recordId === recordId) {
+        this.evaluationError = typeof error === 'string' ? error : String(error);
+      }
     } finally {
       this.evaluating = false;
     }

@@ -8,16 +8,51 @@ mod wiki;
 
 use mai_motion_core::{AnalyzeRequest, AnalyzeResponse, EvaluateRequest, EvaluateResponse};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-struct AnalysisGate(Arc<AtomicBool>);
+/// 目前正在跑的分析／比對的取消旗標。新的工作一進來就取消舊的，不必等它跑完。
+#[derive(Default)]
+struct AnalysisGate(Mutex<Option<Arc<AtomicBool>>>);
 struct MajdataClient(reqwest::Client);
 struct UpdateClient(reqwest::Client);
-struct BusyGuard(Arc<AtomicBool>);
-impl Drop for BusyGuard {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Release);
+
+/// 被後來的工作取代時回傳的錯誤字串；前端據此靜默丟棄。
+const CANCELLED: &str = "cancelled";
+
+impl AnalysisGate {
+    /// 取消進行中的工作，換上這次的旗標。
+    fn begin(&self) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut slot = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(previous) = slot.replace(flag.clone()) {
+            previous.store(true, Ordering::Relaxed);
+        }
+        flag
     }
+}
+
+async fn run_cancellable<T: Send + 'static>(
+    gate: &AnalysisGate,
+    work: impl FnOnce() -> T + Send + 'static,
+    label: &str,
+) -> Result<T, String> {
+    let flag = gate.begin();
+    let inner = flag.clone();
+    let result =
+        tauri::async_runtime::spawn_blocking(move || mai_motion_core::with_cancel(inner, work))
+            .await
+            .map_err(|e| format!("{label}工作失敗：{e}"))?;
+    if flag.load(Ordering::Relaxed) {
+        return Err(CANCELLED.into());
+    }
+    let mut slot = gate.0.lock().unwrap_or_else(|e| e.into_inner());
+    if slot
+        .as_ref()
+        .is_some_and(|current| Arc::ptr_eq(current, &flag))
+    {
+        *slot = None;
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -25,42 +60,35 @@ async fn analyze_chart(
     request: AnalyzeRequest,
     gate: tauri::State<'_, AnalysisGate>,
 ) -> Result<AnalyzeResponse, String> {
-    if gate
-        .0
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Err("正在分析另一份譜面，請等待完成後重試".into());
-    }
-    let guard = BusyGuard(gate.0.clone());
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = guard;
-        mai_motion_core::analyze_chart(request)
-    })
+    run_cancellable(
+        &gate,
+        move || mai_motion_core::analyze_chart(request),
+        "分析",
+    )
     .await
-    .map_err(|e| format!("分析工作失敗：{e}"))
 }
 
-/// 比對真人標註與模型：求模型最佳解與照標註的最佳解。與分析共用同一個忙碌旗標。
+/// 比對真人標註與模型：求模型最佳解與照標註的最佳解。與分析共用取消旗標，新的工作取代舊的。
 #[tauri::command]
 async fn evaluate_annotation(
     request: EvaluateRequest,
     gate: tauri::State<'_, AnalysisGate>,
 ) -> Result<EvaluateResponse, String> {
-    if gate
-        .0
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Err("正在分析另一份譜面，請等待完成後重試".into());
-    }
-    let guard = BusyGuard(gate.0.clone());
-    tauri::async_runtime::spawn_blocking(move || {
-        let _guard = guard;
-        mai_motion_core::evaluate_annotation(request)
-    })
+    run_cancellable(
+        &gate,
+        move || mai_motion_core::evaluate_annotation(request),
+        "比對",
+    )
     .await
-    .map_err(|e| format!("比對工作失敗：{e}"))
+}
+
+/// 前端換譜時取消進行中的分析（例如改從快取載入，不再需要結果）。
+#[tauri::command]
+fn cancel_analysis(gate: tauri::State<'_, AnalysisGate>) {
+    let slot = gate.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(flag) = slot.as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
 }
 
 /// 批量匯出標註檔用：只解析譜面（不求解），回傳音符穩定鍵。順序與標註分頁相同：
@@ -250,7 +278,7 @@ fn main() {
                 }
             }
         })
-        .manage(AnalysisGate(Arc::new(AtomicBool::new(false))))
+        .manage(AnalysisGate::default())
         .manage(MajdataClient(majdata_client))
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
@@ -259,6 +287,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
             evaluate_annotation,
+            cancel_analysis,
             chart_note_keys,
             save_text_file,
             save_text_in_dir,

@@ -1,12 +1,7 @@
 import {
   SCHEMA_VERSION,
   SCORING_LABEL,
-  SCORING_V1,
   STATUS_LABEL,
-  isLegacySolution,
-  isV2Solution,
-  isV3Solution,
-  requestModelOf,
 } from './contract';
 import { formatClock } from './format';
 import { byteOffsetToIndex } from './text';
@@ -66,16 +61,9 @@ function noteLine(note: Note): string {
   return `  - ${note.id}（${note.kind}，${where}）${formatClock(note.timeSeconds)}${duration}・${span}`;
 }
 
-/** 依方案實際的 scoringModel 取出對應的分數欄位，不用欄位是否存在來猜版本。 */
+/** 方案的分數欄位。 */
 function scoreEntry(solution: Solution): Record<string, unknown> {
-  const base = { id: solution.id, scoringModel: solution.scoringModel ?? SCORING_V1 };
-  if (isV3Solution(solution) || isV2Solution(solution)) {
-    return { ...base, score: solution.score, scoreBreakdown: solution.scoreBreakdown };
-  }
-  if (isLegacySolution(solution)) {
-    return { ...base, totalCost: solution.totalCost, costBreakdown: solution.costBreakdown };
-  }
-  return { ...base, note: '無法辨識的 scoringModel' };
+  return { id: solution.id, scoringModel: solution.scoringModel, score: solution.score, scoreBreakdown: solution.scoreBreakdown };
 }
 
 function fence(text: string, lang = ''): string {
@@ -98,8 +86,8 @@ export function buildDebugReport(input: DebugInput): string {
   ];
   if (status) meta.push(`- 狀態：${status}（${STATUS_LABEL[status] ?? '未知狀態'}）`);
   if (input.config) {
-    const model = requestModelOf(input.config);
-    meta.push(`- 評分方式：${SCORING_LABEL[model]}（${model}，預期 schemaVersion ${SCHEMA_VERSION[model]}）`);
+    const model = (input.config as { scoringModel?: string }).scoringModel ?? 'legacy-v1';
+    meta.push(`- 評分方式：${SCORING_LABEL}（${model}，預期 schemaVersion ${SCHEMA_VERSION}）`);
   }
   if (response) meta.push(`- schemaVersion：${response.schemaVersion}`);
   const requestId = response?.requestId ?? input.requestId;

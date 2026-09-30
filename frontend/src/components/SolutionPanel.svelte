@@ -3,39 +3,22 @@
   import DiagnosticList from './DiagnosticList.svelte';
   import CopyDebugButton from './CopyDebugButton.svelte';
   import {
-    COST_HINT,
-    COST_KEYS,
-    COST_LABEL,
-    SCORE_GROUPS,
     SCORING_LABEL,
+    SCORING_V3,
     STATUS_LABEL,
     V3_BREAKDOWN_KEYS,
     V3_SCORE_GROUPS,
-    WEIGHT_OF_COST,
-    costSum,
-    isLegacySolution,
-    isV2Solution,
-    isV3Solution,
-    solutionModelOf,
-    strainFactor,
-    type ScoreGroup,
   } from '../lib/contract';
-  import { formatClock, formatDelta, formatNumber } from '../lib/format';
+  import { formatClock, formatNumber } from '../lib/format';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import type { AnalyzeStatus, Hand, PalmPlacement, Solution, V2Solution, V3Solution } from '../lib/types';
+  import type { AnalyzeStatus, Hand, PalmPlacement, Solution, V3Solution } from '../lib/types';
 
   const solutions = $derived<Solution[]>(session.solutions);
   const solution = $derived<Solution | null>(session.solution);
   const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
   const diagnostics = $derived(session.response?.diagnostics ?? []);
-  // 只有舊版方案有 totalCost；V2／V3 不顯示與第一名的差值，順序照 Rust 回傳。
-  const best = $derived<number>(
-    solutions.length > 0 && isLegacySolution(solutions[0]) ? solutions[0].totalCost : 0,
-  );
-  const scored = $derived(solution !== null && !isLegacySolution(solution));
-  const snapshotModel = $derived(solution ? solutionModelOf(solution) : null);
 
   interface SolutionStats {
     /** 接觸音符：Tap、Hold、Touch、Touch Hold 與有起點的 Slide 起點（part = contact / head） */
@@ -124,30 +107,6 @@
     return `${formatNumber(radius, 2)}${radius === 0.5 ? '（四分之一盤面的圓形近似）' : ''}`;
   });
 
-  const maxCost = $derived.by(() => {
-    if (!solution || !isLegacySolution(solution)) return 1;
-    return Math.max(...COST_KEYS.map((key) => solution.costBreakdown[key]), 1e-6);
-  });
-
-  /** V1 專用：六項加總與 totalCost 的自我檢查。V2 不套用。 */
-  const sumCheck = $derived.by(() => {
-    if (!solution || !isLegacySolution(solution)) return null;
-    const sum = costSum(solution);
-    return { sum, diff: Math.abs(sum - solution.totalCost) };
-  });
-
-  function groupValue(item: V2Solution, group: ScoreGroup): number {
-    return item.score[group.id];
-  }
-
-  /** V2 候選清單的一行分數摘要。 */
-  function scoreLine(item: V2Solution): string {
-    return SCORE_GROUPS.map(
-      (group) =>
-        `${group.label} ${formatNumber(groupValue(item, group), 2)}${group.unit ? ` ${group.unit}` : ''}`,
-    ).join('・');
-  }
-
   /** V3 候選清單的一行分數摘要：動作效率 X・姿態 Y・短期負荷 Z。 */
   function v3ScoreLine(item: V3Solution): string {
     return V3_SCORE_GROUPS.map((group) => `${group.short} ${formatNumber(item.score[group.id], 2)}`).join('・');
@@ -225,9 +184,7 @@
       <div class="section-title">
         <span>候選方案</span>
         <span class="muted xsmall">
-          {solutions.length > 0 && isLegacySolution(solutions[0])
-            ? '成本越低越偏好'
-            : '依核心排序，越前面越符合目前偏好'}
+          依核心排序，越前面越符合目前偏好
         </span>
       </div>
       <div class="candidates" role="radiogroup" aria-label="候選方案">
@@ -242,23 +199,10 @@
           >
             <span class="candidate-head">
               <span class="mono">{item.id}</span>
-              {#if isLegacySolution(item)}
-                <span class="mono cost">{formatNumber(item.totalCost)}</span>
-              {:else}
-                <span class="xsmall muted">第 {index + 1} 名</span>
-              {/if}
+              <span class="xsmall muted">第 {index + 1} 名</span>
             </span>
-            {#if isV3Solution(item)}
-              <span class="xsmall mono">{v3ScoreLine(item)}</span>
-              <span class="xsmall muted">{summaryOf(stats)}</span>
-            {:else if isV2Solution(item)}
-              <span class="xsmall mono">{scoreLine(item)}</span>
-              <span class="xsmall muted">{summaryOf(stats)}</span>
-            {:else if isLegacySolution(item)}
-              <span class="xsmall muted">
-                {formatDelta(item.totalCost - best)}・{summaryOf(stats)}
-              </span>
-            {/if}
+            <span class="xsmall mono">{v3ScoreLine(item)}</span>
+            <span class="xsmall muted">{summaryOf(stats)}</span>
           </button>
         {/each}
       </div>
@@ -305,7 +249,7 @@
         <p class="small" style="margin-top: var(--space-3)">
           換手 {stats.handovers} 次{stats.palmMoveTotal > 0
             ? `・手掌覆蓋 ${stats.palmMoveTotal} 次`
-            : ''}{isLegacySolution(solution) ? `・總成本 ${formatNumber(solution.totalCost)}` : ''}
+            : ''}
         </p>
         <p class="field-hint" style="margin-top: var(--space-2)">
           「接觸音符」計 Tap、Hold、Touch、Touch Hold 與 Slide 起點（無起點的 ? ! 不算）；
@@ -314,11 +258,11 @@
             「一掌覆蓋」是同一隻手掌一次蓋住的 Touch 顆數與動作次數，這幾顆已計入該手的接觸音符，
             不是多隻手分別觸碰。
           {/if}
-          {scored ? '評分' : '成本'}與覆蓋都是本 Demo 的啟發式規則，不是官方判定或人體模型。
+          評分與覆蓋都是本 Demo 的啟發式規則，不是官方判定或人體模型。
         </p>
       </section>
 
-      {#if isV3Solution(solution)}
+      {#if solution}
         {@const v3 = solution}
         {@const peak = v3Peak(v3)}
         <section class="section">
@@ -382,107 +326,6 @@
               })}
             />
           </div>
-        </section>
-      {:else if isV2Solution(solution)}
-        {@const v2 = solution}
-        <section class="section">
-          <div class="section-title">
-            <span>評分</span>
-            <span class="muted xsmall">越低越偏好</span>
-          </div>
-          <div class="score-groups">
-            {#each SCORE_GROUPS as group (group.id)}
-              {@const total = groupValue(v2, group)}
-              <div class="score-group">
-                <div class="score-head">
-                  <span class="score-label">{group.label}</span>
-                  <span class="mono score-value">
-                    {formatNumber(total)}{#if group.unit}<span class="muted xsmall"> {group.unit}</span>{/if}
-                  </span>
-                </div>
-                <p class="field-hint">{group.hint}</p>
-                {#if group.items.length > 0}
-                  {@const peak = maxOf(group.items.map((entry) => v2.scoreBreakdown[entry.key]))}
-                  <details class="score-details">
-                    <summary>分項</summary>
-                    <table class="table">
-                      <tbody>
-                        {#each group.items as entry (entry.key)}
-                          {@const value = v2.scoreBreakdown[entry.key]}
-                          <tr>
-                            <td style="width: 42%">
-                              <div>{entry.label}</div>
-                              <div class="xsmall muted">{entry.hint}</div>
-                            </td>
-                            <td class="mono" style="width: 22%">{formatNumber(value)}</td>
-                            <td>
-                              <div class="bar-track">
-                                <div class="bar-fill" style={`width:${Math.max(0, value / peak) * 100}%`}></div>
-                              </div>
-                            </td>
-                          </tr>
-                        {/each}
-                      </tbody>
-                    </table>
-                  </details>
-                {/if}
-              </div>
-            {/each}
-          </div>
-          <details class="score-details" style="margin-top: var(--space-3)">
-            <summary>排序方式</summary>
-            <p class="field-hint">
-              核心以「左右分工與姿態 + 係數 × 動作負擔」排序，係數由左右分工傾向決定
-              （這次 {formatNumber(v2.configSnapshot.homePreference, 2)}，係數
-              {formatNumber(strainFactor(v2.configSnapshot.homePreference))}）；
-              這個方案的排序值為 {formatNumber(v2.score.rankingValue)}。
-              移動距離只在排序值幾乎相同時分先後。
-            </p>
-          </details>
-          <p class="field-hint" style="margin-top: var(--space-3)">
-            分數是同一份譜面裡比較候選用的相對值，不是機率、百分比或玩家能力評估；
-            公式與預設值是本 Demo 的起點，尚未經玩家校準。
-          </p>
-        </section>
-      {:else if isLegacySolution(solution)}
-        <section class="section">
-          <div class="section-title">
-            <span>成本拆解</span>
-            <span class="muted xsmall mono">總計 {formatNumber(solution.totalCost)}</span>
-          </div>
-          <table class="table">
-            <thead>
-              <tr>
-                <th style="width: 38%">項目</th>
-                <th style="width: 22%">數值</th>
-                <th>佔比</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each COST_KEYS as key (key)}
-                {@const value = solution.costBreakdown[key]}
-                <tr>
-                  <td>
-                    <div>{COST_LABEL[key]}</div>
-                    <div class="xsmall muted">
-                      權重 {formatNumber(solution.configSnapshot[WEIGHT_OF_COST[key]], 2)}
-                    </div>
-                  </td>
-                  <td class="mono">{formatNumber(value)}</td>
-                  <td>
-                    <div class="bar-track" title={COST_HINT[key]}>
-                      <div class="bar-fill" style={`width:${(value / maxCost) * 100}%`}></div>
-                    </div>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-          {#if sumCheck && sumCheck.diff >= 1e-6}
-            <p class="xsmall" style="margin-top: var(--space-2); color: var(--c-danger)">
-              各項加總 {formatNumber(sumCheck.sum)} 與 totalCost 不符，請回報核心。
-            </p>
-          {/if}
         </section>
       {/if}
 
@@ -615,13 +458,8 @@
           <dl class="kv">
             <dt>評分方式</dt>
             <dd>
-              {#if snapshotModel}
-                {SCORING_LABEL[snapshotModel]} <span class="muted mono">{snapshotModel}</span>
-              {:else}
-                <span class="mono">{solution.scoringModel}</span>（無法辨識）
-              {/if}
+              {SCORING_LABEL} <span class="muted mono">{SCORING_V3}</span>
             </dd>
-            {#if isV3Solution(solution)}
               <dt>左右分工傾向</dt>
               <dd>{solution.configSnapshot.homePreference}</dd>
               <dt>快速移動容忍</dt>
@@ -632,31 +470,6 @@
               <dd>{solution.configSnapshot.handoverWillingness}</dd>
               <dt>Slide 路線</dt>
               <dd>{solution.configSnapshot.slideShortcut ? '依判定區抄近' : '沿星星畫完'}</dd>
-            {:else if isV2Solution(solution)}
-              <dt>左右分工傾向</dt>
-              <dd>{solution.configSnapshot.homePreference}</dd>
-              <dt>快速移動容忍</dt>
-              <dd>{solution.configSnapshot.travelComfort} 半徑/秒</dd>
-              <dt>同手連打容忍</dt>
-              <dd>{solution.configSnapshot.repeatTolerance}</dd>
-              <dt>Slide 換手意願</dt>
-              <dd>{solution.configSnapshot.handoverWillingness}</dd>
-            {:else if isLegacySolution(solution)}
-              <dt>速度基準</dt>
-              <dd>{solution.configSnapshot.speedReference}</dd>
-              <dt>距離權重</dt>
-              <dd>{solution.configSnapshot.distanceWeight}</dd>
-              <dt>速度權重</dt>
-              <dd>{solution.configSnapshot.speedWeight}</dd>
-              <dt>對側權重</dt>
-              <dd>{solution.configSnapshot.sideWeight}</dd>
-              <dt>交叉權重</dt>
-              <dd>{solution.configSnapshot.crossWeight}</dd>
-              <dt>連打權重</dt>
-              <dd>{solution.configSnapshot.repetitionWeight}</dd>
-              <dt>換手權重</dt>
-              <dd>{solution.configSnapshot.handoverWeight}</dd>
-            {/if}
             <dt>搜尋寬度</dt>
             <dd>{solution.configSnapshot.beamWidth}</dd>
             <dt>候選數</dt>
@@ -727,10 +540,6 @@
     gap: var(--space-2);
     font-size: var(--fs-sm);
     font-weight: 600;
-  }
-
-  .cost {
-    font-size: var(--fs-md);
   }
 
   .score-groups {

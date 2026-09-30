@@ -51,7 +51,8 @@
   /** 呼叫核心本身失敗（不是譜面問題）。 */
   let failed = $state<AnalyzeFailure | null>(null);
 
-  const analyzing = $derived(session.phase === 'analyzing');
+  /** 這個視窗自己送出的分析；進行中的其他分析會被這次取代，不必等。 */
+  let analyzing = $state(false);
   /** 貼上的是真人手順標註檔（JSON）：新增時改用檔案附的原譜，並匯入標註。 */
   /** 貼上的是多份譜面的整包標記檔：交給匯入視窗，不經過這裡的分析。 */
   const bundlePaste = $derived.by(() => {
@@ -198,7 +199,8 @@
   /** 送核心分析；不可用時留下診斷並回傳 false。 */
   async function analyzeDraft(source: string): Promise<boolean> {
     failed = null;
-    const response = await session.analyze(source, usable);
+    analyzing = true;
+    const response = await session.analyze(source, usable).finally(() => (analyzing = false));
     if (!response) {
       if (session.lastFailure?.request.source === source) {
         failed = session.lastFailure;

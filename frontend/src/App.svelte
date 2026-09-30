@@ -16,6 +16,8 @@
   import Toaster from './components/Toaster.svelte';
   import ImportDialog from './components/ImportDialog.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
+  import SkeletonList from './components/SkeletonList.svelte';
+  import { afterPaint } from './lib/frame';
   import { reducedMotion, squash } from './lib/press';
   import { playback } from './state/playback.svelte';
   import { errorLog } from './state/errorLog.svelte';
@@ -67,6 +69,23 @@
   const savedPanes = loadPanes();
 
   let tab = $state<Tab>('solution');
+  /** 重的分頁（標註）晚一個畫面才掛上：先畫出分頁切換與骨架，不讓點擊卡住。 */
+  const HEAVY_TABS: ReadonlySet<Tab> = new Set(['annotate']);
+  let deferredTab = $state<Tab>('solution');
+  /** 實際掛載的分頁。 */
+  const shownTab = $derived(HEAVY_TABS.has(tab) ? deferredTab : tab);
+  /** 依賴分析結果的分頁：分析或載入時蓋上骨架。 */
+  const RESULT_TABS: ReadonlySet<Tab> = new Set(['solution', 'note', 'annotate']);
+
+  $effect(() => {
+    const next = tab;
+    if (!HEAVY_TABS.has(next)) {
+      deferredTab = next;
+      return;
+    }
+    if (untrack(() => deferredTab) === next) return;
+    return afterPaint(() => (deferredTab = next));
+  });
   let dialogOpen = $state(false);
   let searchOpen = $state(false);
   let settingsOpen = $state(false);
@@ -394,7 +413,7 @@
         <div class="tabbar" role="group" aria-label="側欄面板">
           {#each TABS as item (item.id)}
             <button
-              class="btn tab"
+              class="tab"
               class:is-active={tab === item.id}
               aria-pressed={tab === item.id}
               onclick={() => (tab = item.id)}
@@ -404,17 +423,26 @@
             </button>
           {/each}
         </div>
-        <div class="side-body scroll">
-          {#if tab === 'solution'}
-            <SolutionPanel />
-          {:else if tab === 'note'}
-            <NoteInspector />
-          {:else if tab === 'config'}
-            <ConfigPanel />
-          {:else if tab === 'annotate'}
-            <AnnotatePanel />
-          {:else}
-            <ViewPanel />
+        <div class="side-main">
+          <div class="side-body scroll">
+            {#if shownTab !== tab}
+              <SkeletonList label="載入分頁" />
+            {:else if tab === 'solution'}
+              <SolutionPanel />
+            {:else if tab === 'note'}
+              <NoteInspector />
+            {:else if tab === 'config'}
+              <ConfigPanel />
+            {:else if tab === 'annotate'}
+              <AnnotatePanel />
+            {:else}
+              <ViewPanel />
+            {/if}
+          </div>
+          {#if session.loading && RESULT_TABS.has(tab)}
+            <div class="skeleton-veil">
+              <SkeletonList label={session.phase === 'analyzing' ? '分析中' : '載入中'} />
+            </div>
           {/if}
         </div>
       </aside>
@@ -585,21 +613,63 @@
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  /* 第一層：分段控制。整條是一個凹槽，選中的分頁是浮起的膠囊；
+     第二層（例如標註分頁裡的子頁）改用底線分頁，兩層一眼就分得出來。 */
   .tabbar {
     display: flex;
-    gap: var(--space-1);
-    padding: var(--space-2);
-    border-bottom: 1px solid var(--c-border);
+    gap: 2px;
+    margin: var(--space-2);
+    padding: 3px;
+    background: var(--c-bg);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-md);
   }
 
   .tab {
+    display: inline-flex;
     flex: 1 1 0;
-    min-width: 0;
+    align-items: center;
+    justify-content: center;
     gap: var(--space-1);
+    min-width: 0;
+    min-height: 28px;
     padding: 0 var(--space-2);
+    color: var(--c-text-dim);
+    font: inherit;
+    font-size: var(--fs-sm);
+    white-space: nowrap;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .tab:hover {
+    color: var(--c-text);
+    background: var(--c-control);
+  }
+
+  .tab.is-active {
+    color: var(--c-on-invert);
+    font-weight: 600;
+    background: var(--c-text);
+  }
+
+  .tab:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: 1px;
+  }
+
+  .side-main {
+    position: relative;
+    min-height: 0;
   }
 
   .side-body {
+    height: 100%;
     min-height: 0;
   }
 

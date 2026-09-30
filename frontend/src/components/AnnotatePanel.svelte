@@ -2,10 +2,12 @@
   import { saveExport, showSaved } from '../state/exportPrefs.svelte';
   import { tick } from 'svelte';
   import BranchPanel from './BranchPanel.svelte';
+  import Deferred from './Deferred.svelte';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import Icon from './Icon.svelte';
   import LaneGraph, { laneColumnWidth } from './LaneGraph.svelte';
   import LineChips from './LineChips.svelte';
+  import VirtualList from './VirtualList.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
   import {
     assignLanes,
@@ -285,15 +287,62 @@
     return found >= 0 ? list[found].key : null;
   });
 
-  let listElement = $state<HTMLDivElement | null>(null);
+  // ---- 清單只畫看得到的列：整首上千步一次全畫會讓切到標註分頁卡一下。
+  // 列高固定兩種（有沒有旗標列），先算好每列的位置，捲動時只換可視範圍內的列。
+  const ROW_HEIGHT = 28;
+  const ROW_FLAGS_HEIGHT = 49;
 
-  // 目前這一步捲進可視範圍（盤面點選、快捷鍵前進時）。
-  $effect(() => {
+  interface RowView {
+    step: Step;
+    index: number;
+    human: NoteAnnotation | undefined;
+    own: NoteAnnotation | undefined;
+    text: string;
+    first: boolean;
+    number: number;
+    differs: boolean;
+    /** 不是「確定」時的信心。 */
+    doubt: Confidence | null;
+    memo: string | null;
+    prefilled: boolean;
+    pendingStart: boolean;
+  }
+
+  const rowViews = $derived.by<RowView[]>(() =>
+    rows.map((step, index) => {
+      const human = annotation.mark(step.note);
+      const own = annotation.stepMark(step);
+      const text = stepSummary(step, human);
+      const first = step.part === 'hand' || !step.note.hasHead;
+      const confidence = human ? stepConfidence(step.note, human, step.part) : 'sure';
+      return {
+        step,
+        index,
+        human,
+        own,
+        text,
+        first,
+        number: annotation.noteNumber(step.note),
+        differs: stepDiffers(step, own),
+        doubt: confidence === 'sure' ? null : confidence,
+        memo: first && human?.memo ? human.memo : null,
+        prefilled: !!own?.prefilled && !!text,
+        pendingStart: pending?.key === step.key,
+      };
+    }),
+  );
+
+  const hasFlags = (row: RowView) =>
+    row.differs || row.doubt !== null || row.memo !== null || row.prefilled || row.pendingStart;
+
+  const rowHeight = (row: RowView) => (hasFlags(row) ? ROW_FLAGS_HEIGHT : ROW_HEIGHT);
+
+  /** 目前這一步在清單的位置；盤面點選、快捷鍵前進時捲進可視範圍。 */
+  const focusIndex = $derived.by(() => {
     const key = current?.key;
-    if (!key || !listElement) return;
-    queueMicrotask(() => {
-      listElement?.querySelector(`[data-step="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
-    });
+    if (!key) return null;
+    const index = rows.findIndex((step) => step.key === key);
+    return index >= 0 ? index : null;
   });
 
   function describe(item: Note): string {
@@ -526,7 +575,7 @@
     {/if}
     <div class="views" role="group" aria-label="標註面板">
       {#each VIEWS as item (item.id)}
-        <button class="btn view" aria-pressed={view === item.id} onclick={() => (view = item.id)}>{item.label}</button>
+        <button class="view" aria-pressed={view === item.id} onclick={() => (view = item.id)}>{item.label}</button>
       {/each}
     </div>
   </header>
@@ -749,48 +798,52 @@
           {/if}
         </div>
       {/if}
-      <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
-        {#each rows as step, index (step.key)}
-          {@const human = annotation.mark(step.note)}
-          {@const own = annotation.stepMark(step)}
-          {@const text = stepSummary(step, human)}
-          {@const first = step.part === 'hand' || !step.note.hasHead}
-          {@const number = annotation.noteNumber(step.note)}
+      <VirtualList
+        class="list"
+        items={rowViews}
+        heightOf={rowHeight}
+        keyOf={(row) => row.step.key}
+        {focusIndex}
+        label="音符標註清單"
+      >
+        {#snippet row(row: RowView, _index: number, style: string)}
+          {@const step = row.step}
           <button
             class="item"
             class:is-pending={!!pending && inBranch(pendingRange, step.time)}
             class:is-selected={current?.key === step.key}
             class:is-current={currentKey === step.key}
             data-step={step.key}
-            style={hasBranches ? `padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : undefined}
+            style={`${style}${hasBranches ? `;padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : ''}`}
             role="option"
             aria-selected={current?.key === step.key}
             onclick={() => annotation.selectStep(step)}
             oncontextmenu={(event) => openMenu(step, event)}
             onkeydown={(event) => onRowKeydown(step, event)}
           >
-            {#if listLanes[index]}<LaneGraph row={listLanes[index]} lanes={laneCount} />{/if}
+            {#if listLanes[row.index]}<LaneGraph row={listLanes[row.index]} lanes={laneCount} />{/if}
             <!-- 有起點的 Slide 分兩步標：滑行那一列是同一顆的第二步，編號前加箭頭區分。 -->
-            <span class="mono xsmall muted num" title={first ? `第 ${number} 顆` : `第 ${number} 顆的滑行（同一顆的第二步）`}>
-              {first ? number : `↳${number}`}
+            <span class="mono xsmall muted num" title={row.first ? `第 ${row.number} 顆` : `第 ${row.number} 顆的滑行（同一顆的第二步）`}>
+              {row.first ? row.number : `↳${row.number}`}
             </span>
             <span class="mono xsmall muted time">{formatClock(step.time)}</span>
             <span class="what small">{stepLabel(step, session.pathById)}</span>
-            <span class="hands small mono" class:is-prefilled={own?.prefilled && !!text} class:is-empty={!text}>
-              {text || '未標'}
+            <span class="hands small mono" class:is-prefilled={row.prefilled} class:is-empty={!row.text}>
+              {row.text || '未標'}
             </span>
             <span class="flags xsmall">
-              {#if stepDiffers(step, own)}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
-              {#if human && stepConfidence(step.note, human, step.part) !== 'sure'}<span class="badge badge--quiet">{CONFIDENCE_LABEL[stepConfidence(step.note, human, step.part)]}</span>{/if}
-              {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
-              {#if own?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
-              {#if pending?.key === step.key}<span class="badge">分支起點</span>{/if}
+              {#if row.differs}<span class="badge" title="與模型方案不同">≠模型</span>{/if}
+              {#if row.doubt}<span class="badge badge--quiet">{CONFIDENCE_LABEL[row.doubt]}</span>{/if}
+              {#if row.memo}<span class="badge badge--quiet" title={row.memo}>備註</span>{/if}
+              {#if row.prefilled}<span class="badge badge--quiet">預填</span>{/if}
+              {#if row.pendingStart}<span class="badge">分支起點</span>{/if}
             </span>
           </button>
-        {:else}
+        {/snippet}
+        {#snippet empty()}
           <p class="small muted empty">沒有符合條件的步驟。</p>
-        {/each}
-      </div>
+        {/snippet}
+      </VirtualList>
     </div>
     {#if menu && menuStep}
       <ContextMenu
@@ -806,7 +859,9 @@
 
   {#if view === 'branch' && session.chart && annotation.keysReady}
     <div class="upper scroll">
-      <BranchPanel />
+      <Deferred label="載入打法分支">
+        <BranchPanel />
+      </Deferred>
     </div>
   {/if}
 
@@ -938,7 +993,7 @@
       {#if hasBranches}
         <p class="small">比對的路線：<strong>{annotation.lineName(annotation.draft.active)}</strong>（到「打法」分頁切換）</p>
       {/if}
-      <button class="btn btn--primary" disabled={!session.desktop || annotation.evaluating || stats.done === 0} onclick={() => void annotation.evaluate()}>
+      <button class="btn btn--primary" disabled={!session.desktop || annotation.evaluating || session.phase === 'analyzing' || stats.done === 0} onclick={() => void annotation.evaluate()}>
         <Icon name={annotation.evaluating ? 'loader' : 'compare'} size={14} spin={annotation.evaluating} />
         {annotation.evaluating ? '比對中…' : '開始比對'}
       </button>
@@ -1024,14 +1079,45 @@
     font-size: var(--fs-md);
   }
 
+  /* 第二層分頁：底線式，貼在標頭的底邊上，和上面第一層的分段控制區分。 */
   .views {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: var(--space-1);
+    display: flex;
+    margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-3) - 1px);
+    padding: 0 var(--space-2);
   }
 
   .view {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 34px;
     padding: 0 var(--space-1);
+    color: var(--c-text-dim);
+    font: inherit;
+    font-size: var(--fs-sm);
+    white-space: nowrap;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition:
+      color 120ms ease,
+      border-color 120ms ease;
+  }
+
+  .view:hover {
+    color: var(--c-text);
+    border-bottom-color: var(--c-border-strong);
+  }
+
+  .view[aria-pressed='true'] {
+    color: var(--c-text-strong);
+    font-weight: 600;
+    border-bottom-color: var(--c-accent);
+  }
+
+  .view:focus-visible {
+    outline: 2px solid var(--c-focus);
+    outline-offset: -2px;
   }
 
   .editor {
@@ -1165,7 +1251,7 @@
     border-top: 1px solid var(--c-border);
   }
 
-  .list {
+  .lower :global(.list) {
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -1202,8 +1288,9 @@
     left: var(--space-4);
   }
 
+  /* 位置與固定列高由 VirtualList 給（見 ROW_HEIGHT）。 */
   .item {
-    position: relative;
+    overflow: hidden;
     display: grid;
     grid-template-columns: minmax(20px, auto) 60px minmax(0, 1fr) auto;
     grid-template-areas:
@@ -1268,7 +1355,8 @@
   .flags {
     grid-area: flags;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow: hidden;
     gap: var(--space-1);
   }
 

@@ -1,4 +1,4 @@
-import { analyzeChart, appVersion, isDesktop, nextRequestId } from '../lib/api';
+import { CANCELLED, analyzeChart, appVersion, cancelAnalysis, isDesktop, nextRequestId } from '../lib/api';
 import { STORE_ANALYSES, dbGet, dbPut, hashText } from '../lib/db';
 import {
   DEFAULT_DRAFT,
@@ -7,9 +7,8 @@ import {
   cloneDraft,
   configEquals,
   projectConfig,
-  requestModelOf,
   responseMismatch,
-  scoringModelOf,
+  isV3Config,
   validateConfig,
 } from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
@@ -25,7 +24,6 @@ import type {
   Handover,
   Note,
   PalmPlacement,
-  ScoringModel,
   SlidePath,
   Solution,
   SolverConfig,
@@ -102,9 +100,7 @@ export const SOLVER_REVISION = 'note-key-7';
  * v3-5：階梯（連續相鄰鍵）與 Touch 一筆畫中途換手加成本，權重重新擬合。
  * v3-6：分組認知——依節奏切成樂句，手法偏離由標註學出的樣板時加成本。
  */
-export const SCORING_REVISION: Partial<Record<ScoringModel, string>> = {
-  'human-motion-v3': 'v3-6',
-};
+export const SCORING_REVISION = 'v3-6';
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(
@@ -113,8 +109,7 @@ async function cacheKey(
   config: SolverConfig,
 ): Promise<{ key: string; sourceHash: string }> {
   const [version, sourceHash] = await Promise.all([appVersion(), hashText(source)]);
-  const scoringRevision = SCORING_REVISION[requestModelOf(config)];
-  const revision = scoringRevision ? `${SOLVER_REVISION}+${scoringRevision}` : SOLVER_REVISION;
+  const revision = `${SOLVER_REVISION}+${SCORING_REVISION}`;
   return {
     key: `${version}|${revision}|${sourceHash}|${firstSeconds}|${stableJson(config)}`,
     sourceHash,
@@ -151,6 +146,11 @@ export class Session {
    */
   humanView = $state<Solution | null>(null);
 
+  /** 開啟紀錄時正在查快取（還沒決定要不要送核心）。 */
+  fetching = $state(false);
+  /** 分析或載入中：盤面、播放列與側欄改顯示載入骨架。 */
+  loading = $derived(this.phase === 'analyzing' || this.fetching);
+
   #pendingRequestId: string | null = null;
   /** 開啟紀錄時的快取查詢序號，只套用最後一次。 */
   #loadToken = 0;
@@ -166,11 +166,6 @@ export class Session {
 
   /** 這次會送給 Rust 的設定。 */
   requestConfig = $derived<SolverConfig>(projectConfig(this.config));
-
-  /** 目前結果使用的評分方式；沒有結果時為 null。 */
-  resultScoringModel = $derived<ScoringModel | null>(
-    this.result ? scoringModelOf(this.result.config) : null,
-  );
 
   /** 參數與結果不一致時，畫面必須標示結果不是目前參數的分析。 */
   stale = $derived.by(() => {
@@ -297,15 +292,9 @@ export class Session {
     this.selectedNoteId = noteId;
   }
 
-  /** 切換評分方式；兩版各自的數值都保留，不互相換算。 */
-  setScoringModel(model: ScoringModel): void {
-    if (this.config.scoringModel === model) return;
-    this.config = { ...this.config, scoringModel: model };
-  }
-
-  /** 還原預設數值，但保留目前選擇的評分方式，方便 A/B 對照。 */
+  /** 還原預設數值。 */
   resetConfig(): void {
-    this.config = { ...cloneDraft(DEFAULT_DRAFT), scoringModel: this.config.scoringModel };
+    this.config = cloneDraft(DEFAULT_DRAFT);
     this.firstSeconds = 0;
   }
 
@@ -343,6 +332,9 @@ export class Session {
       this.#fail('參數超出核心允許範圍，請先修正「參數」分頁的紅字項目。');
       return null;
     }
+    // 直接呼叫分析時，還在查快取的開啟動作作廢。
+    ++this.#loadToken;
+    this.fetching = false;
     const requestId = nextRequestId();
     const request: AnalyzeRequest = {
       requestId,
@@ -351,6 +343,7 @@ export class Session {
       solverConfig: projectConfig(this.config),
     };
     const previousPhase: Phase = this.result ? 'ready' : 'empty';
+    // 核心收到新請求會取消還在跑的舊請求，舊的回應以 CANCELLED 失敗並在下面被丟棄。
     this.#pendingRequestId = requestId;
     this.lastRequestId = requestId;
     this.phase = 'analyzing';
@@ -366,8 +359,8 @@ export class Session {
         this.#fail(`核心回傳的 requestId（${response.requestId}）與這次請求不符，已忽略。`, request);
         return null;
       }
-      // schemaVersion 與每個方案的 scoringModel、分數形狀都必須屬於這次請求的評分方式。
-      const mismatch = responseMismatch(response, requestModelOf(request.solverConfig));
+      // schemaVersion 與每個方案的 scoringModel、分數形狀都必須是 V3。
+      const mismatch = responseMismatch(response);
       if (mismatch) {
         this.phase = previousPhase;
         this.#fail(mismatch, request);
@@ -395,6 +388,11 @@ export class Session {
       if (this.#pendingRequestId !== requestId) return null;
       this.#pendingRequestId = null;
       this.phase = previousPhase;
+      if (error === CANCELLED) {
+        // 被標註比對之類的其他工作取代；不是錯誤。
+        toasts.dismiss(ANALYSIS_TOAST);
+        return null;
+      }
       this.#fail(typeof error === 'string' ? error : String(error), request);
       return null;
     }
@@ -402,10 +400,19 @@ export class Session {
 
   /**
    * 開啟既有紀錄：同一份原文、同樣參數與核心版本分析過就直接從資料庫載入，
-   * 否則交給 Rust 分析（結果會寫回資料庫）。
+   * 否則交給 Rust 分析（結果會寫回資料庫）。進行中的分析直接中斷，不必等它跑完。
    */
   async load(source: string): Promise<AnalyzeResponse | null> {
     const token = ++this.#loadToken;
+    this.fetching = true;
+    try {
+      return await this.#load(source, token);
+    } finally {
+      if (token === this.#loadToken) this.fetching = false;
+    }
+  }
+
+  async #load(source: string, token: number): Promise<AnalyzeResponse | null> {
     if (this.configIssues.length === 0) {
       const config = projectConfig(this.config);
       const firstSeconds = this.firstSeconds;
@@ -415,12 +422,14 @@ export class Session {
       // 快取也要通過版本檢查；舊格式或別版的資料一律重新分析，不嘗試轉換。
       if (
         cached?.response &&
-        scoringModelOf(cached.config ?? {}) === requestModelOf(config) &&
-        responseMismatch(cached.response, requestModelOf(config)) === null
+        isV3Config(cached.config ?? {}) &&
+        responseMismatch(cached.response) === null
       ) {
-        // 查詢期間不可有其他分析插隊。
-        if (this.phase === 'analyzing') return null;
-        this.#pendingRequestId = null;
+        if (this.#pendingRequestId !== null) {
+          // 還在分析別的譜：直接中斷，改用這份快取。
+          this.#pendingRequestId = null;
+          if (this.desktop) void cancelAnalysis().catch(() => {});
+        }
         this.source = source;
         this.errorMessage = null;
         this.lastFailure = null;
@@ -438,7 +447,10 @@ export class Session {
       }
     }
     if (token !== this.#loadToken) return null;
-    return this.analyze(source);
+    const analysis = this.analyze(source);
+    // analyze 已接手（phase 變成 analyzing），不必再標示查快取中。
+    this.fetching = false;
+    return analysis;
   }
 
   async #store(bundle: ResultBundle): Promise<void> {

@@ -121,11 +121,10 @@
   let indexToken = 0;
 
   const searching = $derived(search.kind === 'searching');
-  const analyzing = $derived(session.phase === 'analyzing');
   const busy = $derived(searching || importing !== null);
   const canSearch = $derived(!busy && query.trim().length > 0);
   const canImport = $derived(
-    session.desktop && !busy && !analyzing && session.configIssues.length === 0,
+    session.desktop && !busy && session.configIssues.length === 0,
   );
   const rejectedStatus = $derived<AnalyzeStatus | null>(
     failure?.kind === 'rejected' ? (failure.response.status as AnalyzeStatus) : null,
@@ -362,7 +361,7 @@
   }
 
   async function openLocal(record: ChartRecord, reason?: string) {
-    if (analyzing || importing !== null) return;
+    if (importing !== null) return;
     failure = null;
     onClose();
     records.activeId = record.id;
@@ -604,7 +603,7 @@
                   <button
                     class="btn"
                     onclick={() => openLocal(record)}
-                    disabled={analyzing || importing !== null || !session.desktop}
+                    disabled={importing !== null || !session.desktop}
                     aria-label={`開啟本機紀錄 ${recordTitle(record)}`}
                   >
                     <Icon name="external-link" />開啟
