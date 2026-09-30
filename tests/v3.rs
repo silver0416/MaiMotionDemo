@@ -924,3 +924,24 @@ fn player_reference_chord_tail_and_three_note_figures() {
         assert_eq!(h[at + i], *hand, "note {i} of the figure in {h:?}");
     }
 }
+
+#[test]
+fn a_touch_stroke_is_drawn_by_one_hand() {
+    // Aegleseeker 33.3 s: four-touch strokes (through the centre, along the
+    // edge), each drawn by one hand in the player annotation.
+    let r = ok("(234){16}B2,C,B6,A6,A1,E1,E8,A7,A2,E3,E4,A4,B1,C,B5,A5,E");
+    let h = owners(&r);
+    for stroke in h.chunks(4) {
+        assert!(stroke.iter().all(|x| *x == stroke[0]), "{h:?}");
+    }
+}
+
+#[test]
+#[ignore = "known gap: stairSpeed 0.5 offsets only half the burst, the model still switches at 3→4 and 8→1"]
+fn a_fast_stair_around_the_ring_stays_on_one_hand() {
+    // 夜明けまであと３秒 31.3 s: the ring swept key by key at 32nd spacing;
+    // the player keeps one hand for the whole sweep.
+    let r = ok("(177){32}1,2,3,4,5,6,7,8,1,E");
+    let h = owners(&r);
+    assert!(h.iter().all(|x| *x == h[0]), "{h:?}");
+}

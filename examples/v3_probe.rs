@@ -1,5 +1,5 @@
 //! Debug probe: prints V3 candidates as per-note hands for inline charts or a
-//! chart file. Usage: v3_probe [--file path] [--from n --to n] [source...]
+//! chart file. Usage: v3_probe [--file path] [--from n --to n] [--tuning weights.json] [source...]
 use mai_motion_core::*;
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -16,6 +16,10 @@ fn main() {
             "--comfort" => config.travel_comfort = args.next().unwrap().parse().unwrap(),
             "--home" => config.home_preference = args.next().unwrap().parse().unwrap(),
             "--beam" => config.beam_width = args.next().unwrap().parse().unwrap(),
+            "--tuning" => {
+                let text = std::fs::read_to_string(args.next().unwrap()).unwrap();
+                scoring_v3::set_tuning(serde_json::from_str(&text).unwrap());
+            }
             _ => sources.push(a),
         }
     }

@@ -836,13 +836,13 @@
         "score": {
           "fatigue": 0.0,
           "movement": 0.0,
-          "posture": 0.04518968393421062,
-          "total": 0.04518968393421062
+          "posture": 0.036197310835713856,
+          "total": 0.036197310835713856
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
           "crossExposure": 0.0,
-          "excursion": 0.04518968393421062,
+          "excursion": 0.036197310835713856,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,
@@ -1242,13 +1242,13 @@
         "score": {
           "fatigue": 0.0,
           "movement": 0.0,
-          "posture": 17.925662325417196,
-          "total": 17.925662325417196
+          "posture": 6.35925422839748,
+          "total": 6.35925422839748
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 17.82876649616663,
-          "excursion": 0.09689582925056736,
+          "crossExposure": 6.280343145343906,
+          "excursion": 0.07891108305357376,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,

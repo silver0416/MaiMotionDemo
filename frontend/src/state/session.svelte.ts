@@ -99,9 +99,10 @@ export const SOLVER_REVISION = 'note-key-7';
  *   同時的 Slide／WiFi 由手掌沿星星覆蓋；追 Slide 的手掌範圍內的 Tap 可順手點到。
  * v3-4：權重依真人標註擬合（接觸交叉加重、單手負荷歸零、星星起點與滑行換手加成本），
  *   快速移動容忍預設 6.5 → 5.2。
+ * v3-5：階梯（連續相鄰鍵）與 Touch 一筆畫中途換手加成本，權重重新擬合。
  */
 export const SCORING_REVISION: Partial<Record<ScoringModel, string>> = {
-  'human-motion-v3': 'v3-4',
+  'human-motion-v3': 'v3-5',
 };
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */

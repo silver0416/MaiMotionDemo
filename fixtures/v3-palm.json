@@ -820,13 +820,13 @@
         "score": {
           "fatigue": 0.0,
           "movement": 0.0,
-          "posture": 3.047854394684506,
-          "total": 3.047854394684506
+          "posture": 1.1630301720412914,
+          "total": 1.1630301720412914
         },
         "scoreBreakdown": {
           "compressionStrain": 0.0,
-          "crossExposure": 2.5505066874126268,
-          "excursion": 0.49734770727187927,
+          "crossExposure": 0.765152006223788,
+          "excursion": 0.39787816581750346,
           "handover": 0.0,
           "jackFatigue": 0.0,
           "ownershipSwitch": 0.0,

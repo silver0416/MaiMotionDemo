@@ -24,6 +24,15 @@ fn engine() -> ScoringV3 {
         anchor_hold: 0.45,
         chord_switch_discount: 0.3,
         star_switch: 0.0,
+        stair_break: 0.0,
+        stair_window: 0.3,
+        stair_fast: 0.0,
+        stair_speed: 0.0,
+        stroke_break: 0.0,
+        stroke_window: 0.15,
+        stroke_step: 0.55,
+        shape_mix: 0.0,
+        glide_speed: 1.0,
         future_role: 0.15,
     });
     ScoringV3::new(PreferenceConfigV3 {

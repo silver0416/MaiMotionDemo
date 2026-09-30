@@ -60,6 +60,26 @@ pub struct TuningV3 {
     pub chord_switch_discount: f64,
     /// Tapping a star with one hand and sliding it with the other (posture).
     pub star_switch: f64,
+    /// Changing hands in the middle of a stair: from the second of three or
+    /// more consecutive single buttons stepping to the neighbour in one direction.
+    pub stair_break: f64,
+    /// Longest gap between stair steps.
+    pub stair_window: f64,
+    /// Steps faster than this gap cost proportionally more to break (0 = flat).
+    pub stair_fast: f64,
+    /// Share of the burst speed one hand would pay for a stair step that is
+    /// added to breaking the stair there (1 = speed never favours switching).
+    pub stair_speed: f64,
+    /// Changing hands inside a Touch stroke (touches drawn in one direction).
+    pub stroke_break: f64,
+    /// Longest gap and step length inside a Touch stroke.
+    pub stroke_window: f64,
+    pub stroke_step: f64,
+    /// A shape seen shortly before (same steps, possibly rotated or mirrored)
+    /// played with a mixed hand pattern: neither the same hands nor all swapped.
+    pub shape_mix: f64,
+    /// Share of burst speed charged while gliding along the ring.
+    pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
     pub future_role: f64,
 }
@@ -68,9 +88,9 @@ impl Default for TuningV3 {
         Self {
             travel: 0.0,
             speed_strain: 0.5,
-            swapped_posture: 3.0,
-            contact_cross: 600.0,
-            home_entry: 1.0,
+            swapped_posture: 6.0,
+            contact_cross: 180.0,
+            home_entry: 0.8,
             home_exposure: 0.10,
             reversal: 0.28,
             jack: 0.45,
@@ -81,8 +101,17 @@ impl Default for TuningV3 {
             same_point_window: 0.3,
             ownership_switch: 0.45,
             anchor_hold: 0.0,
-            chord_switch_discount: 0.3,
-            star_switch: 2.0,
+            chord_switch_discount: 0.25,
+            star_switch: 1.0,
+            stair_break: 0.2,
+            stair_window: 0.3,
+            stair_fast: 0.0,
+            stair_speed: 0.5,
+            stroke_break: 1.0,
+            stroke_window: 0.15,
+            stroke_step: 0.55,
+            shape_mix: 0.0,
+            glide_speed: 1.0,
             future_role: 0.15,
         }
     }
@@ -277,7 +306,12 @@ impl ScoringV3 {
                     }
                     let z = (d / dt / self.config.travel_comfort - 1.).max(0.);
                     let psi = if z <= 1. { z * z } else { 2. * z - 1. };
-                    speed += tuning().speed_strain * psi * d;
+                    let share = if s.mode == "glide" {
+                        tuning().glide_speed
+                    } else {
+                        1.
+                    };
+                    speed += share * tuning().speed_strain * psi * d;
                 }
             }
         }

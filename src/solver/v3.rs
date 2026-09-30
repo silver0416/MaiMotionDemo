@@ -49,6 +49,11 @@ pub(super) struct Context<'a> {
     // Nominal tracking strain per unit of path length.
     nominal: BTreeMap<&'a str, f64>,
     lookahead: Lookahead,
+    /// Stair or Touch stroke step → the previous step's note and the cost of
+    /// changing hands there.
+    stair_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// Last note of a repeated shape → its notes and the earlier occurrence's.
+    shape_prev: BTreeMap<&'a str, ShapeRepeat<'a>>,
     /// End of the last note; swapped posture is not charged after it.
     posture_end: f64,
 }
@@ -96,6 +101,8 @@ impl<'a> Context<'a> {
             notes: chart.notes.iter().map(|n| (n.id.as_str(), n)).collect(),
             nominal,
             lookahead: Lookahead::from_chart(chart),
+            stair_prev: stair_steps(chart, c.travel_comfort),
+            shape_prev: shape_repeats(chart),
             posture_end: chart
                 .notes
                 .iter()
@@ -161,7 +168,10 @@ impl<'a> Context<'a> {
             cursor = &link.prev;
         }
         fresh.reverse();
-        let star: f64 = fresh.iter().map(|link| self.star_switch(link)).sum();
+        let star: f64 = fresh
+            .iter()
+            .map(|link| self.star_switch(link) + self.stair_break(link) + self.shape_mix(link))
+            .sum();
         next.v3.parts.ownership_switch += star;
         for link in fresh {
             let assignment = &link.value;
@@ -223,6 +233,91 @@ impl<'a> Context<'a> {
                     "head" if a.hand != slide.hand => return weight,
                     "head" => return 0.0,
                     _ => {}
+                }
+            }
+            cursor = &prev.prev;
+        }
+        0.0
+    }
+
+    /// 重複的形狀用了混合的手法：與前一次相比，既不是每顆同手，也不是每顆換手。
+    /// 在形狀最後一顆的第一筆接觸時結算，往回找兩組音符的接觸手。
+    fn shape_mix(&self, link: &Link<Assignment>) -> f64 {
+        let weight = crate::scoring_v3::tuning().shape_mix;
+        let current = &link.value;
+        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(repeat) = self.shape_prev.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let wanted: Vec<&str> = repeat.now.iter().chain(&repeat.before).copied().collect();
+        let mut hands: Vec<Option<Hand>> = vec![None; wanted.len()];
+        hands[repeat.now.len() - 1] = Some(current.hand);
+        let since = self.notes[repeat.before[0]].time_seconds - 1.0;
+        let mut cursor = &link.prev;
+        for _ in 0..4096 {
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.end_seconds < since {
+                break;
+            }
+            if matches!(a.part.as_str(), "contact" | "head") {
+                for (i, id) in wanted.iter().enumerate() {
+                    if a.note_id == *id && i != repeat.now.len() - 1 {
+                        hands[i] = Some(a.hand);
+                    }
+                }
+                if hands.iter().all(Option::is_some) {
+                    break;
+                }
+            }
+            cursor = &prev.prev;
+        }
+        let Some(hands) = hands.into_iter().collect::<Option<Vec<Hand>>>() else {
+            return 0.0;
+        };
+        let (now, before) = hands.split_at(repeat.now.len());
+        let same = now.iter().zip(before).all(|(a, b)| a == b);
+        let swapped = now.iter().zip(before).all(|(a, b)| a != b);
+        if same || swapped {
+            0.0
+        } else {
+            weight
+        }
+    }
+
+    /// 階梯或 Touch 一筆畫的中途換手：這一步與上一步由不同的手接觸。只看這顆的
+    /// 第一筆接觸，往回找上一步的接觸，最多到上一步前 1 秒或 256 筆。
+    fn stair_break(&self, link: &Link<Assignment>) -> f64 {
+        let current = &link.value;
+        if !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&(previous, weight)) = self.stair_prev.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        if weight == 0.0 {
+            return 0.0;
+        }
+        let since = self.notes[previous].time_seconds - 1.0;
+        let mut cursor = &link.prev;
+        for _ in 0..256 {
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.end_seconds < since {
+                break;
+            }
+            if matches!(a.part.as_str(), "contact" | "head") {
+                if a.note_id == current.note_id {
+                    return 0.0;
+                }
+                if a.note_id == *previous {
+                    return if a.hand == current.hand { 0.0 } else { weight };
                 }
             }
             cursor = &prev.prev;
@@ -519,7 +614,8 @@ impl<'a> Context<'a> {
         }
         let mut cursor = &state.assignments;
         while let Some(link) = cursor.head.as_ref() {
-            expected.ownership_switch += self.star_switch(link);
+            expected.ownership_switch +=
+                self.star_switch(link) + self.stair_break(link) + self.shape_mix(link);
             cursor = &link.prev;
         }
         let mut histories = [HandHistory::default(), HandHistory::default()];
@@ -623,5 +719,209 @@ fn fresh_values<'a, T>(old: &Chain<T>, new: &'a Chain<T>) -> Vec<&'a T> {
         cursor = &link.prev;
     }
     result.reverse();
+    result
+}
+
+/// 連續的單顆接觸，一路往同一個方向前進：
+/// - 階梯：按鍵每一步走到同方向的相鄰鍵，間隔在 stairWindow 內。
+/// - Touch 一筆畫：Touch 每一步距離在 strokeStep 內、間隔在 strokeWindow 內，
+///   移動方向與上一步夾角小於 90°。
+///
+/// 整段至少三顆時，第二顆起每一步都算。階梯的換手成本另加單手走這一步的
+/// 高速負擔 × stairSpeed，並在間隔短於 stairFast 時依比例放大。
+///
+/// 回傳每個算進去的步 → 上一步的音符與換手成本。
+fn stair_steps(chart: &Chart, comfort: f64) -> BTreeMap<&str, (&str, f64)> {
+    let t = crate::scoring_v3::tuning();
+    let mut contacts: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    contacts.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    let mut singles: Vec<Option<&Note>> = vec![];
+    let mut last_time = f64::NEG_INFINITY;
+    for note in contacts {
+        if (note.time_seconds - last_time).abs() < 0.002 {
+            // 同時的第二顆：這個時刻不是單顆接觸。
+            if let Some(last) = singles.last_mut() {
+                *last = None;
+            }
+        } else {
+            singles.push(Some(note));
+        }
+        last_time = note.time_seconds;
+    }
+    let touch = |n: &Note| n.touch_area.is_some();
+    let button_step = |a: &Note, b: &Note| match (b.button + 8 - a.button) % 8 {
+        1 => 1,
+        7 => -1,
+        _ => 0,
+    };
+    let mut result = BTreeMap::new();
+    // 目前這一段：(音符, 按鍵方向 或 Touch 位移)
+    let mut run: Vec<&Note> = vec![];
+    let mut direction = 0;
+    fn flush<'a>(
+        run: &[&'a Note],
+        weights: (f64, f64, f64, f64, f64),
+        result: &mut BTreeMap<&'a str, (&'a str, f64)>,
+    ) {
+        if run.len() < 3 {
+            return;
+        }
+        let (stair, stroke, fast, speed, comfort) = weights;
+        let touch = run[0].touch_area.is_some();
+        for pair in run.windows(2) {
+            let gap = pair[1].time_seconds - pair[0].time_seconds;
+            let weight = if touch {
+                stroke
+            } else {
+                // 單手走這一步的高速負擔（與 motion_terms 相同的公式）。
+                let d = pair[0].position.distance(pair[1].position);
+                let z = (d / gap / comfort - 1.0).max(0.0);
+                let burst = if z <= 1.0 { z * z } else { 2.0 * z - 1.0 } * d;
+                let scale = if fast > 0.0 {
+                    (fast / gap).max(1.0)
+                } else {
+                    1.0
+                };
+                stair * scale + speed * burst
+            };
+            result.insert(pair[1].id.as_str(), (pair[0].id.as_str(), weight));
+        }
+    }
+    let weights = (
+        t.stair_break,
+        t.stroke_break,
+        t.stair_fast,
+        t.stair_speed * t.speed_strain,
+        comfort,
+    );
+    for note in singles {
+        let Some(note) = note else {
+            flush(&run, weights, &mut result);
+            run.clear();
+            continue;
+        };
+        let joined = run.last().is_some_and(|&last| {
+            if touch(last) != touch(note) {
+                return false;
+            }
+            let gap = note.time_seconds - last.time_seconds;
+            if touch(note) {
+                let d = last.position.distance(note.position);
+                let turn_ok = run.len() < 2 || {
+                    let p = run[run.len() - 2].position;
+                    (last.position.x - p.x) * (note.position.x - last.position.x)
+                        + (last.position.y - p.y) * (note.position.y - last.position.y)
+                        > 0.0
+                };
+                gap < t.stroke_window && d > 1e-9 && d <= t.stroke_step && turn_ok
+            } else {
+                let step = button_step(last, note);
+                gap < t.stair_window && step != 0 && (run.len() < 2 || step == direction)
+            }
+        });
+        if !joined {
+            flush(&run, weights, &mut result);
+            run.clear();
+            direction = 0;
+        } else if !touch(note) {
+            direction = button_step(run[run.len() - 1], note);
+        }
+        run.push(note);
+    }
+    flush(&run, weights, &mut result);
+    result
+}
+
+const SHAPE_LENGTH: usize = 4;
+const SHAPE_MAX_GAP: f64 = 0.35;
+const SHAPE_LOOKBACK: f64 = 8.0;
+
+/// 一個重複出現的形狀：這次與前一次的音符（逐顆對應）。
+struct ShapeRepeat<'a> {
+    now: [&'a str; SHAPE_LENGTH],
+    before: [&'a str; SHAPE_LENGTH],
+}
+
+/// 連續 SHAPE_LENGTH 顆單顆按鍵、間隔不超過 SHAPE_MAX_GAP，步伐（相鄰兩鍵的鍵位差）
+/// 與節奏（間隔比例）和 SHAPE_LOOKBACK 秒內較早、不重疊的一組相同，或左右鏡像，
+/// 可以整體旋轉。每組只對應最近的一次。
+fn shape_repeats(chart: &Chart) -> BTreeMap<&str, ShapeRepeat<'_>> {
+    let mut contacts: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.touch_area.is_none() && (n.kind != "slide" || n.has_head))
+        .collect();
+    contacts.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    let mut singles: Vec<Option<&Note>> = vec![];
+    let mut last_time = f64::NEG_INFINITY;
+    for note in contacts {
+        if (note.time_seconds - last_time).abs() < 0.002 {
+            if let Some(last) = singles.last_mut() {
+                *last = None;
+            }
+        } else {
+            singles.push(Some(note));
+        }
+        last_time = note.time_seconds;
+    }
+    struct Window<'a> {
+        start: usize,
+        notes: [&'a Note; SHAPE_LENGTH],
+        steps: [u8; SHAPE_LENGTH - 1],
+        rhythm: [i64; SHAPE_LENGTH - 1],
+    }
+    let mut windows: Vec<Window> = vec![];
+    for start in 0..singles.len().saturating_sub(SHAPE_LENGTH - 1) {
+        let Some(notes) = singles[start..start + SHAPE_LENGTH]
+            .iter()
+            .copied()
+            .collect::<Option<Vec<&Note>>>()
+        else {
+            continue;
+        };
+        let gaps: Vec<f64> = notes
+            .windows(2)
+            .map(|p| p[1].time_seconds - p[0].time_seconds)
+            .collect();
+        if gaps.iter().any(|g| *g > SHAPE_MAX_GAP) {
+            continue;
+        }
+        let mut steps = [0; SHAPE_LENGTH - 1];
+        let mut rhythm = [0; SHAPE_LENGTH - 1];
+        for i in 0..SHAPE_LENGTH - 1 {
+            steps[i] = (notes[i + 1].button + 8 - notes[i].button) % 8;
+            rhythm[i] = (gaps[i] / gaps[0] * 4.0).round() as i64;
+        }
+        windows.push(Window {
+            start,
+            notes: notes.try_into().unwrap(),
+            steps,
+            rhythm,
+        });
+    }
+    let mut result = BTreeMap::new();
+    for (a, now) in windows.iter().enumerate() {
+        let mirrored = now.steps.map(|s| (8 - s) % 8);
+        let earlier = windows[..a].iter().rev().find(|before| {
+            before.start + SHAPE_LENGTH <= now.start
+                && now.notes[0].time_seconds - before.notes[0].time_seconds <= SHAPE_LOOKBACK
+                && before.rhythm == now.rhythm
+                && (before.steps == now.steps || before.steps == mirrored)
+        });
+        let Some(before) = earlier else {
+            continue;
+        };
+        result.insert(
+            now.notes[SHAPE_LENGTH - 1].id.as_str(),
+            ShapeRepeat {
+                now: now.notes.map(|n| n.id.as_str()),
+                before: before.notes.map(|n| n.id.as_str()),
+            },
+        );
+    }
     result
 }
