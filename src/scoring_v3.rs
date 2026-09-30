@@ -78,6 +78,8 @@ pub struct TuningV3 {
     /// A shape seen shortly before (same steps, possibly rotated or mirrored)
     /// played with a mixed hand pattern: neither the same hands nor all swapped.
     pub shape_mix: f64,
+    /// Per note of a rhythm phrase whose hand pattern differs from the learned template.
+    pub phrase_template: f64,
     /// Share of burst speed charged while gliding along the ring.
     pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
@@ -111,6 +113,7 @@ impl Default for TuningV3 {
             stroke_window: 0.15,
             stroke_step: 0.55,
             shape_mix: 0.0,
+            phrase_template: 0.5,
             glide_speed: 1.0,
             future_role: 0.15,
         }

@@ -1,6 +1,8 @@
 mod tracking;
 mod v2;
 mod v3;
+#[doc(hidden)]
+pub use v3::phrases::{phrase_shapes, set_templates};
 #[cfg(test)]
 mod v3_tests;
 use crate::geometry::button;

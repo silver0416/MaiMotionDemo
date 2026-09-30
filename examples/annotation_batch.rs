@@ -1,7 +1,7 @@
 //! 一次比對整包真人標註（`*.maimotion-hands-bundle.json`）與模型 Top-1，印出各譜面與整體吻合率。
 //! 只求模型解，不求照標註的解；分支中確定的手順也算可接受的答案（另列一欄）。
 //!
-//! cargo run --release --example annotation_batch -- 整包.json [--config 設定.json] [--tuning 權重.json] [--only 0,3] [--json] [--misses 不吻合.json]
+//! cargo run --release --example annotation_batch -- 整包.json [--config 設定.json] [--tuning 權重.json] [--templates 樣板.json] [--only 0,3] [--json] [--misses 不吻合.json]
 use mai_motion_core::*;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -167,6 +167,10 @@ fn main() {
                 let text = std::fs::read_to_string(args.next().unwrap()).expect("讀不到權重");
                 let tuning = serde_json::from_str(&text).expect("權重格式錯誤");
                 scoring_v3::set_tuning(tuning);
+            }
+            "--templates" => {
+                let text = std::fs::read_to_string(args.next().unwrap()).expect("讀不到樣板");
+                set_templates(serde_json::from_str(&text).expect("樣板格式錯誤"));
             }
             "--only" => {
                 only = Some(

@@ -15,6 +15,9 @@ pub use model::*;
 pub use parser::{parse_chart, ParseOutput};
 /// Debug-only V3 replay of the Top-1 candidate's ownership, roles and lookahead.
 pub use solver::trace_v3;
+/// 分組認知樣板：樂句切分（學習用）與換樣板表（評估用）。
+#[doc(hidden)]
+pub use solver::{phrase_shapes, set_templates};
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {

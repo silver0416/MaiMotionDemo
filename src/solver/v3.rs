@@ -4,6 +4,7 @@ use crate::scoring_v3::{
     HandHistory, RoleState, ScoreBreakdownV3 as ScoreBreakdown, ScoreV3 as Score, ScoringV3,
 };
 pub(super) mod lookahead;
+pub(super) mod phrases;
 use lookahead::{FutureParts, Lookahead};
 
 #[derive(Clone, Default)]
@@ -54,6 +55,9 @@ pub(super) struct Context<'a> {
     stair_prev: BTreeMap<&'a str, (&'a str, f64)>,
     /// Last note of a repeated shape → its notes and the earlier occurrence's.
     shape_prev: BTreeMap<&'a str, ShapeRepeat<'a>>,
+    /// Note of a phrase's last group → the phrase's notes and learned hand pattern.
+    phrase_end: BTreeMap<&'a str, usize>,
+    phrase_templates: Vec<(Vec<&'a str>, &'static str)>,
     /// End of the last note; swapped posture is not charged after it.
     posture_end: f64,
 }
@@ -65,6 +69,27 @@ fn error(message: String) -> Diagnostic {
 impl<'a> Context<'a> {
     pub fn new(chart: &'a Chart, c: &SolverConfig) -> Result<Self, Diagnostic> {
         let engine = ScoringV3::new(c.preferences_v3()).map_err(error)?;
+        let mut phrase_end = BTreeMap::new();
+        let mut phrase_templates = vec![];
+        for phrase in phrases::phrases(chart) {
+            let Some(template) = phrases::templates().get(&phrase.signature) else {
+                continue;
+            };
+            let last = phrase
+                .notes
+                .iter()
+                .map(|n| n.time_seconds)
+                .fold(f64::NEG_INFINITY, f64::max);
+            for note in &phrase.notes {
+                if (note.time_seconds - last).abs() < 0.002 {
+                    phrase_end.insert(note.id.as_str(), phrase_templates.len());
+                }
+            }
+            phrase_templates.push((
+                phrase.notes.iter().map(|n| n.id.as_str()).collect(),
+                template.as_str(),
+            ));
+        }
         let mut nominal = BTreeMap::new();
         for note in &chart.notes {
             if let Some(id) = &note.path_id {
@@ -103,6 +128,8 @@ impl<'a> Context<'a> {
             lookahead: Lookahead::from_chart(chart),
             stair_prev: stair_steps(chart, c.travel_comfort),
             shape_prev: shape_repeats(chart),
+            phrase_end,
+            phrase_templates,
             posture_end: chart
                 .notes
                 .iter()
@@ -170,7 +197,12 @@ impl<'a> Context<'a> {
         fresh.reverse();
         let star: f64 = fresh
             .iter()
-            .map(|link| self.star_switch(link) + self.stair_break(link) + self.shape_mix(link))
+            .map(|link| {
+                self.star_switch(link)
+                    + self.stair_break(link)
+                    + self.shape_mix(link)
+                    + self.phrase_template(link)
+            })
             .sum();
         next.v3.parts.ownership_switch += star;
         for link in fresh {
@@ -238,6 +270,58 @@ impl<'a> Context<'a> {
             cursor = &prev.prev;
         }
         0.0
+    }
+
+    /// 樂句的手法與學到的樣板不同：依簽名順序比較，每顆不同收一次。在樂句最後一組
+    /// 最晚指派的那顆結算（之前的還找不齊全部的手）。
+    fn phrase_template(&self, link: &Link<Assignment>) -> f64 {
+        let weight = crate::scoring_v3::tuning().phrase_template;
+        let current = &link.value;
+        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&index) = self.phrase_end.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let (notes, template) = &self.phrase_templates[index];
+        let mut hands: Vec<Option<Hand>> = notes
+            .iter()
+            .map(|id| (*id == current.note_id).then_some(current.hand))
+            .collect();
+        let since = self.notes[notes[0]].time_seconds - 1.0;
+        let mut cursor = &link.prev;
+        for _ in 0..1024 {
+            if hands.iter().all(Option::is_some) {
+                break;
+            }
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.end_seconds < since {
+                break;
+            }
+            if matches!(a.part.as_str(), "contact" | "head") {
+                if let Some(i) = notes.iter().position(|id| *id == a.note_id) {
+                    if a.note_id == current.note_id {
+                        // 這顆之前已經接觸過：不是第一筆，不重複結算。
+                        return 0.0;
+                    }
+                    hands[i].get_or_insert(a.hand);
+                }
+            }
+            cursor = &prev.prev;
+        }
+        let Some(hands) = hands.into_iter().collect::<Option<Vec<Hand>>>() else {
+            return 0.0;
+        };
+        let actual = phrases::pattern(&hands);
+        let differing = actual
+            .chars()
+            .zip(template.chars())
+            .filter(|(a, b)| a != b)
+            .count();
+        weight * differing as f64
     }
 
     /// 重複的形狀用了混合的手法：與前一次相比，既不是每顆同手，也不是每顆換手。
@@ -614,8 +698,10 @@ impl<'a> Context<'a> {
         }
         let mut cursor = &state.assignments;
         while let Some(link) = cursor.head.as_ref() {
-            expected.ownership_switch +=
-                self.star_switch(link) + self.stair_break(link) + self.shape_mix(link);
+            expected.ownership_switch += self.star_switch(link)
+                + self.stair_break(link)
+                + self.shape_mix(link)
+                + self.phrase_template(link);
             cursor = &link.prev;
         }
         let mut histories = [HandHistory::default(), HandHistory::default()];

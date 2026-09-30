@@ -945,3 +945,22 @@ fn a_fast_stair_around_the_ring_stays_on_one_hand() {
     let h = owners(&r);
     assert!(h.iter().all(|x| *x == h[0]), "{h:?}");
 }
+
+#[test]
+fn mirrored_phrases_share_one_shape_and_the_template_table_loads() {
+    // A phrase and its left-right mirror are one shape; rotating it keeps the shape.
+    let shape = |source: &str| {
+        let chart = parse_chart(source, 0.).unwrap().chart;
+        phrase_shapes(&chart)
+            .into_iter()
+            .map(|(signature, _)| signature)
+            .collect::<Vec<_>>()
+    };
+    let right = shape("(120){8}1,2,3,{2},,{8}1,1,3,E");
+    assert_eq!(right.len(), 2, "{right:?}");
+    assert_eq!(shape("(120){8}8,7,6,{2},,{8}8,8,6,E"), right);
+    assert_eq!(shape("(120){8}3,4,5,{2},,{8}3,3,5,E"), right);
+    // Any V3 solve reads the shipped table.
+    let r = ok("(120){8}1,2,3,4,5,E");
+    assert_eq!(r.status, "ok");
+}

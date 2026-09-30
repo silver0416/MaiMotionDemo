@@ -32,6 +32,7 @@ fn engine() -> ScoringV3 {
         stroke_window: 0.15,
         stroke_step: 0.55,
         shape_mix: 0.0,
+        phrase_template: 0.0,
         glide_speed: 1.0,
         future_role: 0.15,
     });
