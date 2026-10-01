@@ -972,3 +972,33 @@ fn mirrored_phrases_share_one_shape_and_the_template_table_loads() {
     let r = ok("(120){8}1,2,3,4,5,E");
     assert_eq!(r.status, "ok");
 }
+
+/// 學權重的掛鉤：在同一條路線上用別組權重重算的總成本，預設權重時等於回報的總成本，
+/// 且對線性權重是線性的（成本 = 常數 + Σ 權重 × 特徵）。
+#[test]
+fn probes_rescore_the_best_route_linearly() {
+    let scaled = |k: f64| -> &'static TuningV3 {
+        let d = TuningV3::default();
+        Box::leak(Box::new(TuningV3 {
+            speed_strain: k * d.speed_strain,
+            swapped_posture: k * d.swapped_posture,
+            contact_cross: k * d.contact_cross,
+            home_entry: k * d.home_entry,
+            reversal: k * d.reversal,
+            ownership_switch: k * d.ownership_switch,
+            star_switch: k * d.star_switch,
+            phrase_template: k * d.phrase_template,
+            ..d
+        }))
+    };
+    let probes = [scaled(1.), scaled(0.), scaled(2.)];
+    let source = "(160){8}1,3,8,2-6[8:1],7,4,5h[4:1],1/5,{16}3,4,5,6,E";
+    let (r, totals) = with_probes(&probes, || run(source, SolverConfig::v3()));
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let Some(SolutionScore::V3(score)) = &r.solutions[0].score else {
+        panic!("沒有 V3 分數");
+    };
+    assert_eq!(totals.len(), 3);
+    near(totals[0], score.total());
+    near(totals[2] - totals[1], 2. * (totals[0] - totals[1]));
+}

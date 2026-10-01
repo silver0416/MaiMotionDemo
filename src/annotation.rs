@@ -300,6 +300,42 @@ fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
 
 /// 比對真人標註與模型：分別求出模型最佳解與「照標註打」的最佳解，列出不同的音符與成本差距。
 pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
+    evaluate_annotation_probed(request, &[]).0
+}
+
+/// 學權重用：同 [`evaluate_annotation`]，另外回傳模型解與照標註解在每組探測權重下的
+/// V3 總成本（同一條路線重算）。沒有該解時為空。
+#[doc(hidden)]
+pub fn evaluate_annotation_probed(
+    request: EvaluateRequest,
+    probes: &[&'static crate::scoring_v3::TuningV3],
+) -> (EvaluateResponse, Vec<f64>, Vec<f64>) {
+    let (mut model_totals, mut human_totals) = (vec![], vec![]);
+    let response = evaluate_inner(request, |chart, config, rules| {
+        let (result, totals) = solver::with_probes(probes, || match rules {
+            Some(rules) => solver::solve_constrained(chart, config, rules),
+            None => solver::solve(chart, config),
+        });
+        if result.is_ok() {
+            *if rules.is_some() {
+                &mut human_totals
+            } else {
+                &mut model_totals
+            } = totals;
+        }
+        result
+    });
+    (response, model_totals, human_totals)
+}
+
+fn evaluate_inner(
+    request: EvaluateRequest,
+    mut solve: impl FnMut(
+        &Chart,
+        &SolverConfig,
+        Option<&HandRules>,
+    ) -> Result<Vec<Solution>, Diagnostic>,
+) -> EvaluateResponse {
     let mut response = EvaluateResponse {
         request_id: request.request_id.clone(),
         status: "invalid".into(),
@@ -355,7 +391,7 @@ pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
     }
     response.matched = marks.len();
 
-    let model = match solver::solve(&chart, &request.solver_config) {
+    let model = match solve(&chart, &request.solver_config, None) {
         Ok(solutions) => solutions.into_iter().next(),
         Err(diagnostic) => {
             response.diagnostics.push(diagnostic);
@@ -398,7 +434,7 @@ pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
         }
     }
 
-    match solver::solve_constrained(&chart, &request.solver_config, &rules(&chart, &marks)) {
+    match solve(&chart, &request.solver_config, Some(&rules(&chart, &marks))) {
         Ok(solutions) => {
             if let Some(best) = solutions.into_iter().next() {
                 response.human = Some(evaluated(&best));

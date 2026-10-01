@@ -80,6 +80,9 @@ pub struct TuningV3 {
     pub shape_mix: f64,
     /// Per note of a rhythm phrase whose hand pattern differs from the learned template.
     pub phrase_template: f64,
+    /// A phrase of three or more onsets with no learned template played
+    /// entirely by one hand (players tend to share a group between the hands).
+    pub phrase_one_hand: f64,
     /// Share of burst speed charged while gliding along the ring.
     pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
@@ -127,6 +130,7 @@ impl Default for TuningV3 {
             stroke_step: 0.55,
             shape_mix: 0.0,
             phrase_template: 0.5,
+            phrase_one_hand: 0.0,
             glide_speed: 1.0,
             future_role: 0.15,
             arc_side: 0.0,
@@ -142,9 +146,26 @@ static TUNING: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
 pub fn set_tuning(tuning: TuningV3) -> bool {
     TUNING.set(tuning).is_ok()
 }
+thread_local! {
+    static OVERRIDE: std::cell::Cell<Option<&'static TuningV3>> = const { std::cell::Cell::new(None) };
+}
 #[doc(hidden)]
 pub fn tuning() -> &'static TuningV3 {
-    TUNING.get_or_init(TuningV3::default)
+    OVERRIDE
+        .with(std::cell::Cell::get)
+        .unwrap_or_else(|| TUNING.get_or_init(TuningV3::default))
+}
+/// 學權重用：在這個執行緒上暫時改用另一組權重執行 `f`（結束後還原）。
+#[doc(hidden)]
+pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<&'static TuningV3>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            OVERRIDE.with(|cell| cell.set(self.0));
+        }
+    }
+    let _restore = Restore(OVERRIDE.with(|cell| cell.replace(Some(tuning))));
+    f()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

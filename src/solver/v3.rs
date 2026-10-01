@@ -57,7 +57,8 @@ pub(super) struct Context<'a> {
     shape_prev: BTreeMap<&'a str, ShapeRepeat<'a>>,
     /// Note of a phrase's last group → the phrase's notes and learned hand pattern.
     phrase_end: BTreeMap<&'a str, usize>,
-    phrase_templates: Vec<(Vec<&'a str>, &'static str)>,
+    /// 樂句的音符與手法樣板；沒有樣板的樂句只看是不是整句單手（phraseOneHand）。
+    phrase_templates: Vec<(Vec<&'a str>, Option<&'static str>)>,
     /// End of the last note; swapped posture is not charged after it.
     posture_end: f64,
 }
@@ -71,10 +72,16 @@ impl<'a> Context<'a> {
         let engine = ScoringV3::new(c.preferences_v3()).map_err(error)?;
         let mut phrase_end = BTreeMap::new();
         let mut phrase_templates = vec![];
+        let one_hand = crate::scoring_v3::tuning().phrase_one_hand > 0.0;
         for phrase in phrases::phrases(chart) {
-            let Some(template) = phrases::templates().get(&phrase.signature) else {
+            let template = phrases::templates()
+                .get(&phrase.signature)
+                .map(String::as_str);
+            let mut times: Vec<f64> = phrase.notes.iter().map(|n| n.time_seconds).collect();
+            times.dedup_by(|a, b| (*a - *b).abs() < 0.002);
+            if template.is_none() && !(one_hand && times.len() >= 3) {
                 continue;
-            };
+            }
             let last = phrase
                 .notes
                 .iter()
@@ -87,7 +94,7 @@ impl<'a> Context<'a> {
             }
             phrase_templates.push((
                 phrase.notes.iter().map(|n| n.id.as_str()).collect(),
-                template.as_str(),
+                template,
             ));
         }
         let mut nominal = BTreeMap::new();
@@ -276,9 +283,11 @@ impl<'a> Context<'a> {
     /// 樂句的手法與學到的樣板不同：依簽名順序比較，每顆不同收一次。在樂句最後一組
     /// 最晚指派的那顆結算（之前的還找不齊全部的手）。
     fn phrase_template(&self, link: &Link<Assignment>) -> f64 {
-        let weight = crate::scoring_v3::tuning().phrase_template;
+        let tuning = crate::scoring_v3::tuning();
         let current = &link.value;
-        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+        if (tuning.phrase_template == 0.0 && tuning.phrase_one_hand == 0.0)
+            || !matches!(current.part.as_str(), "contact" | "head")
+        {
             return 0.0;
         }
         let Some(&index) = self.phrase_end.get(current.note_id.as_str()) else {
@@ -317,12 +326,19 @@ impl<'a> Context<'a> {
             return 0.0;
         };
         let actual = phrases::pattern(&hands);
-        let differing = actual
-            .chars()
-            .zip(template.chars())
-            .filter(|(a, b)| a != b)
-            .count();
-        weight * differing as f64
+        match template {
+            Some(template) => {
+                let differing = actual
+                    .chars()
+                    .zip(template.chars())
+                    .filter(|(a, b)| a != b)
+                    .count();
+                tuning.phrase_template * differing as f64
+            }
+            // 沒見過的形狀：一組快速的音符，人多半兩手合作，整句單手才收費。
+            None if !actual.contains('B') => tuning.phrase_one_hand,
+            None => 0.0,
+        }
     }
 
     /// 重複的形狀用了混合的手法：與前一次相比，既不是每顆同手，也不是每顆換手。
@@ -663,6 +679,24 @@ impl<'a> Context<'a> {
     /// Replays physical actions and handovers as well as removable motion terms,
     /// so missing/duplicated incremental updates fail before publishing a score.
     pub fn verify(&self, state: &State) -> Result<(), Diagnostic> {
+        let expected = self.recompute(state)?;
+        let actual = &state.v3.parts;
+        for (a, b) in expected.values().into_iter().zip(actual.values()) {
+            if (a - b).abs() > 1e-7 * (1.0 + a.abs()) {
+                return Err(error(format!("V3 增量成本不一致：{a} / {b}")));
+            }
+        }
+        Ok(())
+    }
+
+    /// 學權重用：以目前的權重重算這條路線的總成本。
+    pub fn total(&self, state: &State) -> Result<f64, Diagnostic> {
+        let parts = self.recompute(state)?;
+        Ok(self.engine.score(&parts).map_err(error)?.total())
+    }
+
+    /// 從完整路線重算各項成本（不靠增量）。
+    fn recompute(&self, state: &State) -> Result<ScoreBreakdown, Diagnostic> {
         let mut expected = ScoreBreakdown::default();
         let left = state.arms[0].segments.to_vec();
         let right = state.arms[1].segments.to_vec();
@@ -722,13 +756,7 @@ impl<'a> Context<'a> {
         for handover in state.handovers.to_vec() {
             expected.handover += self.engine.handover(handover.swap);
         }
-        let actual = &state.v3.parts;
-        for (a, b) in expected.values().into_iter().zip(actual.values()) {
-            if (a - b).abs() > 1e-7 * (1.0 + a.abs()) {
-                return Err(error(format!("V3 增量成本不一致：{a} / {b}")));
-            }
-        }
-        Ok(())
+        Ok(expected)
     }
 }
 

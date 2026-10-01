@@ -2363,6 +2363,28 @@ fn merge_assignments(mut assignments: Vec<Assignment>) -> Vec<Assignment> {
     out
 }
 
+thread_local! {
+    /// 學權重用：設定時，求解結束後以每組權重重算最佳方案的 V3 總成本。
+    static PROBES: std::cell::RefCell<Option<(Vec<&'static crate::scoring_v3::TuningV3>, Vec<f64>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// 學權重用：在 `f` 裡的求解結束時，以每組探測權重重算最佳方案的 V3 總成本
+/// （同一條路線、不重新搜尋）。回傳最後一次求解的結果；沒有 V3 解時為空。
+#[doc(hidden)]
+pub fn with_probes<R>(
+    probes: &[&'static crate::scoring_v3::TuningV3],
+    f: impl FnOnce() -> R,
+) -> (R, Vec<f64>) {
+    let previous = PROBES.with(|cell| cell.replace(Some((probes.to_vec(), vec![]))));
+    let result = f();
+    let totals = PROBES
+        .with(|cell| cell.replace(previous))
+        .map(|(_, totals)| totals)
+        .unwrap_or_default();
+    (result, totals)
+}
+
 /// 先以「準時接觸優先」搜尋；若因此找不到方案，再允許所有 Touch 使用晚接觸重試一次。
 /// 優先規則只是縮小候選的策略，可能剪掉必須晚接才走得通的路線。
 pub fn solve(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
@@ -3045,6 +3067,22 @@ fn solve_with(
     beam.sort_by(|a, b| compare_states(a, b, c, true));
     if let (Some(lines), Some(context), Some(best)) = (trace, &v3_context, beam.first()) {
         *lines = context.trace(best)?;
+    }
+    if let (true, Some(best)) = (c.is_v3(), beam.first()) {
+        let probes = PROBES.with(|cell| cell.borrow().as_ref().map(|(p, _)| p.clone()));
+        if let Some(probes) = probes.filter(|p| !p.is_empty()) {
+            let mut totals = Vec::with_capacity(probes.len());
+            for probe in probes {
+                totals.push(crate::scoring_v3::with_tuning(probe, || {
+                    v3::Context::new(chart, c)?.total(best)
+                })?);
+            }
+            PROBES.with(|cell| {
+                if let Some((_, slot)) = cell.borrow_mut().as_mut() {
+                    *slot = totals;
+                }
+            });
+        }
     }
     let mut solutions = vec![];
     let mut signatures = std::collections::BTreeSet::new();
