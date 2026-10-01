@@ -284,13 +284,19 @@ export function cleanGroups(value: unknown): NoteGroup[] {
   for (const item of value) {
     if (typeof item !== 'object' || item === null) continue;
     const raw = item as Record<string, unknown>;
-    if (!finite(raw.from) || !finite(raw.to)) continue;
-    const group: NoteGroup = { from: Math.min(raw.from, raw.to), to: Math.max(raw.from, raw.to) };
+    const keys = Array.isArray(raw.keys)
+      ? [...new Set(raw.keys.filter((key): key is string => typeof key === 'string' && key !== ''))]
+      : [];
+    let group: NoteGroup;
+    if (keys.length >= 2) group = { keys };
+    // v0.4.11 的時間範圍分組，開啟譜面後才換得成音符。
+    else if (finite(raw.from) && finite(raw.to)) group = { keys: [], from: Math.min(raw.from, raw.to), to: Math.max(raw.from, raw.to) };
+    else continue;
     if (text(raw.label)) group.label = text(raw.label).slice(0, GROUP_LABEL_MAX);
     if (text(raw.by)) group.by = text(raw.by);
-    out.push(group);
+    if (!out.some((other) => sameGroup(other, group))) out.push(group);
   }
-  return out.sort((a, b) => a.from - b.from || a.to - b.to);
+  return out;
 }
 
 function cleanNotes(value: unknown): Record<string, NoteAnnotation> {
@@ -732,7 +738,7 @@ export function toFile(
     memo: draft.memo,
     notes: sorted(draft.notes),
     ranges: draft.ranges.map((range) => ({ ...range })),
-    ...(draft.groups.length > 0 ? { groups: draft.groups.map((group) => ({ ...group })) } : {}),
+    ...(draft.groups.length > 0 ? { groups: draft.groups.map((group) => ({ ...group, keys: [...group.keys] })) } : {}),
     ...(video ? { video } : {}),
     ...(branches.length > 0 ? { branches } : {}),
   };
@@ -840,9 +846,13 @@ export function parseValue(raw: unknown): ParseResult {
   };
 }
 
-/** 兩端都在 1 毫秒內視為同一組。 */
+/** 同樣的音符視為同一組；舊版時間範圍的分組比兩端（1 毫秒內）。 */
 export function sameGroup(a: NoteGroup, b: NoteGroup): boolean {
-  return Math.abs(a.from - b.from) < 1e-3 && Math.abs(a.to - b.to) < 1e-3;
+  if (a.keys.length > 0 || b.keys.length > 0) {
+    const set = new Set(a.keys);
+    return a.keys.length === b.keys.length && b.keys.every((key) => set.has(key));
+  }
+  return Math.abs((a.from ?? 0) - (b.from ?? 0)) < 1e-3 && Math.abs((a.to ?? 0) - (b.to ?? 0)) < 1e-3;
 }
 
 export function sameHands(a: NoteAnnotation, b: NoteAnnotation): boolean {
@@ -943,10 +953,9 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
   draft.ranges.sort((a, b) => a.from - b.from);
   for (const group of file.groups ?? []) {
     const same = draft.groups.find((item) => sameGroup(item, group));
-    if (!same) draft.groups.push({ ...group });
+    if (!same) draft.groups.push({ ...group, keys: [...group.keys] });
     else if (!same.label && group.label) same.label = group.label;
   }
-  draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
   for (const name of file.annotators) {
     if (!draft.annotators.includes(name)) draft.annotators.push(name);
   }

@@ -984,67 +984,133 @@ export class AnnotationStore {
     this.#touch();
   }
 
-  // ---- 分組 ----
+  // ---- 分組（以顆為單位） ----
   //
-  // 像時間軸標籤一樣標：按 G（或播放列的「分組」）記下起點，再按一次記下終點。
-  // 兩端吸附到最近的音符，範圍含兩端的音符。
+  // 在逐顆清單上標：先標這組的第一顆（右鍵或 G），再選最後一顆，兩顆之間（含兩端）的
+  // 音符就是一組。之後可以單顆移出或加入。
 
-  /** 正在標的分組起點（譜面時間）；null 表示沒有在標。 */
-  groupStart = $state<number | null>(null);
+  /** 正在標的分組第一顆（音符 id）；null 表示沒有在標。 */
+  groupStart = $state<string | null>(null);
 
   /** 盤面上的結果就是這筆紀錄的原文，才可以標分組。 */
   get groupsAvailable(): boolean {
     const record = records.get(this.recordId);
-    return !!record && session.result?.source === record.source;
+    return this.keysReady && !!record && session.result?.source === record.source;
   }
 
-  /** 吸附到 0.15 秒內最近的音符判定時間；附近沒有音符就取到毫秒。 */
-  #snapTime(time: number): number {
-    let best = Math.round(time * 1000) / 1000;
-    let gap = 0.15;
-    for (const note of session.notes) {
-      const d = Math.abs(note.timeSeconds - time);
-      if (d < gap) {
-        gap = d;
-        best = note.timeSeconds;
-      }
+  get groupStartNote(): Note | null {
+    return this.groupStart ? (this.ordered.find((note) => note.id === this.groupStart) ?? null) : null;
+  }
+
+  /** 分組的音符（依時間）；舊版時間範圍的分組取範圍內的音符。 */
+  groupNotes(group: NoteGroup): Note[] {
+    if (group.keys.length === 0) {
+      const from = group.from ?? 0;
+      const to = group.to ?? -1;
+      return this.ordered.filter((note) => note.timeSeconds >= from - 1e-3 && note.timeSeconds <= to + 1e-3);
     }
-    return best;
+    return group.keys
+      .map((key) => this.#byKey.get(key))
+      .filter((note): note is Note => !!note)
+      .sort((a, b) => this.noteNumber(a) - this.noteNumber(b));
   }
 
-  /** 範圍內（含兩端）的音符數。 */
-  groupNoteCount(group: { from: number; to: number }): number {
-    return session.notes.filter((note) => note.timeSeconds >= group.from - 1e-3 && note.timeSeconds <= group.to + 1e-3)
-      .length;
+  /** 依第一顆排序的分組；index 是在 draft.groups 裡的位置。 */
+  groupList = $derived.by(() =>
+    this.draft.groups
+      .map((group, index) => ({ index, group, notes: this.groupNotes(group) }))
+      .sort(
+        (a, b) =>
+          (a.notes[0] ? this.noteNumber(a.notes[0]) : Infinity) - (b.notes[0] ? this.noteNumber(b.notes[0]) : Infinity) ||
+          b.notes.length - a.notes.length,
+      ),
+  );
+
+  /** 音符 id → 包含它的分組（draft.groups 的位置）。 */
+  #groupsByNote = $derived.by(() => {
+    const map = new Map<string, number[]>();
+    for (const { index, notes } of this.groupList) {
+      for (const note of notes) map.set(note.id, [...(map.get(note.id) ?? []), index]);
+    }
+    return map;
+  });
+
+  groupsOf(note: Note): number[] {
+    return this.#groupsByNote.get(note.id) ?? [];
   }
 
-  /**
-   * 第一次呼叫記下起點，第二次以兩點建立分組。兩點吸附到同一顆音符時
-   * 不建立（一組至少兩顆）。回傳結果給呼叫端顯示提示。
-   */
-  markGroup(time: number): { kind: 'start' | 'created' | 'exists' | 'too-short'; group?: NoteGroup } | null {
-    if (!this.groupsAvailable) return null;
-    const at = this.#snapTime(time);
-    if (this.groupStart === null) {
-      this.groupStart = at;
+  /** 分組的名稱：有取名用名稱，否則用顆數範圍。 */
+  groupName(index: number): string {
+    const group = this.draft.groups[index];
+    if (!group) return '';
+    if (group.label) return group.label;
+    const notes = this.groupNotes(group);
+    if (notes.length === 0) return '分組（找不到音符）';
+    return `第 ${this.noteNumber(notes[0])}–${this.noteNumber(notes[notes.length - 1])} 顆`;
+  }
+
+  /** 兩顆之間（含兩端，依時間）的音符。 */
+  notesBetween(a: Note, b: Note): Note[] {
+    const [from, to] = [this.noteNumber(a), this.noteNumber(b)].sort((x, y) => x - y);
+    return this.ordered.slice(from - 1, to);
+  }
+
+  /** 第一次記下第一顆，第二次以兩顆之間（含兩端）建立分組。回傳結果給呼叫端顯示提示。 */
+  markGroup(note: Note): { kind: 'start' | 'created' | 'exists' | 'too-short'; index?: number } | null {
+    if (!this.groupsAvailable || !note.key) return null;
+    const start = this.groupStartNote;
+    if (!start) {
+      this.groupStart = note.id;
       return { kind: 'start' };
     }
+    const notes = this.notesBetween(start, note);
+    if (notes.length < 2) return { kind: 'too-short' };
+    this.groupStart = null;
     const group: NoteGroup = {
-      from: Math.min(this.groupStart, at),
-      to: Math.max(this.groupStart, at),
+      keys: notes.map((item) => item.key ?? '').filter((key) => key !== ''),
       ...(this.annotator ? { by: this.annotator } : {}),
     };
-    if (this.groupNoteCount(group) < 2) return { kind: 'too-short' };
-    this.groupStart = null;
-    if (this.draft.groups.some((item) => sameGroup(item, group))) return { kind: 'exists', group };
+    const existing = this.draft.groups.findIndex((item) => sameGroup(this.#resolved(item), group));
+    if (existing >= 0) return { kind: 'exists', index: existing };
     this.draft.groups.push(group);
-    this.draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
     this.#touch();
-    return { kind: 'created', group };
+    return { kind: 'created', index: this.draft.groups.length - 1 };
   }
 
   cancelGroup(): void {
     this.groupStart = null;
+  }
+
+  /** 舊版時間範圍的分組換成音符後的樣子（不改動草稿）。 */
+  #resolved(group: NoteGroup): NoteGroup {
+    if (group.keys.length > 0 || !this.keysReady) return group;
+    const { from: _from, to: _to, ...rest } = group;
+    return { ...rest, keys: this.groupNotes(group).map((note) => note.key ?? '').filter((key) => key !== '') };
+  }
+
+  /** 改動前把舊版時間範圍的分組換成音符。 */
+  #materialize(group: NoteGroup): void {
+    if (group.keys.length > 0 || !this.keysReady) return;
+    group.keys = this.groupNotes(group).map((note) => note.key ?? '').filter((key) => key !== '');
+    delete group.from;
+    delete group.to;
+  }
+
+  /** 匯出前把舊版時間範圍的分組都換成音符。 */
+  #materializeAll(): void {
+    if (!this.keysReady || this.draft.groups.every((group) => group.keys.length > 0)) return;
+    for (const group of this.draft.groups) this.#materialize(group);
+    this.#touch();
+  }
+
+  /** 目前分組的複本，給復原用。 */
+  snapshotGroups(): NoteGroup[] {
+    return $state.snapshot(this.draft.groups) as NoteGroup[];
+  }
+
+  restoreGroups(groups: NoteGroup[]): void {
+    this.draft.groups = groups.map((group) => ({ ...group, keys: [...group.keys] }));
+    this.#touch();
   }
 
   renameGroup(index: number, label: string): void {
@@ -1052,31 +1118,73 @@ export class AnnotationStore {
     if (!group) return;
     const text = label.trim().slice(0, 40);
     if ((group.label ?? '') === text) return;
+    this.#materialize(group);
     if (text) group.label = text;
     else delete group.label;
     this.#touch();
   }
 
-  /** 刪除並回傳刪掉的分組，供復原。 */
-  removeGroup(index: number): NoteGroup | null {
-    const [removed] = this.draft.groups.splice(index, 1);
-    if (!removed) return null;
+  removeGroup(index: number): void {
+    if (index < 0 || index >= this.draft.groups.length) return;
+    this.draft.groups.splice(index, 1);
     this.#touch();
-    return removed;
   }
 
-  /** 把刪掉的分組放回來（已經有同一組就不重複）。 */
-  restoreGroup(group: NoteGroup): void {
-    if (this.draft.groups.some((item) => sameGroup(item, group))) return;
-    this.draft.groups.push({ ...group });
-    this.draft.groups.sort((a, b) => a.from - b.from || a.to - b.to);
+  /** 把這顆移出分組；剩不到兩顆就整組刪除。回傳是否整組刪除。 */
+  removeFromGroup(index: number, note: Note): boolean {
+    const group = this.draft.groups[index];
+    if (!group || !note.key) return false;
+    this.#materialize(group);
+    group.keys = group.keys.filter((key) => key !== note.key);
+    if (group.keys.length < 2) {
+      this.draft.groups.splice(index, 1);
+      this.#touch();
+      return true;
+    }
     this.#touch();
+    return false;
+  }
+
+  addToGroup(index: number, note: Note): void {
+    const group = this.draft.groups[index];
+    if (!group || !note.key) return;
+    this.#materialize(group);
+    if (group.keys.includes(note.key)) return;
+    group.keys = [...group.keys, note.key]
+      .map((key) => this.#byKey.get(key))
+      .filter((item): item is Note => !!item)
+      .sort((a, b) => this.noteNumber(a) - this.noteNumber(b))
+      .map((item) => item.key ?? '');
+    this.#touch();
+  }
+
+  /** 可以把這顆加入的分組：不含這顆、但範圍就在這顆前後一顆以內。 */
+  nearbyGroups(note: Note): number[] {
+    const number = this.noteNumber(note);
+    return this.groupList
+      .filter(({ notes }) => {
+        if (notes.length === 0 || notes.some((item) => item.id === note.id)) return false;
+        return number >= this.noteNumber(notes[0]) - 1 && number <= this.noteNumber(notes[notes.length - 1]) + 1;
+      })
+      .map(({ index }) => index);
+  }
+
+  /** 分組的播放範圍：第一顆判定到最後一顆結束（Slide 到滑完）。 */
+  groupSpan(index: number): { from: number; to: number } | null {
+    const group = this.draft.groups[index];
+    const notes = group ? this.groupNotes(group) : [];
+    if (notes.length === 0) return null;
+    return {
+      from: notes[0].timeSeconds,
+      to: Math.max(...notes.map((note) => Math.max(note.timeSeconds, note.endSeconds, note.motionEnd ?? 0))),
+    };
   }
 
   /** 目前草稿連同原譜轉成標註檔。 */
   async toFile(): Promise<HandAnnotation | null> {
     const source = session.result?.source ?? session.source;
     if (!source || !this.keysReady) return null;
+    if (this.groupsAvailable) this.#materializeAll();
     this.flush();
     return toFile($state.snapshot(this.draft) as AnnotationDraft, {
       source,
@@ -1200,10 +1308,6 @@ export class AnnotationStore {
     const key = event.key.toLowerCase();
     if (event.key === 'Escape' && this.pendingStart) {
       this.cancelMark();
-      return true;
-    }
-    if (event.key === 'Escape' && this.groupStart !== null) {
-      this.groupStart = null;
       return true;
     }
     if (key === 'n') {

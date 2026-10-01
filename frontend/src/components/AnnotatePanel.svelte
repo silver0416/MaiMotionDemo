@@ -32,7 +32,7 @@
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { videoSync } from '../state/videoSync.svelte';
-  import { groupRange, markGroupAt, playGroup, removeGroup } from '../state/groups';
+  import { addToGroup, cancelGroup, markGroupAt, playGroup, removeFromGroup, removeGroup } from '../state/groups';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
@@ -240,6 +240,30 @@
     if (owner !== MAIN_LINE) {
       items.push({ id: `delete:${owner}`, label: `刪除分支「${annotation.lineName(owner)}」`, icon: 'trash', danger: true });
     }
+    if (annotation.groupsAvailable) {
+      const note = target.note;
+      const start = annotation.groupStartNote;
+      const groupItems: MenuItem[] = [];
+      if (start && start.id !== note.id) {
+        const notes = annotation.notesBetween(start, note);
+        const [first, last] = [notes[0], notes[notes.length - 1]].map((item) => annotation.noteNumber(item));
+        groupItems.push({ id: 'group-end', label: `分組到這顆（第 ${first}–${last} 顆，${notes.length} 顆）`, icon: 'brackets' });
+        groupItems.push({ id: 'group-restart', label: '改從這顆開始分組', icon: 'brackets' });
+      }
+      if (start) groupItems.push({ id: 'group-cancel', label: '取消分組', icon: 'x' });
+      else groupItems.push({ id: 'group-start', label: '從這顆開始分組', icon: 'brackets' });
+      for (const index of annotation.nearbyGroups(note)) {
+        groupItems.push({ id: `group-in:${index}`, label: `加入分組「${annotation.groupName(index)}」`, icon: 'plus' });
+      }
+      for (const index of annotation.groupsOf(note)) {
+        groupItems.push({ id: `group-out:${index}`, label: `移出分組「${annotation.groupName(index)}」`, icon: 'x' });
+      }
+      for (const index of annotation.groupsOf(note)) {
+        groupItems.push({ id: `group-delete:${index}`, label: `刪除分組「${annotation.groupName(index)}」`, icon: 'trash', danger: true });
+      }
+      if (items.length > 0) groupItems[0].divider = true;
+      items.push(...groupItems);
+    }
     return items;
   });
 
@@ -265,7 +289,72 @@
     else if (action === 'end') finishBranch(target);
     else if (action === 'cancel') annotation.cancelMark();
     else if (action === 'delete') deleteBranch(line);
+    else if (action === 'group-start' || action === 'group-end') markGroupAt(target.note);
+    else if (action === 'group-restart') {
+      annotation.cancelGroup();
+      markGroupAt(target.note);
+    } else if (action === 'group-cancel') cancelGroup();
+    else if (action === 'group-in') addToGroup(Number(line), target.note);
+    else if (action === 'group-out') removeFromGroup(Number(line), target.note);
+    else if (action === 'group-delete') removeGroup(Number(line));
   }
+
+  // ---- 分組（以顆為單位）：清單右側的分組條，重疊的分組往左排 ----
+  const groupStartNote = $derived(annotation.groupStartNote);
+  /** 標分組時選到的另一顆，當作最後一顆的候選。 */
+  const groupEnd = $derived(groupStartNote && note && note.id !== groupStartNote.id ? note : null);
+  const groupPending = $derived.by(() => {
+    if (!groupStartNote) return null;
+    const notes = annotation.notesBetween(groupStartNote, groupEnd ?? groupStartNote);
+    return {
+      first: annotation.noteNumber(notes[0]),
+      last: annotation.noteNumber(notes[notes.length - 1]),
+      count: notes.length,
+    };
+  });
+
+  const GROUP_COLUMN = 6;
+  const groupColumns = $derived.by(() => {
+    const columns = new Map<number, { column: number; alt: boolean }>();
+    const ends: number[] = [];
+    annotation.groupList.forEach(({ index, notes }, order) => {
+      if (notes.length === 0) return;
+      const first = annotation.noteNumber(notes[0]);
+      const last = annotation.noteNumber(notes[notes.length - 1]);
+      let column = ends.findIndex((end) => end < first);
+      if (column < 0) {
+        column = ends.length;
+        ends.push(last);
+      } else {
+        ends[column] = last;
+      }
+      // 相鄰的分組換顏色，接在一起時也分得出來。
+      columns.set(index, { column, alt: order % 2 === 1 });
+    });
+    return columns;
+  });
+  const groupColumnCount = $derived(Math.max(0, ...[...groupColumns.values()].map((item) => item.column + 1)));
+  /** 清單每一列的分組條：上下列也在同一組就接起來。 */
+  const rowBars = $derived(
+    rows.map((step, index) =>
+      annotation.groupsOf(step.note).map((group) => ({
+        index: group,
+        column: groupColumns.get(group)?.column ?? 0,
+        alt: groupColumns.get(group)?.alt ?? false,
+        up: index > 0 && annotation.groupsOf(rows[index - 1].note).includes(group),
+        down: index + 1 < rows.length && annotation.groupsOf(rows[index + 1].note).includes(group),
+      })),
+    ),
+  );
+  /** 有名稱的分組在第一顆的第一步標出名稱。 */
+  const groupLabels = $derived.by(() => {
+    const map = new Map<string, string[]>();
+    for (const { group, notes } of annotation.groupList) {
+      if (!group.label || notes.length === 0) continue;
+      map.set(notes[0].id, [...(map.get(notes[0].id) ?? []), group.label]);
+    }
+    return map;
+  });
 
   /** 播放時間所在的步驟（最後一步時間不晚於目前時間的）。 */
   const currentKey = $derived.by(() => {
@@ -750,6 +839,22 @@
           {/if}
         </div>
       {/if}
+      {#if groupPending}
+        <div class="mark-bar">
+          <span class="small">
+            {groupEnd
+              ? `分組：第 ${groupPending.first}–${groupPending.last} 顆，共 ${groupPending.count} 顆`
+              : `分組從第 ${groupPending.first} 顆開始：選這組的最後一顆，按 G 或在那一列按右鍵「分組到這顆」。`}
+          </span>
+          <span class="spacer"></span>
+          {#if groupEnd}
+            <button class="btn btn--primary" onclick={() => markGroupAt(groupEnd)}>
+              <Icon name="brackets" size={14} />建立分組
+            </button>
+          {/if}
+          <button class="btn btn--ghost" onclick={cancelGroup} title="取消分組（Esc）">取消</button>
+        </div>
+      {/if}
       <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
         {#each rows as step, index (step.key)}
           {@const human = annotation.mark(step.note)}
@@ -759,11 +864,17 @@
           {@const number = annotation.noteNumber(step.note)}
           <button
             class="item"
-            class:is-pending={!!pending && inBranch(pendingRange, step.time)}
+            class:is-pending={(!!pending && inBranch(pendingRange, step.time)) ||
+              (!!groupPending &&
+                annotation.noteNumber(step.note) >= groupPending.first &&
+                annotation.noteNumber(step.note) <= groupPending.last)}
             class:is-selected={current?.key === step.key}
             class:is-current={currentKey === step.key}
             data-step={step.key}
-            style={hasBranches ? `padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : undefined}
+            style={[
+              hasBranches ? `padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : '',
+              groupColumnCount > 0 ? `padding-right:calc(var(--space-4) + ${groupColumnCount * GROUP_COLUMN}px)` : '',
+            ].join(';')}
             role="option"
             aria-selected={current?.key === step.key}
             onclick={() => annotation.selectStep(step)}
@@ -771,6 +882,16 @@
             onkeydown={(event) => onRowKeydown(step, event)}
           >
             {#if listLanes[index]}<LaneGraph row={listLanes[index]} lanes={laneCount} />{/if}
+            {#each rowBars[index] ?? [] as bar (bar.index)}
+              <span
+                class="group-bar"
+                class:is-alt={bar.alt}
+                class:joins-up={bar.up}
+                class:joins-down={bar.down}
+                style={`right:${4 + bar.column * GROUP_COLUMN}px`}
+                title={`分組「${annotation.groupName(bar.index)}」`}
+              ></span>
+            {/each}
             <!-- 有起點的 Slide 分兩步標：滑行那一列是同一顆的第二步，編號前加箭頭區分。 -->
             <span class="mono xsmall muted num" title={first ? `第 ${number} 顆` : `第 ${number} 顆的滑行（同一顆的第二步）`}>
               {first ? number : `↳${number}`}
@@ -786,6 +907,10 @@
               {#if first && human?.memo}<span class="badge badge--quiet" title={human.memo}>備註</span>{/if}
               {#if own?.prefilled && text}<span class="badge badge--quiet">預填</span>{/if}
               {#if pending?.key === step.key}<span class="badge">分支起點</span>{/if}
+              {#if groupStartNote?.id === step.note.id && first}<span class="badge">分組第一顆</span>{/if}
+              {#if first}
+                {#each groupLabels.get(step.note.id) ?? [] as label (label)}<span class="badge badge--quiet group-label">{label}</span>{/each}
+              {/if}
             </span>
           </button>
         {:else}
@@ -858,30 +983,32 @@
     <section class="section stack-sm" aria-label="分組">
       <div class="section-title">分組</div>
       <p class="xsmall muted">
-        看譜時覺得「這幾顆是一組」就標起來：播放列按「分組」或按 <kbd>G</kbd> 標起點，移到這組最後一顆再按一次。
-        兩端會吸附到最近的音符，名稱可以不填。分組會跟著標註一起匯出，用來研究人怎麼拆解譜面，目前不影響模型。
+        看譜時覺得「這幾顆是一組」就標起來：在「逐顆標註」清單選這組的第一顆按 <kbd>G</kbd>（或右鍵「從這顆開始分組」），
+        再選最後一顆按一次。之後可以在清單按右鍵把單顆移出或加入。名稱可以不填；分組會跟著標註一起匯出，用來研究人怎麼拆解譜面，目前不影響模型。
       </p>
-      {#each annotation.draft.groups as group, index (`${group.from}-${group.to}`)}
+      {#each annotation.groupList as item (item.index)}
+        {@const name = annotation.groupName(item.index)}
         <div class="range">
-          <button class="linkish mono small" onclick={() => playGroup(group)} title="循環播放這組">{groupRange(group)}</button>
-          <span class="xsmall muted" style="white-space: nowrap">{annotation.groupNoteCount(group)} 顆</span>
+          <button class="linkish mono small" onclick={() => playGroup(item.index)} title="循環播放這組">
+            {item.notes.length > 0
+              ? `第 ${annotation.noteNumber(item.notes[0])}–${annotation.noteNumber(item.notes[item.notes.length - 1])} 顆`
+              : '找不到音符'}
+          </button>
+          <span class="xsmall muted" style="white-space: nowrap">{item.notes.length} 顆</span>
           <input
             class="input grow"
-            aria-label={`分組 ${groupRange(group)} 的名稱`}
+            aria-label={`分組「${name}」的名稱`}
             placeholder="名稱（選填）"
-            value={group.label ?? ''}
-            onchange={(event) => annotation.renameGroup(index, event.currentTarget.value)}
+            value={item.group.label ?? ''}
+            onchange={(event) => annotation.renameGroup(item.index, event.currentTarget.value)}
           />
-          <button class="btn btn--icon" onclick={() => removeGroup(index)} aria-label="刪除這個分組" title="刪除">
+          <button class="btn btn--icon" onclick={() => removeGroup(item.index)} aria-label={`刪除分組「${name}」`} title="刪除">
             <Icon name="trash" size={14} />
           </button>
         </div>
       {:else}
         <p class="small muted">還沒有分組。</p>
       {/each}
-      <button class="btn" disabled={!annotation.groupsAvailable} onclick={() => markGroupAt(playback.time)}>
-        <Icon name="brackets" size={14} />{annotation.groupStart === null ? `在 ${formatClock(playback.time)} 標分組起點` : `在 ${formatClock(playback.time)} 結束分組`}
-      </button>
     </section>
   {/if}
 
@@ -1259,6 +1386,38 @@
 
   .item.is-selected {
     background: var(--c-control-hover);
+  }
+
+  /* ---- 分組條：同一組的列在右側連成一條，頭尾收圓角 ---- */
+
+  .group-bar {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    width: 3px;
+    background: var(--c-accent);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .group-bar.is-alt {
+    background: color-mix(in srgb, var(--c-accent) 45%, var(--c-text-dim));
+  }
+
+  .group-bar.joins-up {
+    top: -1px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  .group-bar.joins-down {
+    bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .group-label {
+    color: var(--c-accent);
   }
 
   .num {

@@ -1,7 +1,6 @@
-// 分組標記的操作與提示：播放列按鈕、G 快捷鍵與分組列共用。
+// 分組標記的操作與提示：逐顆清單的右鍵選單、G 快捷鍵與備註頁共用。
 
-import { formatClock } from '../lib/format';
-import type { NoteGroup } from '../lib/types';
+import type { Note } from '../lib/types';
 import { annotation } from './annotation.svelte';
 import { playback } from './playback.svelte';
 import { session } from './session.svelte';
@@ -9,36 +8,36 @@ import { toasts } from './toasts.svelte';
 
 const TOAST = 'note-group';
 
-export function groupRange(group: NoteGroup): string {
-  return `${formatClock(group.from)}–${formatClock(group.to)}`;
-}
-
-/** 第一次記起點，第二次建立分組；結果用提示告訴使用者。 */
-export function markGroupAt(time: number): void {
+/** 第一次記下這組的第一顆，第二次以兩顆之間建立分組；結果用提示告訴使用者。 */
+export function markGroupAt(note: Note | null): void {
   if (!annotation.groupsAvailable) {
     toasts.show({ id: TOAST, tone: 'info', title: '無法標分組', body: '先從左側開啟譜面紀錄並產生結果。' });
     return;
   }
-  const result = annotation.markGroup(time);
+  if (!note) {
+    toasts.show({ id: TOAST, tone: 'info', title: '先選一顆音符', body: '在清單或盤面點選這組的第一顆，再按 G。' });
+    return;
+  }
+  const result = annotation.markGroup(note);
   if (!result) return;
   if (result.kind === 'start') {
     toasts.show({
       id: TOAST,
       tone: 'info',
-      title: `分組起點 ${formatClock(annotation.groupStart ?? time)}`,
-      body: '移到這組最後一顆，再按一次 G（或「結束分組」）。Esc 取消。',
-      sticky: true,
+      title: `分組從第 ${annotation.noteNumber(note)} 顆開始`,
+      body: '選這組的最後一顆，再按 G，或在那一列按右鍵「分組到這顆」。Esc 取消。',
     });
   } else if (result.kind === 'too-short') {
-    toasts.show({ id: TOAST, tone: 'warn', title: '一組至少要兩顆音符', body: '終點移到別的音符再按一次，或按 Esc 取消。' });
-  } else if (result.kind === 'exists' && result.group) {
-    toasts.show({ id: TOAST, tone: 'info', title: `已經有這一組（${groupRange(result.group)}）` });
-  } else if (result.group) {
+    toasts.show({ id: TOAST, tone: 'warn', title: '一組至少要兩顆音符', body: '選別顆當最後一顆，或按 Esc 取消。' });
+  } else if (result.kind === 'exists' && result.index !== undefined) {
+    toasts.show({ id: TOAST, tone: 'info', title: `已經有這一組（${annotation.groupName(result.index)}）` });
+  } else if (result.index !== undefined) {
+    const group = annotation.draft.groups[result.index];
     toasts.show({
       id: TOAST,
       tone: 'ok',
-      title: `已標分組 ${groupRange(result.group)}`,
-      body: `${annotation.groupNoteCount(result.group)} 顆音符。會跟著標註一起匯出。`,
+      title: `已標分組 ${annotation.groupName(result.index)}`,
+      body: `${group ? annotation.groupNotes(group).length : 0} 顆音符。會跟著標註一起匯出。`,
     });
   }
 }
@@ -49,21 +48,51 @@ export function cancelGroup(): void {
 }
 
 /** 以這一組為循環片段（前面留一點助跑）並從頭播放。 */
-export function playGroup(group: NoteGroup): void {
+export function playGroup(index: number): void {
+  const span = annotation.groupSpan(index);
+  if (!span) return;
   const { start, end } = session.bounds;
-  playback.setLoopStart(Math.max(start, group.from - 0.5));
-  playback.setLoopEnd(Math.min(end, group.to + 0.3));
+  playback.setLoopStart(Math.max(start, span.from - 0.5));
+  playback.setLoopEnd(Math.min(end, span.to + 0.3));
   if (!playback.loopEnabled) playback.setLoop(true);
-  playback.seek(Math.max(start, group.from - 0.5));
+  playback.seek(Math.max(start, span.from - 0.5));
 }
 
-export function removeGroup(index: number): void {
-  const removed = annotation.removeGroup(index);
-  if (!removed) return;
+function undoableToast(title: string, before: ReturnType<typeof annotation.snapshotGroups>): void {
   toasts.show({
     id: TOAST,
     tone: 'info',
-    title: `已刪除分組 ${groupRange(removed)}`,
-    action: { label: '復原', icon: 'rotate-ccw', run: () => annotation.restoreGroup(removed) },
+    title,
+    action: { label: '復原', icon: 'rotate-ccw', run: () => annotation.restoreGroups(before) },
+  });
+}
+
+export function removeGroup(index: number): void {
+  const name = annotation.groupName(index);
+  if (!name) return;
+  const before = annotation.snapshotGroups();
+  annotation.removeGroup(index);
+  undoableToast(`已刪除分組「${name}」`, before);
+}
+
+export function removeFromGroup(index: number, note: Note): void {
+  const name = annotation.groupName(index);
+  if (!name) return;
+  const before = annotation.snapshotGroups();
+  const dissolved = annotation.removeFromGroup(index, note);
+  undoableToast(
+    dissolved
+      ? `已移出第 ${annotation.noteNumber(note)} 顆；「${name}」剩不到兩顆，整組刪除`
+      : `已把第 ${annotation.noteNumber(note)} 顆移出「${name}」`,
+    before,
+  );
+}
+
+export function addToGroup(index: number, note: Note): void {
+  annotation.addToGroup(index, note);
+  toasts.show({
+    id: TOAST,
+    tone: 'ok',
+    title: `已把第 ${annotation.noteNumber(note)} 顆加入「${annotation.groupName(index)}」`,
   });
 }

@@ -283,9 +283,10 @@
         break;
       case 'g':
       case 'G':
-        if (!annotation.groupsAvailable) break;
+        // 分組以顆為單位：在標註分頁對目前選取的音符標第一顆／最後一顆。
+        if (tab !== 'annotate' || !annotation.groupsAvailable) break;
         event.preventDefault();
-        markGroupAt(playback.time);
+        markGroupAt(session.selectedNote);
         break;
       case 'Escape':
         if (annotation.groupStart === null) break;

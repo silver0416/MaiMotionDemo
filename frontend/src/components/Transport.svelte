@@ -6,9 +6,6 @@
   import { formatClock } from '../lib/format';
   import { sampleWithStarts } from '../lib/motion';
   import { markers } from '../state/markers.svelte';
-  import { annotation } from '../state/annotation.svelte';
-  import { groupRange, markGroupAt, playGroup, removeGroup } from '../state/groups';
-  import type { NoteGroup } from '../lib/types';
   import { playback, RATES } from '../state/playback.svelte';
   import type { TimelineMarker } from '../state/records.svelte';
   import { session } from '../state/session.svelte';
@@ -365,72 +362,6 @@
     return Math.min(Math.max(x - 120, -8), width - 240 + 8);
   });
 
-  // ---- 分組 ----
-
-  const GROUP_ROW = 8;
-
-  /** 分組條：重疊的組往下排到第二、三列。 */
-  const groupBands = $derived.by(() => {
-    const rowsEnd: number[] = [];
-    return annotation.draft.groups.map((group, index) => {
-      let row = rowsEnd.findIndex((end) => end < group.from - 1e-3);
-      if (row < 0) {
-        row = rowsEnd.length;
-        rowsEnd.push(group.to);
-      } else {
-        rowsEnd[row] = group.to;
-      }
-      const left = Math.min(Math.max(ratio(group.from), 0), 100);
-      return {
-        index,
-        group,
-        row,
-        left,
-        width: Math.max(0.5, Math.min(Math.max(ratio(group.to), 0), 100) - left),
-        muted: outside(group.from) && outside(group.to),
-      };
-    });
-  });
-  const groupRows = $derived(Math.max(1, ...groupBands.map((band) => band.row + 1)));
-  const showGroups = $derived(annotation.groupsAvailable || annotation.draft.groups.length > 0);
-
-  let groupMenu = $state<{ index: number; x: number; y: number } | null>(null);
-  const menuGroup = $derived(groupMenu ? (annotation.draft.groups[groupMenu.index] ?? null) : null);
-  const GROUP_MENU: MenuItem[] = [
-    { id: 'play', label: '循環播放這組', icon: 'play' },
-    { id: 'delete', label: '刪除分組', icon: 'trash', danger: true },
-  ];
-
-  function groupTitle(group: NoteGroup): string {
-    const name = group.label ? `「${group.label}」` : '';
-    return `分組${name} ${groupRange(group)}・${annotation.groupNoteCount(group)} 顆：點一下循環播放，右鍵刪除`;
-  }
-
-  function onGroupContext(index: number, event: MouseEvent) {
-    event.preventDefault();
-    groupMenu = { index, x: event.clientX, y: event.clientY };
-  }
-
-  function onGroupKey(index: number, event: KeyboardEvent) {
-    if (event.key === 'Delete' || event.key === 'Backspace') {
-      event.preventDefault();
-      removeGroup(index);
-    } else if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
-      event.preventDefault();
-      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-      groupMenu = { index, x: rect.left, y: rect.bottom + 4 };
-    }
-  }
-
-  function selectGroupMenu(action: string) {
-    const target = groupMenu;
-    groupMenu = null;
-    const group = target ? annotation.draft.groups[target.index] : undefined;
-    if (!target || !group) return;
-    if (action === 'play') playGroup(group);
-    else if (action === 'delete') removeGroup(target.index);
-  }
-
   // ---- 右鍵選單 ----
 
   let menu = $state<{ id: string; x: number; y: number } | null>(null);
@@ -499,20 +430,6 @@
         : '開啟譜面紀錄並生成結果後才能加標籤'}
     >
       <Icon name="bookmark-plus" />標籤
-    </button>
-    <button
-      class="btn"
-      class:is-active={annotation.groupStart !== null}
-      aria-pressed={annotation.groupStart !== null}
-      onclick={() => markGroupAt(time)}
-      disabled={!annotation.groupsAvailable}
-      title={annotation.groupsAvailable
-        ? annotation.groupStart === null
-          ? '把目前時間設為分組起點（G）；再按一次設終點'
-          : `起點 ${formatClock(annotation.groupStart)}：移到這組最後一顆再按一次（G），Esc 取消`
-        : '開啟譜面紀錄並生成結果後才能標分組'}
-    >
-      <Icon name="brackets" />{annotation.groupStart === null ? '分組' : '結束分組'}
     </button>
 
     <span class="spacer"></span>
@@ -665,26 +582,6 @@
       />
     </div>
 
-    {#if showGroups}
-      <div class="group-lane" style={`height:${groupRows * GROUP_ROW + 2}px`} aria-label="分組">
-        {#each groupBands as band (`${band.group.from}-${band.group.to}`)}
-          <button
-            class="group-band"
-            class:is-muted={band.muted}
-            style={`left:${band.left}%;width:${band.width}%;top:${band.row * GROUP_ROW + 1}px`}
-            title={groupTitle(band.group)}
-            aria-label={groupTitle(band.group)}
-            onclick={() => playGroup(band.group)}
-            oncontextmenu={(event) => onGroupContext(band.index, event)}
-            onkeydown={(event) => onGroupKey(band.index, event)}
-          ></button>
-        {/each}
-        {#if annotation.groupStart !== null}
-          <div class="group-start" style={`left:${ratio(annotation.groupStart)}%`} title="分組起點"></div>
-        {/if}
-      </div>
-    {/if}
-
     <div class="range-lane" class:is-active={playback.loopEnabled} bind:this={rangeLane}>
       {#if ready}
         <div
@@ -774,22 +671,8 @@
     {#if markers.items.length > 0}
       <span>標籤：點擊跳轉・拖曳移動・雙擊改名・右鍵更多・[ ] 切換</span>
     {/if}
-    {#if annotation.groupsAvailable}
-      <span>分組：G 標起點、再按 G 標終點・點分組條循環播放・右鍵刪除</span>
-    {/if}
   </div>
 </div>
-
-{#if groupMenu && menuGroup}
-  <ContextMenu
-    items={GROUP_MENU}
-    x={groupMenu.x}
-    y={groupMenu.y}
-    label={`分組 ${groupRange(menuGroup)} 的動作`}
-    onSelect={selectGroupMenu}
-    onClose={() => (groupMenu = null)}
-  />
-{/if}
 
 {#if menu && menuMarker}
   <ContextMenu
@@ -1159,44 +1042,6 @@
     position: relative;
     height: 14px;
     margin: 0 var(--inset);
-  }
-
-  /* ---- 分組列：每組一條琥珀色短條，重疊的往下排 ---- */
-
-  .group-lane {
-    position: relative;
-    margin: 0 var(--inset);
-  }
-
-  .group-band {
-    position: absolute;
-    height: 6px;
-    min-width: 4px;
-    padding: 0;
-    background: var(--c-accent);
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-  }
-
-  .group-band.is-muted {
-    background: var(--c-border-strong);
-  }
-
-  .group-band:hover,
-  .group-band:focus-visible {
-    outline: 2px solid var(--c-text);
-    outline-offset: 1px;
-  }
-
-  .group-start {
-    position: absolute;
-    top: -2px;
-    bottom: -2px;
-    width: 2px;
-    margin-left: -1px;
-    background: var(--c-accent);
-    pointer-events: none;
   }
 
   .range-bar {

@@ -516,12 +516,18 @@ export interface RangeMemo {
 }
 
 /**
- * 分組：玩家看譜時覺得「這幾顆是一組」的時間範圍（含兩端的音符）。
+ * 分組：玩家看譜時覺得「這幾顆是一組」的音符，以顆為單位。
  * 用來研究人類怎麼拆解譜面；目前模型不讀。
  */
 export interface NoteGroup {
-  from: number;
-  to: number;
+  /** 這組的音符定位鍵（依時間排序） */
+  keys: string[];
+  /**
+   * v0.4.11 以時間範圍標的分組：keys 為空，範圍內（含兩端）的音符就是這一組；
+   * 改動或匯出時換成 keys。
+   */
+  from?: number;
+  to?: number;
   /** 選填名稱，例如「交替」「階梯」 */
   label?: string;
   by?: string;
