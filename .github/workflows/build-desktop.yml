@@ -1,0 +1,101 @@
+name: Build desktop apps (macOS + Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the builds to (e.g. v0.4.12)
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  BUNDLE_CONFIG: '{"bundle":{"active":true,"icon":["icons/32x32.png","icons/128x128.png","icons/128x128@2x.png","icons/icon.icns","icons/icon.ico"]}}'
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build universal .app
+        run: >
+          npm run tauri build --
+          --target universal-apple-darwin
+          --bundles app
+          --config "$BUNDLE_CONFIG"
+
+      - name: Zip .app
+        run: |
+          APP=$(find . -path '*universal-apple-darwin/release/bundle/macos/*.app' -maxdepth 8 -type d | head -1)
+          echo "Found: $APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "MaiMotionDemo-${{ inputs.tag }}-macos-universal.zip"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "MaiMotionDemo-${{ inputs.tag }}-macos-universal.zip" --clobber
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev libxdo-dev patchelf file
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build AppImage and deb
+        run: npm run tauri build -- --bundles appimage,deb --config "$BUNDLE_CONFIG"
+
+      - name: Collect artifacts
+        run: |
+          APPIMAGE=$(find . -path '*release/bundle/appimage/*.AppImage' -type f | head -1)
+          DEB=$(find . -path '*release/bundle/deb/*.deb' -type f | head -1)
+          echo "Found: $APPIMAGE $DEB"
+          cp "$APPIMAGE" "MaiMotionDemo-${{ inputs.tag }}-linux-x86_64.AppImage"
+          cp "$DEB" "MaiMotionDemo-${{ inputs.tag }}-linux-amd64.deb"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" "MaiMotionDemo-${{ inputs.tag }}-linux-x86_64.AppImage" "MaiMotionDemo-${{ inputs.tag }}-linux-amd64.deb" --clobber
