@@ -299,7 +299,7 @@
     else if (action === 'group-delete') removeGroup(Number(line));
   }
 
-  // ---- 分組（以顆為單位）：清單右側的分組條，重疊的分組往左排 ----
+  // ---- 分組（以顆為單位）：畫在清單左側的軸上（打法分支圖的右邊），重疊的分組往右排 ----
   const groupStartNote = $derived(annotation.groupStartNote);
   /** 標分組時選到的另一顆，當作最後一顆的候選。 */
   const groupEnd = $derived(groupStartNote && note && note.id !== groupStartNote.id ? note : null);
@@ -313,7 +313,9 @@
     };
   });
 
-  const GROUP_COLUMN = 6;
+  const GROUP_COLUMN = 10;
+  /** 分組軸從列的左緣起算的位置：有打法分支圖時排在它右邊。 */
+  const groupAxisLeft = $derived(hasBranches ? laneColumnWidth(laneCount) + 4 : 0);
   const groupColumns = $derived.by(() => {
     const columns = new Map<number, { column: number; alt: boolean }>();
     const ends: number[] = [];
@@ -840,19 +842,22 @@
         </div>
       {/if}
       {#if groupPending}
-        <div class="mark-bar">
+        <!-- 浮在清單標題列上方，不佔版面：標分組時清單不會被往下推。 -->
+        <div class="group-hint" role="status">
           <span class="small">
             {groupEnd
-              ? `分組：第 ${groupPending.first}–${groupPending.last} 顆，共 ${groupPending.count} 顆`
-              : `分組從第 ${groupPending.first} 顆開始：選這組的最後一顆，按 G 或在那一列按右鍵「分組到這顆」。`}
+              ? `分組：第 ${groupPending.first}–${groupPending.last} 顆（${groupPending.count} 顆）`
+              : `分組：第 ${groupPending.first} 顆起，選最後一顆按 G`}
           </span>
           <span class="spacer"></span>
           {#if groupEnd}
             <button class="btn btn--primary" onclick={() => markGroupAt(groupEnd)}>
-              <Icon name="brackets" size={14} />建立分組
+              <Icon name="brackets" size={14} />建立
             </button>
           {/if}
-          <button class="btn btn--ghost" onclick={cancelGroup} title="取消分組（Esc）">取消</button>
+          <button class="btn btn--icon" onclick={cancelGroup} aria-label="取消分組" title="取消分組（Esc）">
+            <Icon name="x" size={14} />
+          </button>
         </div>
       {/if}
       <div class="list scroll" bind:this={listElement} role="listbox" aria-label="音符標註清單">
@@ -872,8 +877,12 @@
             class:is-current={currentKey === step.key}
             data-step={step.key}
             style={[
-              hasBranches ? `padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)` : '',
-              groupColumnCount > 0 ? `padding-right:calc(var(--space-4) + ${groupColumnCount * GROUP_COLUMN}px)` : '',
+              hasBranches || groupColumnCount > 0
+                ? `padding-left:calc(var(--space-4) + ${
+                    (hasBranches ? laneColumnWidth(laneCount) + 8 : 0) +
+                    (groupColumnCount > 0 ? groupColumnCount * GROUP_COLUMN + (hasBranches ? 0 : 4) : 0)
+                  }px)`
+                : '',
             ].join(';')}
             role="option"
             aria-selected={current?.key === step.key}
@@ -888,7 +897,7 @@
                 class:is-alt={bar.alt}
                 class:joins-up={bar.up}
                 class:joins-down={bar.down}
-                style={`right:${4 + bar.column * GROUP_COLUMN}px`}
+                style={`left:calc(var(--space-4) + ${groupAxisLeft + bar.column * GROUP_COLUMN + 3}px)`}
                 title={`分組「${annotation.groupName(bar.index)}」`}
               ></span>
             {/each}
@@ -1388,12 +1397,12 @@
     background: var(--c-control-hover);
   }
 
-  /* ---- 分組條：同一組的列在右側連成一條，頭尾收圓角 ---- */
+  /* ---- 分組軸：同一組的列在左側連成一條線，頭尾留一點空隙並收圓角 ---- */
 
   .group-bar {
     position: absolute;
-    top: 3px;
-    bottom: 3px;
+    top: 4px;
+    bottom: 4px;
     width: 3px;
     background: var(--c-accent);
     border-radius: 2px;
@@ -1414,6 +1423,23 @@
     bottom: 0;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
+  }
+
+  /* 標分組時的提示：浮在清單標題列上方。 */
+  .group-hint {
+    position: absolute;
+    right: var(--space-4);
+    bottom: calc(100% + var(--space-2));
+    left: var(--space-4);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    background: var(--c-control);
+    border: 1px solid var(--c-border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
   }
 
   .group-label {

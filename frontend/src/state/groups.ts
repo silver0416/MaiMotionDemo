@@ -21,12 +21,8 @@ export function markGroupAt(note: Note | null): void {
   const result = annotation.markGroup(note);
   if (!result) return;
   if (result.kind === 'start') {
-    toasts.show({
-      id: TOAST,
-      tone: 'info',
-      title: `分組從第 ${annotation.noteNumber(note)} 顆開始`,
-      body: '選這組的最後一顆，再按 G，或在那一列按右鍵「分組到這顆」。Esc 取消。',
-    });
+    // 清單上方的浮動提示會說明下一步，不另外跳提示。
+    toasts.dismiss(TOAST);
   } else if (result.kind === 'too-short') {
     toasts.show({ id: TOAST, tone: 'warn', title: '一組至少要兩顆音符', body: '選別顆當最後一顆，或按 Esc 取消。' });
   } else if (result.kind === 'exists' && result.index !== undefined) {
