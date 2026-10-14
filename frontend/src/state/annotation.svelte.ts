@@ -38,7 +38,7 @@ import {
 } from '../lib/annotation';
 import { projectConfig } from '../lib/contract';
 import { hashText } from '../lib/db';
-import { recallAlignment, rememberAlignment, type VideoLink } from '../lib/video';
+import { recallAlignment, rememberAlignment, type HandcamMark, type VideoLink } from '../lib/video';
 import type {
   Confidence,
   EvaluateResponse,
@@ -620,6 +620,46 @@ export class AnnotationStore {
         if (current && (part === 'hand' ? current.hand : current.track) !== undefined) continue;
         out.prefilled = true;
         marks[note.key] = out;
+        filled = true;
+      }
+      if (filled) count += 1;
+    }
+    if (count > 0) this.#touch();
+    return count;
+  }
+
+  /**
+   * 以手元影片推估的結果預填目前路線上的步驟。真人標註一律不動；原本是預填（含模型預填）的步驟改用影片結果，
+   * 因為影片是實際打法的觀察。中信心的步驟標「不確定」，提醒照影片確認。回傳填入的音符數。
+   */
+  prefillFromVideo(marks: HandcamMark[]): number {
+    const byKey = new Map(marks.map((mark) => [mark.key, mark]));
+    let count = 0;
+    for (const note of this.ordered) {
+      if (!note.key) continue;
+      const video = byKey.get(note.key);
+      if (!video) continue;
+      let filled = false;
+      for (const part of this.#parts(note)) {
+        const value = part === 'hand' ? video.hand : video.track;
+        if (value === undefined) continue;
+        const lineMarksOf = lineMarks(this.draft, this.lineOfStep(note, part));
+        if (!lineMarksOf) continue;
+        const current = lineMarksOf[note.key];
+        if (current && !current.prefilled) continue;
+        const out: NoteAnnotation = current ? { ...current } : { key: note.key };
+        const unsure = part === 'hand' ? video.handUnsure : video.trackUnsure;
+        // 有起點的 Slide：滑行那一步的信心記在 trackConfidence；其餘第一步記在 confidence。
+        const field = part === 'track' && note.hasHead ? 'trackConfidence' : 'confidence';
+        if (part === 'hand') out.hand = value as Hand;
+        else {
+          out.track = value;
+          delete out.handovers;
+        }
+        if (unsure) out[field] = 'unsure';
+        else delete out[field];
+        out.prefilled = true;
+        lineMarksOf[note.key] = out;
         filled = true;
       }
       if (filled) count += 1;

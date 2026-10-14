@@ -335,8 +335,35 @@ export interface ChartState {
   total: number;
 }
 
+/** 手元影片預填需要的音符資料（主視窗 → 影片視窗）。位置為盤面座標，時間為譜面秒數。 */
+export interface HandcamNoteData {
+  key: string;
+  kind: string;
+  button: number;
+  touchArea: string | null;
+  position: { x: number; y: number };
+  time: number;
+  hasHead: boolean;
+  motionStart: number | null;
+  motionEnd: number | null;
+  path: { u: number; x: number; y: number }[] | null;
+}
+
+/** 影片推估的一顆音符（影片視窗 → 主視窗）；Unsure 為中信心。 */
+export interface HandcamMark {
+  key: string;
+  hand?: 'L' | 'R';
+  track?: 'L' | 'R';
+  handUnsure?: boolean;
+  trackUnsure?: boolean;
+}
+
 export type ToVideo =
   | { type: 'state'; state: ChartState }
+  /** 回應 handcam-request：目前譜面的音符（recordId 用來確認套用時還是同一份） */
+  | { type: 'handcam-notes'; recordId: string | null; notes: HandcamNoteData[] }
+  /** 回應 handcam-apply：實際填入的音符數；recordId 不符時 count 為 null */
+  | { type: 'handcam-applied'; count: number | null }
   /** 主視窗選了一顆音符：影片跳到它（time 為譜面時間） */
   | { type: 'cue'; time: number; noteId: string }
   /** 主視窗在播放：影片跟著播或停；at 為送出時的 Date.now()，用來扣掉傳遞延遲 */
@@ -358,7 +385,11 @@ export type ToMain =
    */
   | { type: 'transport'; action: 'seek' | 'pause' | 'play'; time: number }
   /** 在影片視窗改播放倍率 */
-  | { type: 'rate'; rate: number };
+  | { type: 'rate'; rate: number }
+  /** 手元影片預填：要目前譜面的音符 */
+  | { type: 'handcam-request' }
+  /** 手元影片預填：把推估結果寫進目前路線（只填空白或預填的步驟） */
+  | { type: 'handcam-apply'; recordId: string | null; marks: HandcamMark[] };
 
 type Envelope = { from: 'main' | 'video'; message: ToVideo | ToMain };
 

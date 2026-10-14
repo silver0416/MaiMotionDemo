@@ -18,8 +18,12 @@
     type VideoLink,
   } from '../lib/video';
   import { VideoLibrary } from '../state/videoLibrary.svelte';
+  import HandcamOverlay from './HandcamOverlay.svelte';
+  import HandcamPanel from './HandcamPanel.svelte';
+  import { Handcam } from './handcam.svelte';
+  import type { HandcamNoteData } from '../lib/video';
 
-  type Side = 'sync' | 'find';
+  type Side = 'sync' | 'find' | 'auto';
   type CueMode = 'segment' | 'jump' | 'off';
   interface CueSettings {
     mode: CueMode;
@@ -79,6 +83,10 @@
   }
 
   const library = new VideoLibrary();
+  const handcam = new Handcam();
+  /** 手元預填：等主視窗回應音符資料與套用結果。 */
+  let notesWaiter: ((notes: HandcamNoteData[]) => void) | null = null;
+  let applyWaiter: ((count: number | null) => void) | null = null;
   let channel: ReturnType<typeof openChannel<ToVideo>> | null = null;
 
   let chart = $state<ChartState | null>(null);
@@ -213,8 +221,62 @@
         userRate = message.rate;
         if (video && !segment) video.playbackRate = message.rate;
         break;
+      case 'handcam-notes':
+        notesWaiter?.(message.recordId === chart?.recordId ? message.notes : []);
+        notesWaiter = null;
+        break;
+      case 'handcam-applied':
+        applyWaiter?.(message.count);
+        applyWaiter = null;
+        break;
     }
   }
+
+  /** 向主視窗要目前譜面的音符；主視窗沒回應時當作沒有。 */
+  function requestHandcamNotes(): Promise<HandcamNoteData[]> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        notesWaiter = null;
+        resolve([]);
+      }, 5000);
+      notesWaiter = (notes) => {
+        clearTimeout(timer);
+        resolve(notes);
+      };
+      channel?.send({ type: 'handcam-request' });
+    });
+  }
+
+  async function applyHandcam(): Promise<void> {
+    if (!chart?.recordId) return;
+    handcam.applying = true;
+    const count = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        applyWaiter = null;
+        resolve(null);
+      }, 5000);
+      applyWaiter = (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      };
+      channel?.send({ type: 'handcam-apply', recordId: chart!.recordId, marks: handcam.marks() });
+    });
+    handcam.applying = false;
+    if (count === null) handcam.error = '主視窗已換成別的譜面或沒有回應，沒有套用。';
+    else handcam.applied = count;
+  }
+
+  function showHandcamReference(): void {
+    if (!video || handcam.referenceTime === null) return;
+    video.pause();
+    segment = null;
+    leader = 'video';
+    seek(handcam.referenceTime);
+  }
+
+  $effect(() => {
+    handcam.useVideo(link);
+  });
 
   onMount(() => {
     channel = openChannel<ToVideo>('video', onMessage);
@@ -223,6 +285,7 @@
       if (!chart) lonely = true;
     }, HELLO_WAIT_MS);
     void library.init();
+    void handcam.init();
     let raf = requestAnimationFrame(function loop() {
       tick();
       raf = requestAnimationFrame(loop);
@@ -235,6 +298,7 @@
       clearInterval(timer);
       channel?.close();
       library.dispose();
+      handcam.dispose();
       for (const url of browserFiles.values()) URL.revokeObjectURL(url);
     };
   });
@@ -583,6 +647,12 @@
 
   function onKeydown(event: KeyboardEvent): void {
     if (isTyping(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+    // 標環點時畫面必須停在參考格：不接受播放與逐格，Esc 結束標點。
+    if (handcam.phase === 'marking') {
+      if (event.key === 'Escape') handcam.finishMarking();
+      if ([' ', 'ArrowLeft', 'ArrowRight', 'Escape'].includes(event.key)) event.preventDefault();
+      if ([' ', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    }
     const key = event.key.toLowerCase();
     let handled = true;
     switch (event.key) {
@@ -677,6 +747,9 @@
           onerror={onVideoError}
           onclick={togglePlay}
         ></video>
+        {#if video}
+          <HandcamOverlay {handcam} {video} mirror={!!link?.mirror} {current} />
+        {/if}
       {:else}
         <div class="placeholder stack-sm">
           {#if !chart}
@@ -781,10 +854,24 @@
     <div class="tabs" role="group" aria-label="影片面板">
       <button class="btn tab" aria-pressed={side === 'sync'} onclick={() => ((side = 'sync'), (autoSide = false))}>對齊與跟隨</button>
       <button class="btn tab" aria-pressed={side === 'find'} onclick={() => ((side = 'find'), (autoSide = false))}>找影片</button>
+      <button class="btn tab" aria-pressed={side === 'auto'} onclick={() => ((side = 'auto'), (autoSide = false))}>自動預填</button>
     </div>
 
     <div class="side-body scroll">
-      {#if side === 'find'}
+      {#if side === 'auto'}
+        <HandcamPanel
+          {handcam}
+          {chart}
+          {link}
+          {src}
+          {offset}
+          {current}
+          {paused}
+          requestNotes={requestHandcamNotes}
+          apply={applyHandcam}
+          showReference={showHandcamReference}
+        />
+      {:else if side === 'find'}
         <VideoFinder
           {library}
           query={chart?.query ?? ''}

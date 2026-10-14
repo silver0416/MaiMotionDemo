@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 function git(args: string): string {
@@ -31,13 +31,33 @@ function buildInfo() {
 
 const info = buildInfo();
 
+/**
+ * onnxruntime-web 的 WebGPU 版會以 new URL('ort-wasm-…wasm', import.meta.url) 參照 25 MB 的 WebAssembly，
+ * Vite 建置時會把它複製進 dist（進而包進 exe）。手元影片預填一律以 env.wasm.wasmBinary 提供
+ * 使用者手動下載的檔案，所以把這個參照換掉，不打包該檔。
+ */
+function excludeOrtWasm(): Plugin {
+  return {
+    name: 'maimotion-exclude-ort-wasm',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('onnxruntime-web')) return null;
+      const replaced = code.replace(
+        /new URL\(\s*["']ort-wasm-simd-threaded[^"']*\.wasm["']\s*,\s*import\.meta\.url\s*\)/g,
+        'new URL("about:blank")',
+      );
+      return replaced === code ? null : { code: replaced, map: null };
+    },
+  };
+}
+
 // 前端原始碼放在 frontend/，建置輸出到專案根目錄的 dist/
 // （src-tauri/tauri.conf.json 的 frontendDist 指向 ../dist）。
 export default defineConfig({
   root: 'frontend',
   publicDir: false,
   clearScreen: false,
-  plugins: [svelte()],
+  plugins: [excludeOrtWasm(), svelte()],
   define: {
     __APP_VERSION__: JSON.stringify(info.version),
     __BUILD_ID__: JSON.stringify(info.build),

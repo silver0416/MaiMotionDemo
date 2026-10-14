@@ -22,6 +22,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
-    "@tauri-apps/plugin-opener": "^2.5.5"
+    "@tauri-apps/plugin-opener": "^2.5.5",
+    "mp4box": "2.4.1",
+    "onnxruntime-web": "1.29.0"
   }
 }

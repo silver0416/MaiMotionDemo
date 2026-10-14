@@ -4,7 +4,15 @@
 import { isDesktop } from '../lib/api';
 import { progress } from '../lib/annotation';
 import { stepLabel } from '../lib/notes';
-import { openChannel, searchQuery, videoApi, type ChartState, type ToMain, type ToVideo } from '../lib/video';
+import {
+  openChannel,
+  searchQuery,
+  videoApi,
+  type ChartState,
+  type HandcamNoteData,
+  type ToMain,
+  type ToVideo,
+} from '../lib/video';
 import { annotation } from './annotation.svelte';
 import { playback } from './playback.svelte';
 import { maidataField, recordTitle, records, WIKI_TYPE_LABEL, wikiDifficultyLabel } from './records.svelte';
@@ -196,7 +204,38 @@ class VideoSync {
       case 'step':
         annotation.step(message.direction);
         break;
+      case 'handcam-request':
+        this.send({ type: 'handcam-notes', recordId: records.active?.id ?? null, notes: this.#handcamNotes() });
+        break;
+      case 'handcam-apply': {
+        const same = message.recordId !== null && message.recordId === records.active?.id && annotation.recordId === message.recordId;
+        const count = same ? annotation.prefillFromVideo(message.marks) : null;
+        this.send({ type: 'handcam-applied', count });
+        break;
+      }
     }
+  }
+
+  /** 手元影片預填用的音符：有定位鍵的全部音符，Slide 附上路徑。 */
+  #handcamNotes(): HandcamNoteData[] {
+    if (!annotation.keysReady) return [];
+    return annotation.ordered
+      .filter((note) => !!note.key)
+      .map((note) => {
+        const path = note.pathId ? session.pathById.get(note.pathId) : undefined;
+        return {
+          key: note.key!,
+          kind: note.kind,
+          button: note.button,
+          touchArea: note.touchArea,
+          position: { x: note.position.x, y: note.position.y },
+          time: note.timeSeconds,
+          hasHead: note.hasHead,
+          motionStart: note.motionStart,
+          motionEnd: note.motionEnd,
+          path: path ? path.samples.map((sample) => ({ u: sample.u, x: sample.x, y: sample.y })) : null,
+        };
+      });
   }
 }
 
