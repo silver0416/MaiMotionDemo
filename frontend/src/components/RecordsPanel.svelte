@@ -643,8 +643,6 @@
 
   // ---- 開啟 ----
 
-  const analyzing = $derived(session.phase === 'analyzing');
-
   let listEl: HTMLElement | null = $state(null);
 
   // 從搜尋視窗跳到既有紀錄時，把那一列捲進可視範圍並選取。
@@ -655,8 +653,8 @@
     listEl?.querySelector(`[data-record-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
   });
 
+  // 分析中點別的譜直接中斷換過去，不必等。瀏覽器預覽沒有核心，只能開啟已快取的分析。
   async function open(record: ChartRecord) {
-    if (analyzing || !session.desktop) return;
     records.activeId = record.id;
     await session.load(record.source);
   }
@@ -899,8 +897,15 @@
                 aria-current={active ? 'true' : undefined}
               >
                 <span class="item-title">
-                  <Icon name={picked ? 'circle-check' : 'file-text'} size={13} />
+                  {#if active && session.loading}
+                    <Icon name="loader" size={13} spin />
+                  {:else}
+                    <Icon name={picked ? 'circle-check' : 'file-text'} size={13} />
+                  {/if}
                   <span class="item-title-text">{recordTitle(record)}</span>
+                  {#if active && session.loading}
+                    <span class="sr-only">（{session.phase === 'analyzing' ? '分析中' : '載入中'}）</span>
+                  {/if}
                   {#if picked}<span class="sr-only">（已選取）</span>{/if}
                 </span>
                 <span class="item-preview xsmall mono">

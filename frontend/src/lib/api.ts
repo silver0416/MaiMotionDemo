@@ -29,7 +29,16 @@ export async function analyzeChart(request: AnalyzeRequest): Promise<AnalyzeResp
   return await invoke<AnalyzeResponse>('analyze_chart', { request });
 }
 
-/** 比對真人標註與模型（Rust 求模型最佳解與照標註的最佳解）。與分析共用忙碌旗標。 */
+/** 被後來的分析或比對取代時，核心回傳的錯誤字串。 */
+export const CANCELLED = 'cancelled';
+
+/** 取消進行中的分析或比對（換譜改從快取載入時用）；沒有工作時什麼都不做。 */
+export async function cancelAnalysis(): Promise<void> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('cancel_analysis');
+}
+
+/** 比對真人標註與模型（Rust 求模型最佳解與照標註的最佳解）。與分析共用取消旗標，新的工作取代舊的。 */
 export async function evaluateAnnotation(request: EvaluateRequest): Promise<EvaluateResponse> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<EvaluateResponse>('evaluate_annotation', { request });

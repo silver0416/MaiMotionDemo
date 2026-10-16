@@ -18,6 +18,8 @@ pub use solver::trace_v3;
 /// 學權重用：求解後以探測權重重算最佳路線的總成本（examples/learn_weights.rs）。
 #[doc(hidden)]
 pub use solver::with_probes;
+/// 可中斷的分析：旗標設為 true 後，進行中的求解盡快結束。
+pub use solver::with_cancel;
 /// 分組認知樣板：樂句切分（學習用）與換樣板表（評估用）。
 #[doc(hidden)]
 pub use solver::{phrase_shapes, set_templates};

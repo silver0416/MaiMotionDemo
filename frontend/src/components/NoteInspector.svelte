@@ -1,37 +1,30 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
-  import {
-    HAND_LABEL,
-    KIND_LABEL,
-    PART_LABEL,
-    isLegacySolution,
-    isV2Solution,
-    isV3Solution,
-    shapeLabel,
-  } from '../lib/contract';
+  import VirtualList from './VirtualList.svelte';
+  import { HAND_LABEL, KIND_LABEL, PART_LABEL, shapeLabel } from '../lib/contract';
   import { noteBadges, noteTarget, simultaneousSlideHands } from '../lib/notes';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { TOUCH_AREA_PLACE } from '../lib/touch';
-  import { formatClock, formatDelta, formatNumber } from '../lib/format';
+  import { formatClock, formatNumber } from '../lib/format';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import type { Hand, Note, Solution } from '../lib/types';
+  import type { Assignment, Hand, Handover, Note, Solution } from '../lib/types';
 
   const note = $derived<Note | null>(session.selectedNote);
-  /** 依第一名的評分版本決定比較欄；V2／V3 沒有總成本，不算與第一名的差值。 */
-  const firstSolution = $derived<Solution | null>(session.solutions[0] ?? null);
-  const compareHeader = $derived(
-    !firstSolution || isLegacySolution(firstSolution)
-      ? '總成本'
-      : isV3Solution(firstSolution)
-        ? '效率／姿態／負荷'
-        : '分工／負擔',
-  );
 
   function handsOf(solution: Solution, noteId: string): string {
     const list = solution.assignments.filter((item) => item.noteId === noteId);
-    if (list.length === 0) return '—';
     const handover = solution.handovers.filter((item) => item.noteId === noteId);
+    return handsText(list, handover);
+  }
+
+  /** 清單每列的手：用 session 依音符分好的索引，不逐列掃整份方案。 */
+  function currentHands(noteId: string): string {
+    return handsText(session.assignmentsByNote.get(noteId) ?? [], session.handoversByNote.get(noteId) ?? []);
+  }
+
+  function handsText(list: Assignment[], handover: Handover[]): string {
+    if (list.length === 0) return '—';
     if (handover.length > 0) {
       return `${handover[0].from}→${handover[handover.length - 1].to}`;
     }
@@ -47,8 +40,13 @@
     if (target) playback.seek(target.timeSeconds);
   }
 
-  /** 清單容器，用來把選取的列捲進可視範圍。 */
-  let listElement = $state<HTMLDivElement | null>(null);
+  /** 清單只畫看得到的列；列高兩種（多一行旗標與否），含列間 2px 間隔。 */
+  const ROW_HEIGHT = 31;
+  const ROW_FLAGS_HEIGHT = 47;
+
+  const noteIndex = $derived(new Map(session.notes.map((item, index) => [item.id, index])));
+  /** 選取的音符捲進可視範圍（清單、盤面或「目前時間音符」選的都一樣）。 */
+  const focusIndex = $derived(session.selectedNoteId ? (noteIndex.get(session.selectedNoteId) ?? null) : null);
 
   /** 播放時間最接近的音符；同樣接近時取較早的一顆。 */
   const nearestNote = $derived.by(() => {
@@ -68,12 +66,6 @@
     const target = nearestNote;
     if (!target) return;
     session.selectNote(target.id);
-    // 選取後把該列捲到可視範圍；DOM 尚未更新時直接找目標列即可。
-    queueMicrotask(() => {
-      listElement
-        ?.querySelector(`[data-note-id="${CSS.escape(target.id)}"]`)
-        ?.scrollIntoView({ block: 'nearest' });
-    });
   }
 
   function seekNoteTime(target: Note | null) {
@@ -129,28 +121,37 @@
     {#if session.notes.length === 0}
       <p class="small muted">這個結果沒有譜面音符。</p>
     {:else}
-      <div class="note-list scroll" bind:this={listElement}>
-        {#each session.notes as item (item.id)}
+      <VirtualList
+        class="note-list"
+        items={session.notes}
+        heightOf={(item) => (rowFlags(item).length > 0 ? ROW_FLAGS_HEIGHT : ROW_HEIGHT)}
+        keyOf={(item) => item.id}
+        {focusIndex}
+        label="音符清單"
+      >
+        {#snippet row(item: Note, _index: number, style: string)}
           {@const flags = rowFlags(item)}
-          <button
-            class="note-row"
-            data-note-id={item.id}
-            class:is-selected={session.selectedNoteId === item.id}
-            onclick={() => pick(item.id, true)}
-          >
-            <span class="cell-id mono">{item.id}</span>
-            <span class="cell-target mono">{noteTarget(item)}</span>
-            <span class="cell-kind">{KIND_LABEL[item.kind] ?? item.kind}</span>
-            <span class="cell-time mono">{formatClock(item.timeSeconds)}</span>
-            <span class="cell-hand mono">
-              {session.solution ? handsOf(session.solution, item.id) : '—'}
-            </span>
-            {#if flags.length > 0}
-              <span class="cell-flags">{flags.join('・')}</span>
-            {/if}
-          </button>
-        {/each}
-      </div>
+          <div class="note-slot" {style}>
+            <button
+              class="note-row"
+              data-note-id={item.id}
+              class:is-selected={session.selectedNoteId === item.id}
+              onclick={() => pick(item.id, true)}
+            >
+              <span class="cell-id mono">{item.id}</span>
+              <span class="cell-target mono">{noteTarget(item)}</span>
+              <span class="cell-kind">{KIND_LABEL[item.kind] ?? item.kind}</span>
+              <span class="cell-time mono">{formatClock(item.timeSeconds)}</span>
+              <span class="cell-hand mono">
+                {session.solution ? currentHands(item.id) : '—'}
+              </span>
+              {#if flags.length > 0}
+                <span class="cell-flags">{flags.join('・')}</span>
+              {/if}
+            </button>
+          </div>
+        {/snippet}
+      </VirtualList>
     {/if}
   </section>
 
@@ -319,7 +320,7 @@
             <tr>
               <th>候選</th>
               <th>這顆音符</th>
-              <th>{compareHeader}</th>
+              <th>效率／姿態／負荷</th>
             </tr>
           </thead>
           <tbody>
@@ -330,19 +331,10 @@
                 </td>
                 <td class="mono">{handsOf(item, note.id)}</td>
                 <td class="mono xsmall">
-                  {#if isV3Solution(item)}
-                    {formatNumber(item.score.movement, 2)}／{formatNumber(item.score.posture, 2)}／{formatNumber(
-                      item.score.fatigue,
-                      2,
-                    )}
-                  {:else if isV2Solution(item)}
-                    {formatNumber(item.score.intuition, 2)}／{formatNumber(item.score.strain, 2)}
-                  {:else if isLegacySolution(item) && isLegacySolution(session.solutions[0])}
-                    {formatNumber(item.totalCost)}
-                    <span class="muted">
-                      {formatDelta(item.totalCost - session.solutions[0].totalCost)}
-                    </span>
-                  {/if}
+                  {formatNumber(item.score.movement, 2)}／{formatNumber(item.score.posture, 2)}／{formatNumber(
+                    item.score.fatigue,
+                    2,
+                  )}
                 </td>
               </tr>
             {/each}
@@ -358,10 +350,7 @@
 </div>
 
 <style>
-  .note-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .section :global(.note-list) {
     max-height: 220px;
     border: 1px solid var(--c-border);
     border-radius: var(--radius-md);
@@ -369,6 +358,8 @@
   }
 
   .note-row {
+    width: 100%;
+    height: calc(100% - 2px);
     display: grid;
     grid-template-columns: 38px 46px minmax(0, 1fr) auto 44px;
     align-items: center;
@@ -408,6 +399,9 @@
     font-size: var(--fs-xs);
     color: var(--c-text-dim);
     line-height: var(--lh-tight);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 
   .note-row:hover {

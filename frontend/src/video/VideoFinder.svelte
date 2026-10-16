@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ContextMenu, { type MenuItem } from '../components/ContextMenu.svelte';
   import Icon from '../components/Icon.svelte';
   import DownloadError from './DownloadError.svelte';
   import {
@@ -19,11 +20,13 @@
     query: string;
     /** 目前使用中的 YouTube 影片 */
     currentId?: string;
+    /** 主視窗開著的譜面紀錄；下載或選用的影片歸到這份譜面。 */
+    recordId: string | null;
     onUse: (entry: VideoEntry) => void;
     onLocal: () => void;
   }
 
-  let { library, query, currentId, onUse, onLocal }: Props = $props();
+  let { library, query, currentId, recordId, onUse, onLocal }: Props = $props();
 
   let text = $state('');
   let edited = $state(false);
@@ -64,10 +67,11 @@
   async function get(item: Pick<SearchItem, 'id'> & Partial<SearchItem>) {
     const existing = library.entry(item.id);
     if (existing) {
+      library.assign(existing.id, recordId);
       onUse(existing);
       return;
     }
-    const entry = await library.download(item);
+    const entry = await library.download(item, recordId);
     if (entry) {
       onUse(entry);
       if (results) results = results.map((row) => (row.id === entry.id ? { ...row, downloaded: true } : row));
@@ -84,6 +88,97 @@
     const progress = library.installing[tool];
     if (!progress?.total) return null;
     return Math.min(100, Math.round((100 * progress.downloaded) / progress.total));
+  }
+
+  // ---- 已下載：預設只列這份譜面的影片，打開開關才列全部。
+  const SHOW_ALL_KEY = 'maimotion.video-show-all.v1';
+
+  function loadShowAll(): boolean {
+    try {
+      return localStorage.getItem(SHOW_ALL_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  let showAll = $state(loadShowAll());
+
+  function setShowAll(value: boolean) {
+    showAll = value;
+    try {
+      localStorage.setItem(SHOW_ALL_KEY, value ? '1' : '0');
+    } catch {
+      // 存不了只影響下次開啟。
+    }
+  }
+
+  /** 屬於這份譜面（或正在使用）的影片。 */
+  const mine = $derived(
+    library.entries.filter((entry) => entry.id === currentId || library.ownedBy(entry.id, recordId)),
+  );
+  const listed = $derived(showAll ? library.entries : mine);
+
+  let menu = $state<{ entry: VideoEntry; x: number; y: number } | null>(null);
+  let deleting = $state<string | null>(null);
+  let deleteError = $state<string | null>(null);
+
+  const menuItems = $derived.by<MenuItem[]>(() => {
+    const entry = menu?.entry;
+    if (!entry) return [];
+    const current = entry.id === currentId;
+    const owned = library.ownedBy(entry.id, recordId);
+    const items: MenuItem[] = [];
+    if (!current) items.push({ id: 'use', label: '使用這部影片', icon: 'play' });
+    if (recordId) {
+      items.push(
+        owned
+          ? { id: 'unassign', label: '不再歸在這份譜面', icon: 'x' }
+          : { id: 'assign', label: '歸到這份譜面', icon: 'bookmark-plus' },
+      );
+    }
+    items.push({
+      id: 'delete',
+      label: current ? '刪除影片（使用中，先換別部）' : '刪除影片',
+      icon: 'trash',
+      danger: true,
+      disabled: current || deleting !== null,
+      divider: true,
+    });
+    return items;
+  });
+
+  function openMenu(entry: VideoEntry, event: MouseEvent) {
+    event.preventDefault();
+    menu = { entry, x: event.clientX, y: event.clientY };
+  }
+
+  function openMenuFrom(entry: VideoEntry, event: MouseEvent) {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { entry, x: rect.right, y: rect.bottom };
+  }
+
+  function useFromLibrary(entry: VideoEntry) {
+    library.assign(entry.id, recordId);
+    onUse(entry);
+  }
+
+  async function selectMenu(id: string) {
+    const entry = menu?.entry;
+    menu = null;
+    if (!entry) return;
+    if (id === 'use') {
+      useFromLibrary(entry);
+    } else if (id === 'assign') {
+      library.assign(entry.id, recordId);
+    } else if (id === 'unassign') {
+      library.unassign(entry.id, recordId);
+    } else if (id === 'delete') {
+      deleting = entry.id;
+      deleteError = null;
+      const error = await library.remove(entry.id);
+      deleting = null;
+      if (error) deleteError = `無法刪除「${entry.title}」：${error}`;
+    }
   }
 
   function onKey(event: KeyboardEvent) {
@@ -251,26 +346,65 @@
         已下載
         {#if library.cache}<span class="xsmall mono">{formatBytes(library.cache.bytes)}</span>{/if}
       </div>
-      {#if library.entries.length === 0}
-        <p class="small muted">還沒有下載的影片。可以在設定裡清除已下載的影片。</p>
+      <label class="check small">
+        <input type="checkbox" checked={showAll} onchange={(event) => setShowAll(event.currentTarget.checked)} />
+        <span>顯示所有影片<span class="muted mono">（{library.entries.length}）</span></span>
+      </label>
+      {#if deleteError}
+        <div class="alert alert--error" role="alert">{deleteError}</div>
+      {/if}
+      {#if listed.length === 0}
+        <p class="small muted">
+          {library.entries.length === 0
+            ? '還沒有下載的影片。'
+            : '這份譜面還沒有影片。在這份譜面開著時下載或選用的影片會自動歸到這裡；打開「顯示所有影片」可以看其他譜面的影片。'}
+        </p>
       {:else}
-        <ul class="library">
-          {#each library.entries as entry (entry.id)}
-            <li class="library-item">
+        <ul class="library" aria-label="已下載的影片">
+          {#each listed as entry (entry.id)}
+            {@const owned = entry.id === currentId || library.ownedBy(entry.id, recordId)}
+            <li
+              class="library-item"
+              class:is-current={entry.id === currentId}
+              class:is-deleting={deleting === entry.id}
+              oncontextmenu={(event) => openMenu(entry, event)}
+            >
               <div class="result-text">
                 <div class="result-title small" title={entry.title}>{entry.title}</div>
                 <div class="xsmall muted mono">
                   {formatDuration(entry.duration)}{entry.height ? `・${entry.height}p` : ''}{entry.fps ? `${Math.round(entry.fps)}` : ''}・{formatBytes(entry.bytes)}
+                  {#if showAll && owned && entry.id !== currentId}<span class="badge badge--quiet">這份譜面</span>{/if}
                 </div>
               </div>
               {#if entry.id === currentId}
                 <span class="badge">使用中</span>
+              {:else if deleting === entry.id}
+                <Icon name="loader" spin size={14} />
               {:else}
-                <button class="btn" onclick={() => onUse(entry)}>使用</button>
+                <button class="btn" onclick={() => useFromLibrary(entry)}>使用</button>
               {/if}
+              <button
+                class="btn btn--ghost btn--icon"
+                onclick={(event) => openMenuFrom(entry, event)}
+                aria-label={`${entry.title} 的更多動作`}
+                title="更多動作（也可以按右鍵）"
+              >
+                <Icon name="more-horizontal" size={14} />
+              </button>
             </li>
           {/each}
         </ul>
+      {/if}
+      {#if menu}
+        <ContextMenu
+          items={menuItems}
+          x={menu.x}
+          y={menu.y}
+          align="end"
+          label={`「${menu.entry.title}」的動作`}
+          onSelect={(id) => void selectMenu(id)}
+          onClose={() => (menu = null)}
+        />
       {/if}
     </section>
 
@@ -378,8 +512,23 @@
   .library-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
+    margin: 0 calc(-1 * var(--space-2));
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+
+  .library-item > .result-text {
+    flex: 1;
+  }
+
+  .library-item:hover,
+  .library-item.is-current {
+    background: var(--c-control);
+  }
+
+  .library-item.is-deleting {
+    opacity: 0.5;
   }
 
   .linkish {
