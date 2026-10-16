@@ -218,6 +218,8 @@ pub struct SolverConfig {
     /// Hold／Touch Hold 可以提早放手：結尾 12 幀不檢查按壓、總長不超過頭尾不檢查區間的
     /// 短 Hold 只看頭判。預設 false：一律按到結尾（真人標註裡提早放手去接別的音符很少見）。
     pub hold_early_release: bool,
+    /// V3 限定：以 Temoto 模型（從玩家手元影片學到的打法）修正手順；None 為純 V3。
+    pub ml_model: Option<String>,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -249,6 +251,8 @@ struct SolverConfigWire {
     palm_radius: f64,
     slide_shortcut: bool,
     hold_early_release: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ml_model: Option<String>,
     preparation_seconds: f64,
     speed_reference: f64,
     repetition_seconds: f64,
@@ -285,6 +289,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             palm_radius: c.palm_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
+            ml_model: c.ml_model.clone(),
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -318,6 +323,7 @@ impl From<SolverConfigWire> for SolverConfig {
             palm_radius: c.palm_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
+            ml_model: c.ml_model,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -360,11 +366,11 @@ impl<'de> Deserialize<'de> for SolverConfig {
             "human-motion-v3" => LEGACY_KEYS.into_iter().chain(["repeatTolerance"]).collect(),
             "hand-affinity-v2" => LEGACY_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut"])
+                .chain(["jackTolerance", "slideShortcut", "mlModel"])
                 .collect(),
             _ => V2_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut"])
+                .chain(["jackTolerance", "slideShortcut", "mlModel"])
                 .collect(),
         };
         if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
@@ -432,6 +438,7 @@ impl Default for SolverConfig {
             palm_radius: 0.5,
             slide_shortcut: false,
             hold_early_release: false,
+            ml_model: None,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -494,6 +501,14 @@ impl SolverConfig {
         }
         if self.slide_shortcut && !self.is_v3() {
             return Err("slideShortcut 只適用 human-motion-v3".into());
+        }
+        if let Some(id) = &self.ml_model {
+            if !self.is_v3() {
+                return Err("mlModel 只適用 human-motion-v3".into());
+            }
+            if !crate::temoto::MODEL_IDS.contains(&id.as_str()) {
+                return Err(format!("未知 mlModel：{id}"));
+            }
         }
         if !self.is_legacy() {
             if self.is_v3() {

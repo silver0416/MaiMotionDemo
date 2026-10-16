@@ -3,6 +3,7 @@ import type {
   BaseSolverConfig,
   ConfigDraft,
   Hand,
+  MlModelId,
   MotionMode,
   ScoringModel,
   Solution,
@@ -52,7 +53,22 @@ export const DEFAULT_DRAFT: ConfigDraft = {
   ...DEFAULT_BASE,
   v3: { ...DEFAULT_V3_PREFERENCES },
   slideShortcut: false,
+  mlModel: null,
 };
+
+/**
+ * Temoto 模型（與 src/temoto.rs 的 MODEL_IDS 一致）。介面上一律標「Temoto-1」，
+ * 兩張選項卡只用 color 區分：tokiwa＝常磐色、akane＝茜色。
+ */
+export const TEMOTO_LABEL = 'Temoto-1';
+export const TEMOTO_MODELS: readonly { id: MlModelId; color: 'tokiwa' | 'akane' }[] = [
+  { id: 'temoto-1-tokiwa', color: 'tokiwa' },
+  { id: 'temoto-1-akane', color: 'akane' },
+];
+
+export function isMlModelId(value: unknown): value is MlModelId {
+  return TEMOTO_MODELS.some((model) => model.id === value);
+}
 
 export const BASE_KEYS = Object.keys(DEFAULT_BASE) as (keyof BaseSolverConfig)[];
 export const V3_PREFERENCE_KEYS = Object.keys(DEFAULT_V3_PREFERENCES) as (keyof V3PreferenceControls)[];
@@ -63,6 +79,7 @@ export function projectConfig(draft: ConfigDraft): SolverConfig {
   for (const key of BASE_KEYS) config[key] = draft[key];
   for (const key of V3_PREFERENCE_KEYS) config[key] = draft.v3[key];
   config.slideShortcut = draft.slideShortcut;
+  if (draft.mlModel) config.mlModel = draft.mlModel;
   return config as unknown as SolverConfig;
 }
 
@@ -94,6 +111,7 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
     }
   }
   if (typeof raw.slideShortcut === 'boolean') next.slideShortcut = raw.slideShortcut;
+  if (raw.mlModel === null || isMlModelId(raw.mlModel)) next.mlModel = raw.mlModel;
   const v3 = raw.v3;
   if (v3 && typeof v3 === 'object') {
     for (const key of V3_PREFERENCE_KEYS) {

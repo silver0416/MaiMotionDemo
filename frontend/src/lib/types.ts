@@ -156,8 +156,17 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
   slideShortcut?: boolean;
 }
 
+/**
+ * Temoto 模型（從玩家手元影片學到的打法修正 V3）。介面上統一顯示「Temoto-1」，
+ * 兩個變體只用顏色區分（常磐色、茜色），不顯示 id。
+ */
+export type MlModelId = 'temoto-1-tokiwa' | 'temoto-1-akane';
+
 /** 實際送給 Rust、也是 configSnapshot 的形狀。 */
-export type SolverConfig = V3SolverConfig;
+export type SolverConfig = V3SolverConfig & {
+  /** 省略為純 V3；舊快照沒有這個欄位。 */
+  mlModel?: MlModelId;
+};
 
 /**
  * 前端參數頁的草稿。行為控制存在 `v3`（沿用既有保存資料的位置）。
@@ -166,6 +175,8 @@ export type SolverConfig = V3SolverConfig;
 export interface ConfigDraft extends BaseSolverConfig {
   v3: V3PreferenceControls;
   slideShortcut: boolean;
+  /** null 為純 V3。選了 Temoto 時「打法偏好」的四個控制不影響結果，介面應隱藏。 */
+  mlModel: MlModelId | null;
 }
 
 export interface AnalyzeRequest {

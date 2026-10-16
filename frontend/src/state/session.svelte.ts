@@ -22,6 +22,7 @@ import type {
   Chart,
   ConfigDraft,
   Handover,
+  MlModelId,
   Note,
   PalmPlacement,
   SlidePath,
@@ -291,6 +292,11 @@ export class Session {
 
   selectNote(noteId: string | null): void {
     this.selectedNoteId = noteId;
+  }
+
+  /** 切換 Temoto 模型；null 為純 V3。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
+  setMlModel(id: MlModelId | null): void {
+    this.config = { ...this.config, mlModel: id };
   }
 
   /** 還原預設數值。 */

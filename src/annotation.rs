@@ -314,7 +314,15 @@ pub fn evaluate_annotation_probed(
     let response = evaluate_inner(request, |chart, config, rules| {
         let (result, totals) = solver::with_probes(probes, || match rules {
             Some(rules) => solver::solve_constrained(chart, config, rules),
-            None => solver::solve(chart, config),
+            None => match config
+                .ml_model
+                .as_deref()
+                .and_then(crate::temoto::TemotoModel::builtin)
+            {
+                // 比對對象跟著介面選的模型：選了 Temoto 就和 Temoto 修正後的結果比
+                Some(model) => crate::temoto::solve(chart, config, model),
+                None => solver::solve(chart, config),
+            },
         });
         if result.is_ok() {
             *if rules.is_some() {
