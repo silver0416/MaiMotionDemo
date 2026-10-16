@@ -147,14 +147,21 @@ pub async fn download(
         }
     })?;
     if !response.status().is_success() {
-        return Err(format!("下載更新失敗（HTTP {}）", response.status().as_u16()));
+        return Err(format!(
+            "下載更新失敗（HTTP {}）",
+            response.status().as_u16()
+        ));
     }
-    let mut file = std::fs::File::create(&temp).map_err(|error| format!("無法寫入更新檔：{error}"))?;
+    let mut file =
+        std::fs::File::create(&temp).map_err(|error| format!("無法寫入更新檔：{error}"))?;
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
     let mut reported: u64 = 0;
     let mut response = response;
-    on_progress(DownloadProgress { downloaded: 0, total: asset.size });
+    on_progress(DownloadProgress {
+        downloaded: 0,
+        total: asset.size,
+    });
     let result: Result<(), String> = async {
         while let Some(chunk) = response
             .chunk()
@@ -166,13 +173,18 @@ pub async fn download(
                 return Err("下載的檔案比預期大，已停止".into());
             }
             hasher.update(&chunk);
-            file.write_all(&chunk).map_err(|error| format!("無法寫入更新檔：{error}"))?;
+            file.write_all(&chunk)
+                .map_err(|error| format!("無法寫入更新檔：{error}"))?;
             if downloaded - reported >= 256 * 1024 {
                 reported = downloaded;
-                on_progress(DownloadProgress { downloaded, total: asset.size });
+                on_progress(DownloadProgress {
+                    downloaded,
+                    total: asset.size,
+                });
             }
         }
-        file.flush().map_err(|error| format!("無法寫入更新檔：{error}"))?;
+        file.flush()
+            .map_err(|error| format!("無法寫入更新檔：{error}"))?;
         if downloaded != asset.size {
             return Err("下載的檔案不完整，請再試一次".into());
         }
@@ -189,7 +201,10 @@ pub async fn download(
         let _ = std::fs::remove_file(&temp);
         return Err(error);
     }
-    on_progress(DownloadProgress { downloaded, total: asset.size });
+    on_progress(DownloadProgress {
+        downloaded,
+        total: asset.size,
+    });
     if target.exists() {
         std::fs::remove_file(&target).map_err(|error| {
             let _ = std::fs::remove_file(&temp);
@@ -298,9 +313,15 @@ pub mod commands {
         let emitter = app.clone();
         let result = match exe {
             Ok(exe) => {
-                download(&state.client, &asset, &exe, fallback.as_deref(), move |progress| {
-                    let _ = emitter.emit("update-download-progress", progress);
-                })
+                download(
+                    &state.client,
+                    &asset,
+                    &exe,
+                    fallback.as_deref(),
+                    move |progress| {
+                        let _ = emitter.emit("update-download-progress", progress);
+                    },
+                )
                 .await
             }
             Err(error) => Err(error),
@@ -315,7 +336,10 @@ pub mod commands {
 
     /// 開啟下載好的新版並結束目前的程式。
     #[tauri::command]
-    pub fn update_restart(app: AppHandle, state: tauri::State<'_, SelfUpdateState>) -> Result<(), String> {
+    pub fn update_restart(
+        app: AppHandle,
+        state: tauri::State<'_, SelfUpdateState>,
+    ) -> Result<(), String> {
         let target = state
             .downloaded
             .lock()
@@ -363,7 +387,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("maimotion-self-update-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "maimotion-self-update-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -381,7 +408,10 @@ mod tests {
             Some(PathBuf::from("C:/old.exe"))
         );
         assert_eq!(previous_from_args(args(&["app.exe"])), None);
-        assert_eq!(previous_from_args(args(&["app.exe", "--updated-from"])), None);
+        assert_eq!(
+            previous_from_args(args(&["app.exe", "--updated-from"])),
+            None
+        );
     }
 
     fn app_bytes() -> Vec<u8> {
@@ -419,7 +449,10 @@ mod tests {
     fn marker_matches_the_app_identifier() {
         let config: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(config["identifier"].as_str().unwrap().as_bytes(), APP_MARKER);
+        assert_eq!(
+            config["identifier"].as_str().unwrap().as_bytes(),
+            APP_MARKER
+        );
     }
 
     #[test]
@@ -438,7 +471,12 @@ mod tests {
         };
         assert!(run(asset("https://example.com/x.exe", "x.exe", 10)).is_err());
         assert!(run(asset(&format!("{ASSET_URL_PREFIX}v1/x.zip"), "x.zip", 10)).is_err());
-        assert!(run(asset(&format!("{ASSET_URL_PREFIX}v1/x.exe"), "../x.exe", 10)).is_err());
+        assert!(run(asset(
+            &format!("{ASSET_URL_PREFIX}v1/x.exe"),
+            "../x.exe",
+            10
+        ))
+        .is_err());
         assert!(run(asset(&format!("{ASSET_URL_PREFIX}v1/x.exe"), "x.exe", 0)).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -459,13 +497,20 @@ mod tests {
             sha256: Some("8ac1afe1a1f0a593be08e2e2fa310f0b7b8238edaf0ea5ee5445ffed5663ed8c".into()),
         };
         let mut last = 0;
-        let done = tauri::async_runtime::block_on(download(&client, &good, &exe, None, |p| last = p.downloaded)).unwrap();
+        let done = tauri::async_runtime::block_on(download(&client, &good, &exe, None, |p| {
+            last = p.downloaded
+        }))
+        .unwrap();
         assert_eq!(last, good.size);
         assert!(!done.fallback);
         assert_eq!(std::fs::metadata(&done.path).unwrap().len(), good.size);
         let _ = std::fs::remove_file(&done.path);
-        let bad = UpdateAsset { sha256: Some("0".repeat(64)), ..good };
-        let error = tauri::async_runtime::block_on(download(&client, &bad, &exe, None, |_| {})).unwrap_err();
+        let bad = UpdateAsset {
+            sha256: Some("0".repeat(64)),
+            ..good
+        };
+        let error = tauri::async_runtime::block_on(download(&client, &bad, &exe, None, |_| {}))
+            .unwrap_err();
         assert!(error.contains("SHA-256"), "{error}");
         assert!(!dir.join(&bad.name).exists());
         assert!(!dir.join(format!(".{}.download", bad.name)).exists());

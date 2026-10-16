@@ -1382,10 +1382,23 @@ mod tests {
         let items = search(&status, &videos, "maimai 手元 MASTER", 5).unwrap();
         assert!(!items.is_empty());
         let cancelled = AtomicBool::new(false);
-        let entry = download(&status, &videos, &items[0].id, &VideoHint::default(), &cancelled, |_| {}, |_| {}).unwrap();
-        eprintln!("{} {}p {} bytes", entry.title, entry.height.unwrap_or(0), entry.bytes);
+        let entry = download(
+            &status,
+            &videos,
+            &items[0].id,
+            &VideoHint::default(),
+            &cancelled,
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        eprintln!(
+            "{} {}p {} bytes",
+            entry.title,
+            entry.height.unwrap_or(0),
+            entry.bytes
+        );
         assert!(entry.bytes > 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 }
-

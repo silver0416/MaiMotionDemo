@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod handcam;
 mod majdata;
 mod self_update;
 mod update;
@@ -131,7 +132,8 @@ async fn save_text_in_dir(dir: String, name: String, contents: String) -> Result
             target = folder.join(format!("{stem} ({n}).json"));
             n += 1;
         }
-        std::fs::write(&target, contents).map_err(|e| format!("無法寫入 {}：{e}", target.display()))?;
+        std::fs::write(&target, contents)
+            .map_err(|e| format!("無法寫入 {}：{e}", target.display()))?;
         Ok(target.to_string_lossy().into_owned())
     })
     .await
@@ -204,7 +206,9 @@ fn app_distribution() -> String {
 
 /// 檢查 GitHub Releases 是否有新版。離線或限流時回 Err，前端靜默處理。
 #[tauri::command]
-async fn check_update(client: tauri::State<'_, UpdateClient>) -> Result<update::UpdateInfo, String> {
+async fn check_update(
+    client: tauri::State<'_, UpdateClient>,
+) -> Result<update::UpdateInfo, String> {
     update::check(&client.0).await
 }
 
@@ -228,6 +232,7 @@ fn main() {
     let update_client = update::build_client().expect("Failed to initialize update HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
     let video_client = video::build_client().expect("Failed to initialize video tool HTTP client");
+    let handcam_client = handcam::build_client().expect("Failed to initialize model HTTP client");
     let self_update_client =
         self_update::build_client().expect("Failed to initialize update download HTTP client");
     let previous = self_update::previous_from_args(std::env::args());
@@ -255,7 +260,11 @@ fn main() {
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
         .manage(video::VideoState::new(video_client))
-        .manage(self_update::SelfUpdateState::new(self_update_client, previous))
+        .manage(handcam::HandcamState::new(handcam_client))
+        .manage(self_update::SelfUpdateState::new(
+            self_update_client,
+            previous,
+        ))
         .invoke_handler(tauri::generate_handler![
             analyze_chart,
             evaluate_annotation,
@@ -284,6 +293,10 @@ fn main() {
             video::commands::video_cache_info,
             video::commands::video_clear_cache,
             video::commands::video_open_local,
+            handcam::commands::handcam_model_status,
+            handcam::commands::handcam_model_install,
+            handcam::commands::handcam_model_cancel,
+            handcam::commands::handcam_model_remove,
             self_update::commands::update_download,
             self_update::commands::update_restart,
             self_update::commands::update_previous,

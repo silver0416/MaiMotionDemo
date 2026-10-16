@@ -55,13 +55,22 @@ pub fn pick_asset(release: &serde_json::Value, version: &str) -> Option<UpdateAs
             .and_then(|digest| digest.strip_prefix("sha256:"))
             .filter(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
             .map(|hex| hex.to_ascii_lowercase());
-        Some(UpdateAsset { name, url, size, sha256 })
+        Some(UpdateAsset {
+            name,
+            url,
+            size,
+            sha256,
+        })
     };
     let candidates: Vec<UpdateAsset> = assets.iter().filter_map(parse).collect();
     candidates
         .iter()
         .find(|asset| asset.name == expected)
-        .or_else(|| candidates.iter().find(|asset| asset.name.ends_with("-windows-x64.exe")))
+        .or_else(|| {
+            candidates
+                .iter()
+                .find(|asset| asset.name.ends_with("-windows-x64.exe"))
+        })
         .cloned()
 }
 
@@ -100,8 +109,8 @@ pub async fn check(client: &Client) -> Result<UpdateInfo, String> {
         .map_err(map_request_error)?;
     let response = require_success(response).await?;
     let bytes = read_limited(response).await?;
-    let release: serde_json::Value =
-        serde_json::from_slice(&bytes).map_err(|error| format!("GitHub 版本資訊格式無法解析：{error}"))?;
+    let release: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("GitHub 版本資訊格式無法解析：{error}"))?;
     let latest_raw = release
         .get("tag_name")
         .and_then(|value| value.as_str())
@@ -149,7 +158,10 @@ pub async fn check(client: &Client) -> Result<UpdateInfo, String> {
 /// 去掉前導 `v`、空白與 `-beta`／`+build` 後綴，只留 `x.y.z` 核心。
 fn normalize_version(raw: &str) -> String {
     let raw = raw.trim();
-    let raw = raw.strip_prefix('v').or_else(|| raw.strip_prefix('V')).unwrap_or(raw);
+    let raw = raw
+        .strip_prefix('v')
+        .or_else(|| raw.strip_prefix('V'))
+        .unwrap_or(raw);
     let core = raw.split(['-', '+']).next().unwrap_or(raw);
     core.trim().to_string()
 }
@@ -181,7 +193,10 @@ fn parse_parts(version: &str) -> Vec<u64> {
     version
         .split('.')
         .map(|part| {
-            let digits: String = part.chars().take_while(|char| char.is_ascii_digit()).collect();
+            let digits: String = part
+                .chars()
+                .take_while(|char| char.is_ascii_digit())
+                .collect();
             digits.parse::<u64>().unwrap_or(0)
         })
         .collect()
@@ -203,9 +218,7 @@ async fn require_success(response: reqwest::Response) -> Result<reqwest::Respons
         return Ok(response);
     }
     Err(match status {
-        StatusCode::NOT_FOUND => {
-            "GitHub 上還沒有任何正式版本（404），請稍後再試".into()
-        }
+        StatusCode::NOT_FOUND => "GitHub 上還沒有任何正式版本（404），請稍後再試".into(),
         StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS => {
             "GitHub API 請求過於頻繁（限流），請稍後再試".into()
         }
@@ -283,7 +296,10 @@ mod tests {
             let asset = asset.unwrap();
             assert_eq!(asset.name, "MaiMotionDemo-v0.4.1-windows-x64.exe");
             assert_eq!(asset.size, 100);
-            assert_eq!(asset.sha256.as_deref(), Some("8ac1afe1a1f0a593be08e2e2fa310f0b7b8238edaf0ea5ee5445ffed5663ed8c"));
+            assert_eq!(
+                asset.sha256.as_deref(),
+                Some("8ac1afe1a1f0a593be08e2e2fa310f0b7b8238edaf0ea5ee5445ffed5663ed8c")
+            );
             // 其他網域的附件一律不接受。
             let only_evil = serde_json::json!({"assets": [release["assets"][2].clone()]});
             assert!(pick_asset(&only_evil, "0.4.1").is_none());
