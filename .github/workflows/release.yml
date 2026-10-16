@@ -1,0 +1,119 @@
+name: Build release (Linux / macOS)
+
+# 發布 Release 時自動建置 Linux 與 macOS 版並附到同一個 Release；Windows 版仍在本機建置後上傳。
+# 也可以手動指定 tag 重跑（例如補上舊版的產物）。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach to (e.g. v1.0.0)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          # vite.config.ts 用 commit 數當 build 號，需要完整歷史。
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build AppImage and deb
+        run: >
+          npm run tauri build --
+          --bundles appimage,deb
+          --config '{"bundle":{"active":true,"targets":["appimage","deb"],"icon":["icons/32x32.png","icons/128x128.png","icons/128x128@2x.png","icons/icon.icns","icons/icon.ico"]}}'
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' | head -1)
+          DEB=$(find src-tauri/target/release/bundle/deb -name '*.deb' | head -1)
+          echo "AppImage: $APPIMAGE"
+          echo "deb: $DEB"
+          cp "$APPIMAGE" "out/MaiMotionDemo-${TAG}-linux-x64.AppImage"
+          cp "$DEB" "out/MaiMotionDemo-${TAG}-linux-x64.deb"
+          ls -la out
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" out/* --clobber
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build universal .app
+        run: >
+          npm run tauri build --
+          --target universal-apple-darwin
+          --bundles app
+          --config '{"bundle":{"active":true,"targets":["app"],"icon":["icons/32x32.png","icons/128x128.png","icons/128x128@2x.png","icons/icon.icns","icons/icon.ico"]}}'
+
+      - name: Zip .app
+        run: |
+          APP=$(find . -path '*universal-apple-darwin/release/bundle/macos/*.app' -maxdepth 8 -type d | head -1)
+          echo "Found: $APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "MaiMotionDemo-${TAG}-macos-universal.zip"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "MaiMotionDemo-${TAG}-macos-universal.zip" --clobber
