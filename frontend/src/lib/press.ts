@@ -28,3 +28,36 @@ export function squash(node: HTMLElement) {
     },
   };
 }
+
+/**
+ * 前後移動的按鈕（‹ › 這類）按下時，圖示往該方向彈一下再回位。
+ * 用法：use:bounce={-1} 往左、use:bounce={1} 往右；滑鼠與鍵盤觸發的 click 都會播。
+ */
+export function bounce(node: HTMLElement, direction: -1 | 1) {
+  let dir = direction;
+  const name = () => (dir < 0 ? 'is-bouncing-left' : 'is-bouncing-right');
+
+  function play() {
+    if (reducedMotion()) return;
+    node.classList.remove('is-bouncing-left', 'is-bouncing-right');
+    // 強制重排：連點時動畫從頭再播。
+    void node.offsetWidth;
+    node.classList.add(name());
+  }
+
+  function done(event: AnimationEvent) {
+    if (event.animationName.startsWith('icon-bounce')) node.classList.remove('is-bouncing-left', 'is-bouncing-right');
+  }
+
+  node.addEventListener('click', play);
+  node.addEventListener('animationend', done);
+  return {
+    update(next: -1 | 1) {
+      dir = next;
+    },
+    destroy() {
+      node.removeEventListener('click', play);
+      node.removeEventListener('animationend', done);
+    },
+  };
+}

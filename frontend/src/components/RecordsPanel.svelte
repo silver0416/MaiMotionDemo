@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import Popover from './Popover.svelte';
+  import Dropdown from './Dropdown.svelte';
   import {
     TAG_COLORS,
     cleanName,
@@ -20,7 +21,6 @@
   import { saveExport, showSaved } from '../state/exportPrefs.svelte';
   import { errorLog } from '../state/errorLog.svelte';
   import { toasts } from '../state/toasts.svelte';
-  import { squash } from '../lib/press';
   import { session } from '../state/session.svelte';
 
   interface Props {
@@ -664,7 +664,7 @@
 
 <div class="records">
   <div class="records-head">
-    <button id="records-collapse" class="btn btn--ghost btn--wide" use:squash onclick={onCollapse}>
+    <button id="records-collapse" class="btn btn--ghost btn--wide press-squash" onclick={onCollapse}>
       <span class="lead"><Icon name="chevron-left" size={16} /></span>收合側欄
     </button>
     <button class="btn btn--ghost btn--wide" onclick={onCreate}>
@@ -774,15 +774,16 @@
           </button>
         {/if}
       </label>
-      <label class="sort" title="排列方式">
-        <span class="sr-only">排列方式</span>
-        <Icon name="arrow-up-down" size={13} />
-        <select class="sort-select" bind:value={sortKey}>
-          {#each SORTS as sort (sort.id)}
-            <option value={sort.id}>{sort.label}</option>
-          {/each}
-        </select>
-      </label>
+      <span class="sort">
+        <Dropdown
+          options={SORTS}
+          value={sortKey}
+          onChange={(next) => (sortKey = next)}
+          label="排列方式"
+          title="排列方式"
+          icon="arrow-up-down"
+        />
+      </span>
     </div>
   </div>
 
@@ -1101,8 +1102,8 @@
 
   .records-head .btn {
     min-height: 34px;
-    padding: 0 var(--space-2);
-    gap: var(--space-3);
+    padding: 0 14px 0 10px;
+    gap: var(--space-2);
     font-size: var(--fs-md);
   }
 
@@ -1201,13 +1202,16 @@
     gap: var(--space-1);
     max-width: 100%;
     min-height: 24px;
-    padding: 0 var(--space-2);
+    padding: 0 10px;
     font-size: var(--fs-xs);
     color: var(--c-text-dim);
-    background: var(--c-panel);
-    border: 1px solid var(--c-border);
+    background: var(--c-control);
+    border: 1px solid transparent;
     border-radius: 999px;
     cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1215,13 +1219,17 @@
 
   .chip:hover {
     color: var(--c-text);
-    background: var(--c-control);
+    background: var(--c-control-hover);
   }
 
+  /* 選中的資料夾或標籤篩選：反白。 */
   .chip.is-on {
-    color: var(--c-text-strong);
-    background: var(--c-control-hover);
-    border-color: var(--c-border-strong);
+    color: var(--c-on-invert);
+    background: var(--c-invert-bg);
+  }
+
+  .chip.is-on .chip-count {
+    color: inherit;
   }
 
   .chip.is-drop {
@@ -1256,31 +1264,30 @@
     gap: var(--space-1);
   }
 
-  .filter,
-  .sort {
+  .filter {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: 6px;
+    flex: 1 1 auto;
     min-width: 0;
-    height: 28px;
-    padding: 0 var(--space-2);
+    height: 32px;
+    padding: 0 8px 0 12px;
     color: var(--c-text-dim);
     background: var(--c-control);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    transition: border-color 120ms ease;
   }
 
-  .filter {
-    flex: 1 1 auto;
-  }
-
-  .filter:focus-within,
-  .sort:focus-within {
+  .filter:hover {
     border-color: var(--c-border-strong);
   }
 
-  .filter-input,
-  .sort-select {
+  .filter:focus-within {
+    border-color: var(--c-primary);
+  }
+
+  .filter-input {
     min-width: 0;
     height: 100%;
     padding: 0;
@@ -1297,16 +1304,15 @@
 
   /* 排序只顯示圖示＋目前選項，窄欄時縮短。 */
   .sort {
-    flex: 0 1 112px;
+    display: flex;
+    flex: 0 1 auto;
+    max-width: 136px;
+    min-width: 0;
   }
 
-  .sort-select {
+  .sort :global(.dropdown),
+  .sort :global(.trigger) {
     width: 100%;
-    cursor: pointer;
-  }
-
-  .sort-select option {
-    background: var(--c-control);
   }
 
   .filter-clear {
@@ -1320,7 +1326,7 @@
     color: var(--c-text-dim);
     background: none;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     cursor: pointer;
   }
 
@@ -1340,10 +1346,9 @@
     gap: var(--space-1);
     height: calc(var(--swap-h) - var(--space-2));
     margin: 0 var(--space-2) var(--space-2);
-    padding: 0 var(--space-1) 0 var(--space-2);
+    padding: 0 var(--space-1) 0 14px;
     background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-pill);
   }
 
   .selection .btn {
@@ -1391,7 +1396,8 @@
     position: relative;
     display: flex;
     align-items: stretch;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-item);
+    transition: background-color 120ms ease;
   }
 
   .item:hover,
@@ -1413,21 +1419,16 @@
     gap: 2px;
     flex: 1 1 auto;
     min-width: 0;
-    padding: var(--space-2);
-    padding-right: 36px;
+    padding: var(--space-2) 36px var(--space-2) 14px;
     text-align: left;
     background: none;
     border: 1px solid transparent;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-item);
     cursor: pointer;
   }
 
-  .item.is-active .open {
-    border-color: var(--c-border-strong);
-  }
-
   .item.is-selected .open {
-    border-color: var(--c-focus);
+    border-color: var(--c-primary);
   }
 
   .item-title {
@@ -1447,7 +1448,7 @@
   }
 
   .item.is-selected .item-title :global(svg) {
-    color: var(--c-focus);
+    color: var(--c-primary);
   }
 
   .item-title-text {
@@ -1546,8 +1547,9 @@
     gap: var(--space-2);
     width: 100%;
     padding: var(--space-2);
-    border: 1px solid var(--c-danger);
-    border-radius: var(--radius-md);
+    background: var(--c-danger-bg);
+    border: 1px solid color-mix(in srgb, var(--c-danger) 45%, var(--c-panel));
+    border-radius: var(--radius-item);
   }
 
   /* ---- 浮動面板內容 ---- */
@@ -1574,13 +1576,13 @@
     text-align: left;
     background: none;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     cursor: pointer;
   }
 
   .pick-item:hover,
   .pick-item:focus-visible {
-    background: var(--c-control-hover);
+    background: var(--c-control);
   }
 
   .pick-item:focus-visible {
@@ -1626,7 +1628,8 @@
   }
 
   .pick-form .input {
-    padding: var(--space-1) var(--space-2);
+    min-height: 30px;
+    padding: 0 12px;
   }
 
   .error-text {

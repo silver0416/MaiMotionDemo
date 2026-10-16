@@ -655,18 +655,47 @@ export function laneRows(
   return rows;
 }
 
-/** 模型方案在某顆音符上的手部分工，用來預填與比對顯示。 */
+/** 模型方案在某顆音符上的手部分工，用來預填與比對顯示。整首要算時用 modelMarks，不要逐顆呼叫。 */
 export function modelMark(solution: Solution, note: Note): Omit<NoteAnnotation, 'key'> {
-  const list = solution.assignments.filter((item) => item.noteId === note.id);
+  return markFrom(
+    solution.assignments.filter((item) => item.noteId === note.id),
+    solution.handovers.filter((item) => item.noteId === note.id),
+  );
+}
+
+/**
+ * 整首的模型分工：先把分配與交接依音符分好再逐顆組合。逐顆呼叫 modelMark 要對每顆掃一次整份方案
+ * （1000 顆約 0.2 秒，而且方案是響應式代理），切到標註分頁會卡一下。
+ */
+export function modelMarks(solution: Solution, notes: readonly Note[]): Map<string, Omit<NoteAnnotation, 'key'>> {
+  const assignments = new Map<string, Solution['assignments']>();
+  for (const item of solution.assignments) {
+    const list = assignments.get(item.noteId);
+    if (list) list.push(item);
+    else assignments.set(item.noteId, [item]);
+  }
+  const handovers = new Map<string, Solution['handovers']>();
+  for (const item of solution.handovers) {
+    const list = handovers.get(item.noteId);
+    if (list) list.push(item);
+    else handovers.set(item.noteId, [item]);
+  }
+  const out = new Map<string, Omit<NoteAnnotation, 'key'>>();
+  for (const note of notes) out.set(note.id, markFrom(assignments.get(note.id) ?? [], handovers.get(note.id) ?? []));
+  return out;
+}
+
+function markFrom(
+  list: Solution['assignments'],
+  noteHandovers: Solution['handovers'],
+): Omit<NoteAnnotation, 'key'> {
   const out: Omit<NoteAnnotation, 'key'> = {};
   const contact = list
     .filter((item) => item.part !== 'slide')
     .sort((a, b) => a.startSeconds - b.startSeconds)[0];
   if (contact) out.hand = contact.hand;
   const slides = list.filter((item) => item.part === 'slide').sort((a, b) => a.startSeconds - b.startSeconds);
-  const handovers = solution.handovers
-    .filter((item) => item.noteId === note.id)
-    .sort((a, b) => a.startSeconds - b.startSeconds);
+  const handovers = [...noteHandovers].sort((a, b) => a.startSeconds - b.startSeconds);
   if (slides.length > 0) {
     const first = slides[0];
     // 交接期間兩手也會重疊；只有不是交接造成的重疊才算兩手一起滑（WiFi 2+1）。

@@ -74,42 +74,51 @@
     pointer-events: none;
   }
 
+  /* 通知（Claude Design 定案）：圓角 18。進行中與一般資訊用凸起的灰底；
+     完成、警告、錯誤的底色混入少量語氣色、框線混入較多，都是不透明的純色。 */
   .toast {
+    --tone: var(--c-text-dim);
     display: flex;
     align-items: flex-start;
-    gap: var(--space-3);
+    gap: 10px;
     width: 100%;
-    padding: var(--space-3);
-    background: var(--c-panel);
+    padding: 12px 8px 12px 14px;
+    background: var(--c-control-hover);
     border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 8px 24px #000000;
+    border-radius: var(--radius-pop);
+    box-shadow: var(--shadow-pop);
+    color: var(--c-text-strong);
     pointer-events: auto;
   }
 
-  .toast--error {
-    border-color: var(--c-danger);
+  .toast--ok {
+    --tone: var(--c-right);
   }
 
   .toast--warn {
-    border-color: var(--c-accent);
+    --tone: var(--c-accent);
+  }
+
+  .toast--error {
+    --tone: var(--c-danger);
+  }
+
+  .toast--ok,
+  .toast--warn,
+  .toast--error {
+    background: color-mix(in srgb, var(--tone) 16%, var(--c-panel));
+    border-color: color-mix(in srgb, var(--tone) 45%, var(--c-panel));
+  }
+
+  :global(:root[data-palette='studio']) .toast--ok,
+  :global(:root[data-palette='studio']) .toast--warn,
+  :global(:root[data-palette='studio']) .toast--error {
+    background: color-mix(in srgb, var(--tone) 10%, var(--c-panel));
   }
 
   .toast-icon {
     padding-top: 2px;
-    color: var(--c-text-dim);
-  }
-
-  .toast--ok .toast-icon {
-    color: var(--c-right);
-  }
-
-  .toast--warn .toast-icon {
-    color: var(--c-accent);
-  }
-
-  .toast--error .toast-icon {
-    color: var(--c-danger);
+    color: var(--tone);
   }
 
   .toast-text {
@@ -124,28 +133,36 @@
 
   .toast-body {
     margin-top: 2px;
-    font-size: var(--fs-sm);
+    font-size: var(--fs-xs);
     color: var(--c-text-dim);
     line-height: var(--lh-tight);
     overflow-wrap: anywhere;
   }
 
   .toast-action {
-    margin-top: var(--space-2);
+    min-height: 28px;
+    margin-top: 6px;
+    padding: 0 12px;
+    background: color-mix(in srgb, var(--tone) 28%, var(--c-panel));
+  }
+
+  .toast-action:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tone) 40%, var(--c-panel));
   }
 
   .toast-progress {
-    height: 4px;
-    margin-top: var(--space-2);
+    height: 6px;
+    margin-top: 6px;
     background: var(--c-control);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
   /* 用 scaleX 而不是 width：進度更新時只做合成，不重排版面。 */
   .toast-progress-fill {
     height: 100%;
-    background: var(--c-right);
+    border-radius: var(--radius-pill);
+    background: var(--c-primary);
     transform-origin: left center;
     transition: transform 240ms ease-out;
   }
@@ -157,8 +174,12 @@
   }
 
   .toast-close {
+    flex: none;
+    width: 26px;
     min-height: 26px;
     min-width: 26px;
     padding: 0;
+    background: var(--c-control);
+    color: var(--c-text);
   }
 </style>

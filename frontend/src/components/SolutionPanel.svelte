@@ -6,6 +6,8 @@
     SCORING_LABEL,
     SCORING_V3,
     STATUS_LABEL,
+    TEMOTO_LABEL,
+    TEMOTO_MODELS,
     V3_BREAKDOWN_KEYS,
     V3_SCORE_GROUPS,
   } from '../lib/contract';
@@ -13,12 +15,41 @@
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
-  import type { AnalyzeStatus, Hand, PalmPlacement, Solution, V3Solution } from '../lib/types';
+  import type {
+    AnalyzeStatus,
+    Hand,
+    PalmPlacement,
+    Solution,
+    SolverConfig,
+    V3Solution,
+  } from '../lib/types';
 
   const solutions = $derived<Solution[]>(session.solutions);
   const solution = $derived<Solution | null>(session.solution);
   const status = $derived<AnalyzeStatus | null>((session.response?.status as AnalyzeStatus) ?? null);
   const diagnostics = $derived(session.response?.diagnostics ?? []);
+
+  /** 這份結果用的 Temoto 模型（configSnapshot.mlModel）；null 為純 V3。 */
+  const temoto = $derived.by(() => {
+    const id = solution ? (solution.configSnapshot as SolverConfig).mlModel : undefined;
+    return TEMOTO_MODELS.find((model) => model.id === id) ?? null;
+  });
+  /**
+   * 核心把 Temoto 的結果寫在「Temoto-1」開頭的提醒：「Temoto-1：修改了 N 個手順…」，
+   * 或整份退回 V3 時的「Temoto-1 的修正在這份譜面走不下去…」。拉出來放在方案頁上方。
+   */
+  /** 核心提醒文字的開頭（Rust 寫死），與介面顯示名稱 TEMOTO_LABEL 無關。 */
+  const TEMOTO_PREFIX = 'Temoto-1';
+  const isTemotoWarning = (warning: string) => warning.startsWith(TEMOTO_PREFIX);
+  /** 畫面上不提模型的訓練來源（使用者要求）；舊快取的文字開頭可能還有「依玩家影片學到的打法」。 */
+  const temotoNote = $derived.by(() => {
+    const warning = solution?.warnings.find(isTemotoWarning);
+    if (!warning) return null;
+    // 標題已經是 Temoto-1，內文開頭的「Temoto-1：」或「Temoto-1 的」不再重複。
+    const text = warning.slice(TEMOTO_PREFIX.length).replace(/^(?:：|\s*的)/, '');
+    return text.replace(/^依玩家(?:手元)?影片學(?:到|來)的打法/, '').trim();
+  });
+  const otherWarnings = $derived(solution?.warnings.filter((warning) => !isTemotoWarning(warning)) ?? []);
 
   interface SolutionStats {
     /** 接觸音符：Tap、Hold、Touch、Touch Hold 與有起點的 Slide 起點（part = contact / head） */
@@ -180,6 +211,14 @@
       </div>
     </section>
   {:else}
+    {#if temoto}
+      <section class="section temoto-section">
+        <div class={`temoto-note temoto-note--${temoto.color}`} role="note">
+          <span class="temoto-head">{TEMOTO_LABEL}</span>
+          <p class="small">{temotoNote ?? `這份結果經過 ${TEMOTO_LABEL} 修正。`}</p>
+        </div>
+      </section>
+    {/if}
     <section class="section">
       <div class="section-title">
         <span>候選方案</span>
@@ -441,11 +480,11 @@
         </section>
       {/if}
 
-      {#if solution.warnings.length > 0}
+      {#if otherWarnings.length > 0}
         <section class="section">
           <div class="section-title"><span>核心提醒</span></div>
           <ul class="small warnings">
-            {#each solution.warnings as warning (warning)}
+            {#each otherWarnings as warning (warning)}
               <li>{warning}</li>
             {/each}
           </ul>
@@ -456,6 +495,14 @@
         <details>
           <summary>這份結果使用的參數</summary>
           <dl class="kv">
+            <dt>模型</dt>
+            <dd>
+              {#if temoto}
+                <span class={`model-tag model-tag--${temoto.color}`}><span class="temoto-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
+              {:else}
+                V3
+              {/if}
+            </dd>
             <dt>評分方式</dt>
             <dd>
               {SCORING_LABEL} <span class="muted mono">{SCORING_V3}</span>
@@ -518,20 +565,29 @@
     flex-direction: column;
     gap: 2px;
     width: 100%;
-    padding: var(--space-2) var(--space-3);
+    padding: 10px 14px;
     text-align: left;
-    background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
     cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      transform 90ms ease-out;
   }
 
   .candidate:hover {
-    background: var(--c-control-hover);
+    background: var(--c-control);
   }
 
+  .candidate:active {
+    transform: scale(0.99);
+  }
+
+  /* 選中：凸起的底色，再加一圈框線，不只靠底色深淺區分。 */
   .candidate.is-selected {
-    border-color: var(--c-text);
+    border-color: var(--c-border-strong);
     background: var(--c-control-hover);
   }
 
@@ -574,6 +630,92 @@
 
   .score-details > summary {
     font-size: var(--fs-xs);
+  }
+
+  /* Temoto-1 修正摘要：和參數頁的評分方式卡同一套——實色凸起底、沒有框線，
+     右下角一塊模型原色（常磐色 #007b43／茜色 #b7282e）的四分之一圓，邊緣硬切。 */
+  .temoto-section {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  .temoto-note {
+    --model: var(--c-primary);
+    --model-fill: var(--c-primary);
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 52px 14px 16px;
+    overflow: hidden;
+    border-radius: var(--radius-item);
+    background: var(--c-control);
+    animation: temoto-in 220ms var(--ease-out);
+  }
+
+  /* 右下角的四分之一圓用真正的圓裁出來（漸層硬邊會有鋸齒）。 */
+  .temoto-note::before {
+    content: '';
+    position: absolute;
+    right: -40px;
+    bottom: -40px;
+    z-index: -1;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: var(--model-fill);
+  }
+
+  .temoto-note--tokiwa,
+  .model-tag--tokiwa {
+    --model: var(--c-tokiwa);
+    --model-fill: var(--c-tokiwa-deep);
+  }
+
+  .temoto-note--akane,
+  .model-tag--akane {
+    --model: var(--c-akane);
+    --model-fill: var(--c-akane-deep);
+  }
+
+  .temoto-note .temoto-head {
+    font-size: var(--fs-lg);
+  }
+
+  .temoto-head,
+  .model-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: var(--c-text-strong);
+  }
+
+  .model-tag {
+    font-family: var(--font-sans);
+  }
+
+  .temoto-dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: var(--radius-pill);
+    background: var(--model);
+  }
+
+  @keyframes temoto-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .temoto-note {
+      animation: none;
+    }
   }
 
   .warnings {

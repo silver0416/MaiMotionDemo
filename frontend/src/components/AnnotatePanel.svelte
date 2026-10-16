@@ -1,8 +1,11 @@
 <script lang="ts">
+  import { bounce } from '../lib/press';
   import { saveExport, showSaved } from '../state/exportPrefs.svelte';
   import { tick } from 'svelte';
   import BranchPanel from './BranchPanel.svelte';
   import Deferred from './Deferred.svelte';
+  import Dropdown from './Dropdown.svelte';
+  import { segmented } from '../lib/segmented';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import Icon from './Icon.svelte';
   import LaneGraph, { laneColumnWidth } from './LaneGraph.svelte';
@@ -18,7 +21,7 @@
     isWifi,
     laneRows,
     MAIN_LINE,
-    modelMark,
+    modelMarks as modelMarksOf,
     neededParts,
     parseFile,
     progress,
@@ -101,12 +104,11 @@
 
   /** 模型的手，一律取候選方案（不是盤面上的真人打法），用來比對。 */
   const modelSolution = $derived(session.solutions[session.solutionIndex] ?? session.solutions[0] ?? null);
-  const modelMarks = $derived.by(() => {
-    const map = new Map<string, Omit<NoteAnnotation, 'key'>>();
-    if (!modelSolution) return map;
-    for (const item of annotation.ordered) map.set(item.id, modelMark(modelSolution, item));
-    return map;
-  });
+  const modelMarks = $derived.by(() =>
+    modelSolution
+      ? modelMarksOf(modelSolution, annotation.ordered)
+      : new Map<string, Omit<NoteAnnotation, 'key'>>(),
+  );
 
   const stats = $derived(progress(annotation.routed, annotation.ordered));
   const percent = $derived(stats.total > 0 ? Math.round((100 * stats.done) / stats.total) : 0);
@@ -665,9 +667,9 @@
     {#if stats.prefilled > 0}
       <p class="xsmall muted">另有 {stats.prefilled} 顆是模型預填，確認後才算真人資料。</p>
     {/if}
-    <div class="views" role="group" aria-label="標註面板">
+    <div class="views seg seg--soft" role="group" aria-label="標註面板" use:segmented>
       {#each VIEWS as item (item.id)}
-        <button class="view" aria-pressed={view === item.id} onclick={() => (view = item.id)}>{item.label}</button>
+        <button class="view seg-btn" aria-pressed={view === item.id} onclick={() => (view = item.id)}>{item.label}</button>
       {/each}
     </div>
   </header>
@@ -708,14 +710,14 @@
         {/if}
         {#if note}
           <div class="row">
-            <button class="btn btn--icon" onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
+            <button class="btn btn--icon" use:bounce={-1} onclick={() => annotation.step(-1)} aria-label="上一步" title="上一步">
               <Icon name="chevron-left" size={14} />
             </button>
             <div class="note-title">
               <span class="mono small">{formatClock(current?.time ?? note.timeSeconds)}</span>
               <strong>{current ? stepLabel(current, session.pathById) : describe(note)}</strong>
             </div>
-            <button class="btn btn--icon" onclick={() => annotation.step(1)} aria-label="下一步" title="下一步">
+            <button class="btn btn--icon" use:bounce={1} onclick={() => annotation.step(1)} aria-label="下一步" title="下一步">
               <Icon name="chevron-right" size={14} />
             </button>
           </div>
@@ -863,11 +865,13 @@
         onChange={setListHeight}
       />
       <div class="list-head">
-        <select class="select filter" aria-label="篩選" value={annotation.filter} onchange={(event) => (annotation.filter = event.currentTarget.value as ListFilter)}>
-          {#each FILTERS as item (item.id)}
-            <option value={item.id}>{item.label}</option>
-          {/each}
-        </select>
+        <Dropdown
+          options={FILTERS}
+          value={annotation.filter}
+          onChange={(next) => (annotation.filter = next)}
+          label="篩選"
+          align="start"
+        />
         <span class="xsmall muted">{rows.length} 步</span>
         {#if pending}
           <span class="badge" role="status">選取分支終點</span>
@@ -1244,45 +1248,13 @@
     font-size: var(--fs-md);
   }
 
-  /* 第二層分頁：底線式，貼在標頭的底邊上，和上面第一層的分段控制區分。 */
+  /* 第二層分頁：沒有凹槽、選中項是淡色的滑動膠囊，和第一層的反白分段控制一眼分得出層級。 */
   .views {
-    display: flex;
-    margin: var(--space-1) calc(-1 * var(--space-4)) calc(-1 * var(--space-3) - 1px);
-    padding: 0 var(--space-2);
+    margin-top: var(--space-1);
   }
 
   .view {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 34px;
     padding: 0 var(--space-1);
-    color: var(--c-text-dim);
-    font: inherit;
-    font-size: var(--fs-sm);
-    white-space: nowrap;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition:
-      color 120ms ease,
-      border-color 120ms ease;
-  }
-
-  .view:hover {
-    color: var(--c-text);
-    border-bottom-color: var(--c-border-strong);
-  }
-
-  .view[aria-pressed='true'] {
-    color: var(--c-text-strong);
-    font-weight: 600;
-    border-bottom-color: var(--c-accent);
-  }
-
-  .view:focus-visible {
-    outline: 2px solid var(--c-focus);
-    outline-offset: -2px;
   }
 
   .editor {
@@ -1326,7 +1298,7 @@
     margin: 0 calc(-1 * var(--space-2));
     padding: var(--space-1) var(--space-2);
     background: var(--c-control);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-item);
   }
 
   .line.is-active .line-label {
@@ -1348,13 +1320,13 @@
   .choice.left[aria-pressed='true'],
   .choice.left[aria-pressed='true']:hover:not(:disabled) {
     background: var(--c-left);
-    border-color: var(--c-left);
+    color: var(--c-on-hand);
   }
 
   .choice.right[aria-pressed='true'],
   .choice.right[aria-pressed='true']:hover:not(:disabled) {
     background: var(--c-right);
-    border-color: var(--c-right);
+    color: var(--c-on-hand);
   }
 
   .grow {
@@ -1373,12 +1345,18 @@
   }
 
   kbd {
-    padding: 0 var(--space-1);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--c-control);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: var(--radius-pill);
+    background: var(--c-control-hover);
+    color: var(--c-text);
     font-family: var(--font-mono);
-    font-size: var(--fs-xs);
+    font-size: 10px;
+    line-height: 1;
   }
 
   .tools {
@@ -1393,11 +1371,6 @@
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4);
     border-bottom: 1px solid var(--c-border);
-  }
-
-  .filter {
-    width: auto;
-    padding: var(--space-1) var(--space-2);
   }
 
   /* 上方編輯區吃剩下的高度，內容多時自己捲動。 */
@@ -1523,10 +1496,10 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-    background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-sm);
-    box-shadow: 0 4px 12px rgb(0 0 0 / 35%);
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-pop);
   }
 
   .group-label {
@@ -1556,9 +1529,9 @@
 
   /* 預填以虛線外框表示，與確認過的實心文字區分。 */
   .hands.is-prefilled {
-    padding: 0 var(--space-1);
+    padding: 0 6px;
     border: 1px dashed var(--c-border-strong);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     color: var(--c-text-dim);
   }
 

@@ -2,7 +2,14 @@
   import Icon, { type IconName } from './Icon.svelte';
   import { appVersion, clearWikiCache, wikiCacheInfo, type WikiCacheInfo } from '../lib/api';
   import { BUILD_ID, BUILD_TIME, FRONTEND_VERSION } from '../lib/build';
-  import { SCHEMA_VERSION, SCORING_LABEL, SCORING_V3, SCORING_VERSION } from '../lib/contract';
+  import {
+    SCHEMA_VERSION,
+    SCORING_LABEL,
+    SCORING_V3,
+    SCORING_VERSION,
+    TEMOTO_LABEL,
+    TEMOTO_MODELS,
+  } from '../lib/contract';
   import { STORE_ANALYSES, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
   import { copyText } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
@@ -15,6 +22,8 @@
   import { toasts } from '../state/toasts.svelte';
   import { VideoLibrary } from '../state/videoLibrary.svelte';
   import { formatDuration } from '../lib/video';
+  import { segmented } from '../lib/segmented';
+  import { APPEARANCES, DARK_PALETTES, LIGHT_PALETTE, theme } from '../lib/theme.svelte';
 
   interface Props {
     open: boolean;
@@ -22,9 +31,10 @@
 
   let { open = $bindable() }: Props = $props();
 
-  type Section = 'about' | 'errors' | 'video' | 'export' | 'data';
+  type Section = 'about' | 'appearance' | 'errors' | 'video' | 'export' | 'data';
   const SECTIONS: { id: Section; label: string; icon: IconName; desktop?: boolean }[] = [
     { id: 'about', label: '版本與更新', icon: 'info' },
+    { id: 'appearance', label: '外觀', icon: 'palette' },
     { id: 'video', label: '影片同步', icon: 'video', desktop: true },
     { id: 'export', label: '匯出', icon: 'download', desktop: true },
     { id: 'data', label: '資料管理', icon: 'database' },
@@ -175,13 +185,19 @@
     return Number.isNaN(time) ? BUILD_TIME : formatTime(time);
   });
 
+  /** 目前參數頁選的評分方式；null 為純 V3。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
+  const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
+
   function versionText(): string {
+    const scoring = temoto
+      ? `評分方式：${TEMOTO_LABEL}（${temoto.id}，基於 ${SCORING_LABEL} ${SCORING_VERSION}／${SCORING_V3}，schema ${SCHEMA_VERSION}）`
+      : `評分方式：${SCORING_LABEL} ${SCORING_VERSION}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`;
     return [
       `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
       `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
       `Build：${BUILD_ID}（${BUILD_TIME}）`,
       `判定規則修訂：${SOLVER_REVISION}`,
-      `評分方式：${SCORING_LABEL} ${SCORING_VERSION}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
+      scoring,
     ].join('\n');
   }
 
@@ -311,7 +327,7 @@
   <header class="dialog-head">
     <h2 id="settings-title">設定</h2>
     <span class="spacer"></span>
-    <button bind:this={closeButton} class="btn btn--icon" onclick={() => (open = false)} aria-label="關閉">
+    <button bind:this={closeButton} class="btn btn--round" onclick={() => (open = false)} aria-label="關閉">
       <Icon name="x" />
     </button>
   </header>
@@ -359,7 +375,15 @@
         <dt>判定規則修訂</dt>
         <dd>{SOLVER_REVISION}</dd>
         <dt>評分方式</dt>
-        <dd>{SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span> <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span></dd>
+        <dd>
+          {#if temoto}
+            <span class={`scoring-model scoring-model--${temoto.color}`}><span class="scoring-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
+            <span class="muted">基於 {SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span></span>
+          {:else}
+            {SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span>
+          {/if}
+          <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span>
+        </dd>
       </dl>
 
     </section>
@@ -443,6 +467,60 @@
         </p>
       {/if}
     </section>
+    {/if}
+
+    {#if section === 'appearance'}
+      <section class="block" aria-labelledby="settings-scheme">
+        <div class="block-head">
+          <h3 id="settings-scheme">深淺模式</h3>
+        </div>
+        <div class="seg scheme-seg" role="radiogroup" aria-labelledby="settings-scheme" use:segmented>
+          {#each APPEARANCES as item (item.id)}
+            <button
+              class="seg-btn"
+              role="radio"
+              aria-checked={theme.appearance === item.id}
+              onclick={() => theme.setAppearance(item.id)}
+            >
+              {item.label}
+            </button>
+          {/each}
+        </div>
+        <p class="field-hint">
+          目前是{theme.scheme === 'light' ? '淺色' : '深色'}。淺色固定使用「{LIGHT_PALETTE.label}」：{LIGHT_PALETTE.hint}
+          主視窗與影片同步視窗一起切換。
+        </p>
+      </section>
+
+      <section class="block" aria-labelledby="settings-palette">
+        <div class="block-head">
+          <h3 id="settings-palette">深色配色</h3>
+        </div>
+        <div class="palettes" role="radiogroup" aria-labelledby="settings-palette">
+          {#each DARK_PALETTES as item (item.id)}
+            <button
+              class="palette"
+              role="radio"
+              aria-checked={theme.dark === item.id}
+              onclick={() => theme.setDark(item.id)}
+            >
+              <span class="palette-swatches" aria-hidden="true">
+                {#each item.swatches as color, index (index)}
+                  <span class="palette-swatch" style={`background:${color}`}></span>
+                {/each}
+              </span>
+              <span class="palette-name">
+                {item.label}
+                {#if theme.dark === item.id}<Icon name="check" size={14} />{/if}
+              </span>
+              <span class="palette-hint">{item.hint}</span>
+            </button>
+          {/each}
+        </div>
+        {#if theme.scheme === 'light'}
+          <p class="field-hint">目前是淺色模式；切回深色時才會用這裡選的配色。</p>
+        {/if}
+      </section>
     {/if}
 
     {#if section === 'errors'}
@@ -692,9 +770,9 @@
     padding: 0;
     color: var(--c-text);
     background: var(--c-panel);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 24px 64px #000000;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
   }
 
   .dialog[open] {
@@ -760,15 +838,19 @@
     align-items: center;
     gap: var(--space-2);
     width: 100%;
-    padding: var(--space-2) var(--space-3);
+    min-height: 34px;
+    padding: 0 14px;
     color: var(--c-text-dim);
     font: inherit;
     font-size: var(--fs-sm);
     text-align: left;
     background: none;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
   }
 
   .side-item:hover {
@@ -792,11 +874,84 @@
   }
 
   .side-count {
-    padding: 0 var(--space-1);
+    padding: 0 6px;
     font-size: var(--fs-xs);
-    color: var(--c-on-invert);
+    color: var(--c-on-danger);
     background: var(--c-danger);
+    border-radius: var(--radius-pill);
+  }
+
+  .scheme-seg {
+    max-width: 360px;
+  }
+
+  .palettes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: var(--space-2);
+  }
+
+  /* 配色卡：選中時框線用主色。色票是該配色本身的顏色，不跟著目前配色變。 */
+  .palette {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    background: var(--c-control);
+    color: var(--c-text);
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 160ms ease,
+      transform 90ms ease-out;
+  }
+
+  .palette:hover {
+    background: var(--c-control-hover);
+  }
+
+  .palette:active {
+    transform: scale(0.98);
+  }
+
+  .palette[aria-checked='true'] {
+    border-color: var(--c-primary);
+    background: var(--c-control-hover);
+  }
+
+  .palette-swatches {
+    display: flex;
+    gap: 4px;
+  }
+
+  .palette-swatch {
+    flex: 1 1 0;
+    height: 22px;
     border-radius: var(--radius-sm);
+    border: 1px solid var(--c-border-strong);
+  }
+
+  .palette-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--c-text-strong);
+  }
+
+  .palette-name :global(.icon) {
+    color: var(--c-primary);
+  }
+
+  .palette-hint {
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--c-text-dim);
   }
 
   .dialog-body {
@@ -868,6 +1023,30 @@
 
   .empty {
     padding: var(--space-2) 0;
+  }
+
+  /* 目前的評分方式：TemotoAI-1 以模型原色的圓點區分兩個變體，不顯示變體名稱。 */
+  .scoring-model {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    color: var(--c-text-strong);
+  }
+
+  .scoring-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: var(--radius-pill);
+    background: var(--dot);
+  }
+
+  .scoring-model--tokiwa {
+    --dot: var(--c-tokiwa-deep);
+  }
+
+  .scoring-model--akane {
+    --dot: var(--c-akane-deep);
   }
 
   .update-available {
@@ -953,15 +1132,16 @@
   }
 
   .update-progress {
-    height: 4px;
+    height: 6px;
     background: var(--c-control);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
   .update-progress-fill {
     height: 100%;
-    background: var(--c-right);
+    border-radius: var(--radius-pill);
+    background: var(--c-primary);
     transition: width 240ms ease-out;
   }
 
@@ -995,5 +1175,10 @@
       flex-direction: column;
       gap: var(--space-2);
     }
+  }
+
+  /* Claude Design 定案的對話框：標題列左側多留空間，標題用顯示字型。 */
+  .dialog-head {
+    padding: 16px 16px 16px 24px;
   }
 </style>

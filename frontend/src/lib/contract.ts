@@ -60,7 +60,8 @@ export const DEFAULT_DRAFT: ConfigDraft = {
  * Temoto 模型（與 src/temoto.rs 的 MODEL_IDS 一致）。介面上一律標「Temoto-1」，
  * 兩張選項卡只用 color 區分：tokiwa＝常磐色、akane＝茜色。
  */
-export const TEMOTO_LABEL = 'Temoto-1';
+/** 介面顯示名稱（2026-10-16 使用者改為 TemotoAI-1；核心的模型 id 與提醒文字開頭仍是 Temoto-1）。 */
+export const TEMOTO_LABEL = 'TemotoAI-1';
 export const TEMOTO_MODELS: readonly { id: MlModelId; color: 'tokiwa' | 'akane' }[] = [
   { id: 'temoto-1-tokiwa', color: 'tokiwa' },
   { id: 'temoto-1-akane', color: 'akane' },

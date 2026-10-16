@@ -911,10 +911,21 @@
     margin-right: var(--space-1);
   }
 
+  /* 篩選：未選中是透明膠囊，選中反白（與 .btn 的 aria-pressed 樣式相同）。 */
   .filter {
-    min-height: 26px;
-    padding: 0 var(--space-2);
+    min-height: 28px;
+    padding: 0 11px;
     font-size: var(--fs-xs);
+  }
+
+  .filter:not([aria-pressed='true']) {
+    background: transparent;
+    color: var(--c-text-dim);
+  }
+
+  .filter:not([aria-pressed='true']):hover:not(:disabled) {
+    background: var(--c-control);
+    color: var(--c-text);
   }
 
   .group + .group {
@@ -953,9 +964,15 @@
     display: flex;
     align-items: flex-start;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-2);
-    border-bottom: 1px solid var(--c-border);
-    border-radius: var(--radius-sm);
+    padding: 10px 12px 10px 14px;
+    border-bottom: 1px solid transparent;
+    border-radius: var(--radius-item);
+    transition: background-color 120ms ease;
+  }
+
+  /* 搜尋結果列（Claude Design 定案）：圓角 16，不畫分隔線，滑過淡底。 */
+  .item:hover {
+    background: var(--c-control);
   }
 
   .list > li:last-child > .item,

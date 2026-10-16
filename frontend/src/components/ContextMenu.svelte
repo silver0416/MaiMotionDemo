@@ -15,6 +15,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
+  import { popOut } from '../lib/pop';
 
   interface Props {
     items: MenuItem[];
@@ -106,21 +107,23 @@
 
 <div
   bind:this={menu}
-  class="menu"
+  class="menu pop"
   role="menu"
   tabindex="-1"
   aria-label={label}
   style={`left:${left}px;top:${top}px`}
   onkeydown={onKeydown}
   oncontextmenu={(event) => event.preventDefault()}
+  out:popOut|global
 >
-  {#each items as item (item.id)}
+  {#each items as item, index (item.id)}
     {#if item.divider}
-      <div class="menu-divider" role="separator"></div>
+      <div class="pop-divider" role="separator"></div>
     {/if}
     <button
-      class="menu-item"
+      class="pop-item"
       class:is-danger={item.danger}
+      style={`--i:${index}`}
       role="menuitem"
       disabled={item.disabled}
       onclick={() => onSelect(item.id)}
@@ -135,66 +138,23 @@
   .menu {
     position: fixed;
     z-index: 50;
-    display: flex;
-    flex-direction: column;
-    min-width: 148px;
-    padding: var(--space-1);
-    background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 32px #000000;
-    animation: menu-in 120ms cubic-bezier(0.2, 0.9, 0.3, 1);
+    min-width: 184px;
   }
 
-  @keyframes menu-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .menu {
-      animation: none;
-    }
-  }
-
-  .menu-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: 30px;
-    padding: 0 var(--space-2);
-    font-size: var(--fs-sm);
-    color: var(--c-text);
-    text-align: left;
-    background: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-  }
-
-  .menu-item:hover:not(:disabled),
-  .menu-item:focus-visible {
-    background: var(--c-control-hover);
-  }
-
-  .menu-item:focus-visible {
-    outline-offset: -2px;
-  }
-
-  .menu-divider {
-    height: 1px;
-    margin: var(--space-1) 0;
-    background: var(--c-border);
-  }
-
-  .menu-item.is-danger {
+  .pop-item.is-danger {
     color: var(--c-danger);
   }
 
-  .menu-item:disabled {
+  .pop-item.is-danger:hover:not(:disabled),
+  .pop-item.is-danger:focus-visible {
+    background: var(--c-danger-bg);
+  }
+
+  .pop-item :global(.icon) {
     color: var(--c-text-dim);
-    cursor: not-allowed;
+  }
+
+  .pop-item.is-danger :global(.icon) {
+    color: inherit;
   }
 </style>

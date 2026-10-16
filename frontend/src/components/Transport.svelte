@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { bounce } from '../lib/press';
   import { tick as nextTick } from 'svelte';
   import Icon from './Icon.svelte';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import { MODE_LABEL } from '../lib/contract';
   import { formatClock } from '../lib/format';
+  import { segmented } from '../lib/segmented';
   import { sampleWithStarts } from '../lib/motion';
   import { markers } from '../state/markers.svelte';
   import { playback, RATES } from '../state/playback.svelte';
@@ -400,19 +402,29 @@
 
 <div class="transport">
   <div class="row row-wrap">
-    <button class="btn btn--primary" onclick={() => playback.toggle()} disabled={!ready}>
-      <Icon name={playback.playing ? 'pause' : 'play'} />
-      {playback.playing ? '暫停' : '播放'}
+    <!-- 播放／暫停：三角拆成兩半以 clip-path 變形成雙槓，文字上下交替（Claude Design「互動動畫」2c）。 -->
+    <button
+      class="btn btn--primary play-btn"
+      class:is-playing={playback.playing}
+      onclick={() => playback.toggle()}
+      disabled={!ready}
+      aria-label={playback.playing ? '暫停' : '播放'}
+      title="播放／暫停（Space）"
+    >
+      <span class="morph" aria-hidden="true"><span class="morph-a"></span><span class="morph-b"></span></span>
+      <span class="swap" aria-hidden="true"><span class="swap-play">播放</span><span class="swap-pause">暫停</span></span>
     </button>
-    <button class="btn" onclick={() => playback.reset()} disabled={!ready}><Icon name="skip-back" />重置</button>
+    <button class="btn" use:bounce={-1} onclick={() => playback.reset()} disabled={!ready}><Icon name="skip-back" />重置</button>
     <button
       class="btn btn--icon"
+      use:bounce={-1}
       onclick={() => playback.nudge(-0.1)}
       disabled={!ready}
       aria-label="後退 0.1 秒"><Icon name="chevron-left" />0.1s</button
     >
     <button
       class="btn btn--icon"
+      use:bounce={1}
       onclick={() => playback.nudge(0.1)}
       disabled={!ready}
       aria-label="前進 0.1 秒">0.1s<Icon name="chevron-right" /></button
@@ -434,11 +446,10 @@
 
     <span class="spacer"></span>
 
-    <div class="row" role="group" aria-label="播放倍率">
+    <div class="seg seg--bare seg--mono seg--fit rates" role="group" aria-label="播放倍率" use:segmented>
       {#each RATES as rate (rate)}
         <button
-          class="btn btn--icon"
-          class:is-active={playback.rate === rate}
+          class="seg-btn"
           aria-pressed={playback.rate === rate}
           onclick={() => playback.setRate(rate)}>{rate}×</button
         >
@@ -448,7 +459,7 @@
 
   <!-- 三條橫向軌道共用同一條座標軸：標籤列、時間軸標記層、片段把手列都左右內縮半個滑鈕寬度，
        正好等於滑鈕中心的移動範圍，因此標籤、大頭針與把手永遠對齊。 -->
-  <div class="timeline" class:is-dimmed={dimOutside}>
+  <div class="timeline" class:is-dimmed={dimOutside} class:is-playing={playback.playing}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="marker-lane"
@@ -706,6 +717,88 @@
     font-size: var(--fs-lg);
     font-weight: 700;
     letter-spacing: 0.02em;
+    color: var(--c-text-strong);
+  }
+
+  .play-btn {
+    gap: 7px;
+    padding: 0 16px 0 14px;
+  }
+
+  .morph {
+    position: relative;
+    flex: none;
+    width: 12px;
+    height: 12px;
+  }
+
+  .morph-a,
+  .morph-b {
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    transition: clip-path 220ms var(--ease-out);
+  }
+
+  .morph-a {
+    clip-path: polygon(8% 0%, 54% 25%, 54% 75%, 8% 100%);
+  }
+
+  .morph-b {
+    clip-path: polygon(54% 25%, 100% 50%, 100% 50%, 54% 75%);
+  }
+
+  .is-playing .morph-a {
+    clip-path: polygon(8% 0%, 40% 0%, 40% 100%, 8% 100%);
+  }
+
+  .is-playing .morph-b {
+    clip-path: polygon(64% 0%, 96% 0%, 96% 100%, 64% 100%);
+  }
+
+  .swap {
+    position: relative;
+    display: inline-block;
+    width: 2em;
+    height: 18px;
+    overflow: hidden;
+    line-height: 18px;
+  }
+
+  .swap > span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition:
+      opacity 150ms ease,
+      transform 180ms var(--ease-out);
+  }
+
+  .swap-pause,
+  .is-playing .swap-play {
+    opacity: 0;
+  }
+
+  .swap-pause {
+    transform: translateY(10px);
+  }
+
+  .is-playing .swap-play {
+    transform: translateY(-10px);
+  }
+
+  .is-playing .swap-pause {
+    opacity: 1;
+    transform: none;
+  }
+
+  .rates {
+    flex: none;
+  }
+
+  .rates .seg-btn {
+    min-width: 38px;
+    height: 30px;
   }
 
   .total {
@@ -786,8 +879,8 @@
   .marker.is-dragging {
     z-index: 2;
     color: var(--c-on-invert);
-    background: var(--c-text);
-    border-color: var(--c-text);
+    background: var(--c-invert-bg);
+    border-color: var(--c-invert-bg);
   }
 
   .marker:focus-visible {
@@ -829,10 +922,10 @@
     gap: var(--space-1);
     width: 240px;
     padding: var(--space-1);
-    background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 32px #000000;
+    background: var(--c-panel);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-pop);
+    box-shadow: var(--shadow-pop);
     cursor: default;
   }
 
@@ -1020,14 +1113,24 @@
     background: transparent;
   }
 
+  /* 播放中拖曳點放大到原尺寸，暫停時縮為 0.75。 */
   .seek::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
     width: var(--thumb);
     height: var(--thumb);
+    margin-top: 0;
     border: 2px solid var(--c-bg);
     border-radius: 50%;
-    background: var(--c-text);
+    background: var(--c-text-strong);
+    box-shadow: none;
+    transform: scale(0.75);
+    transition: transform 160ms var(--ease-out);
+  }
+
+  .timeline.is-playing .seek::-webkit-slider-thumb,
+  .seek:active::-webkit-slider-thumb {
+    transform: scale(1);
   }
 
   .seek:disabled::-webkit-slider-thumb {
@@ -1181,7 +1284,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .lane-hint {
+    .lane-hint,
+    .morph-a,
+    .morph-b,
+    .swap > span,
+    .seek::-webkit-slider-thumb {
       transition: none;
     }
   }

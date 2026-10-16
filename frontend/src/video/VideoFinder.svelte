@@ -437,46 +437,54 @@
   .progress {
     height: 4px;
     background: var(--c-control);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--c-right);
+    border-radius: var(--radius-pill);
+    background: var(--c-primary);
   }
 
   .results {
     border-bottom: 1px solid var(--c-border);
   }
 
+
   .empty {
     padding: var(--space-4);
   }
 
-  .result {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--c-border);
+  /* 影片卡：圓角 16 的列，滑過淡底；正在用的那支凸起。 */
+  .results {
+    padding: 0 10px 12px;
   }
 
-  .result:last-child {
-    border-bottom: none;
+  .result {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    border-radius: var(--radius-item);
+    transition: background-color 120ms ease;
+  }
+
+  .result:hover {
+    background: var(--c-control);
   }
 
   .result.is-current {
-    background: var(--c-control);
+    background: var(--c-control-hover);
   }
 
   .thumb {
-    width: 96px;
-    height: 54px;
+    width: 88px;
+    height: 50px;
     object-fit: cover;
-    border-radius: var(--radius-sm);
-    background: var(--c-control);
+    border-radius: 10px;
+    background: var(--c-bg);
   }
 
   .result-text {
@@ -513,9 +521,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin: 0 calc(-1 * var(--space-2));
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: 8px 8px 8px 14px;
+    border-radius: var(--radius-item);
+    background: var(--c-control);
   }
 
   .library-item > .result-text {
@@ -524,7 +532,7 @@
 
   .library-item:hover,
   .library-item.is-current {
-    background: var(--c-control);
+    background: var(--c-control-hover);
   }
 
   .library-item.is-deleting {
@@ -536,7 +544,7 @@
     padding: 0;
     background: none;
     border: none;
-    color: var(--c-right);
+    color: var(--c-primary);
     text-align: left;
     cursor: pointer;
   }

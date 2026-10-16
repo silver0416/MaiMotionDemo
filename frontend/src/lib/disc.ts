@@ -1,6 +1,6 @@
 import type { Point } from './types';
 
-/** resource/maimai.png 的原始像素尺寸；SVG viewBox 直接用這個座標系。 */
+/** SVG viewBox 的座標系（沿用原本 resource/maimai.png 的像素尺寸；盤面底圖已改為 DiscBoard 向量繪製）。 */
 export const IMAGE_WIDTH = 1014;
 export const IMAGE_HEIGHT = 980;
 
@@ -16,7 +16,7 @@ export interface Calibration {
 /**
  * 由 resource/maimai.png 的白色外圈以最小平方圓擬合得到：
  * 圓心 (500.50, 485.50)、半徑 480.03 像素。
- * 盤面位置一律由 Rust 座標換算，這組數值只是把背景圖對齊上去。
+ * 盤面位置一律由 Rust 座標換算；底圖（DiscBoard）也以這組圓心與半徑繪製，兩者永遠對齊。
  */
 export const DEFAULT_CALIBRATION: Calibration = {
   centerX: 0.4936,

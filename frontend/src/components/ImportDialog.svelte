@@ -118,7 +118,7 @@
     <h2 id="import-title">匯入標記檔</h2>
     <span class="muted small">{items.length} 份</span>
     <span class="spacer"></span>
-    <button class="btn btn--icon" onclick={() => (importRequest.open = false)} aria-label="關閉">
+    <button class="btn btn--round" onclick={() => (importRequest.open = false)} aria-label="關閉">
       <Icon name="x" />
     </button>
   </header>
@@ -243,9 +243,9 @@
     padding: 0;
     color: var(--c-text);
     background: var(--c-panel);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 24px 64px #000000;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
   }
 
   .dialog[open] {
@@ -389,5 +389,14 @@
     margin: 0;
     padding: 0;
     border: none;
+  }
+
+  /* Claude Design 定案的對話框：標題列左側多留空間，標題用顯示字型。 */
+  .dialog-head {
+    padding: 16px 16px 16px 24px;
+  }
+
+  .dialog-foot {
+    padding: 14px 16px 14px 20px;
   }
 </style>

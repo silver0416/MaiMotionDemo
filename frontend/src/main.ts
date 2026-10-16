@@ -1,6 +1,19 @@
+import './styles/fonts.css';
 import './styles/app.css';
 import { mount } from 'svelte';
 import { isVideoWindow } from './lib/video';
+import { theme } from './lib/theme.svelte';
+
+// 外觀在掛載前套上，畫面不會先閃一次預設配色。主視窗與影片視窗共用。
+theme.start();
+
+// 停用瀏覽器內建的右鍵選單（使用者要求）。有自訂選單的地方（譜面紀錄、資料夾／標籤、時間軸標籤、
+// 標註清單、影片清單）各自處理 contextmenu 再開自己的選單，這裡只擋掉預設行為，不影響它們。
+// 開發模式按住 Shift 右鍵仍可叫出內建選單（檢查元素用）。
+window.addEventListener('contextmenu', (event) => {
+  if (import.meta.env.DEV && event.shiftKey) return;
+  event.preventDefault();
+});
 
 const target = document.getElementById('app');
 if (!target) throw new Error('找不到掛載節點 #app');

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dropdown from './Dropdown.svelte';
   import Icon from './Icon.svelte';
   import LaneGraph, { laneColumnWidth } from './LaneGraph.svelte';
   import LineChips from './LineChips.svelte';
@@ -282,30 +283,26 @@
       <span class="field-hint">和{annotation.lineName(active.parent)}不同 {info?.diff ?? 0} 步</span>
     </label>
     <div class="links">
-      <label class="field">
+      <div class="field">
         <span class="field-label">從哪條線分出</span>
-        <select
-          class="select"
+        <Dropdown
+          options={annotation.linesAtTime(active.from, active.id).map((line) => ({ id: line, label: annotation.lineName(line) }))}
           value={active.parent}
-          onchange={(event) => setLink(active.id, { parent: event.currentTarget.value })}
-        >
-          {#each annotation.linesAtTime(active.from, active.id) as line (line)}
-            <option value={line}>{annotation.lineName(line)}</option>
-          {/each}
-        </select>
-      </label>
-      <label class="field">
+          onChange={(next) => setLink(active.id, { parent: next })}
+          label="從哪條線分出"
+          align="start"
+        />
+      </div>
+      <div class="field">
         <span class="field-label">併入哪條線</span>
-        <select
-          class="select"
+        <Dropdown
+          options={annotation.linesAtTime(active.to, active.id).map((line) => ({ id: line, label: annotation.lineName(line) }))}
           value={active.merge}
-          onchange={(event) => setLink(active.id, { merge: event.currentTarget.value })}
-        >
-          {#each annotation.linesAtTime(active.to, active.id) as line (line)}
-            <option value={line}>{annotation.lineName(line)}</option>
-          {/each}
-        </select>
-      </label>
+          onChange={(next) => setLink(active.id, { merge: next })}
+          label="併入哪條線"
+          align="start"
+        />
+      </div>
     </div>
     <div class="field">
       <span class="field-label">範圍</span>

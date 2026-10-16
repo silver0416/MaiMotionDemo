@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { segmented } from '../lib/segmented';
   import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
   import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
@@ -150,11 +151,10 @@
       <p class="field-hint" style="margin: 2px 0 var(--space-2)">
         核心輸出的 33 個 simai 可指名落點；預設關閉，需要對照時再打開。
       </p>
-      <div class="row row-wrap" role="group" aria-labelledby="sensor-mode-label">
+      <div class="seg" role="group" aria-labelledby="sensor-mode-label" use:segmented>
         {#each SENSOR_MODES as item (item.id)}
           <button
-            class="btn"
-            class:is-active={view.sensorMode === item.id}
+            class="seg-btn"
             aria-pressed={view.sensorMode === item.id}
             onclick={() => (view.sensorMode = item.id)}>{item.label}</button
           >
@@ -252,16 +252,14 @@
 
   <section class="section">
     <div class="section-title"><span>音符呈現</span></div>
-    <div class="row row-wrap" role="group" aria-label="音符顯示方式">
+    <div class="seg" role="group" aria-label="音符顯示方式" use:segmented>
       <button
-        class="btn"
-        class:is-active={view.noteMode === 'window'}
+        class="seg-btn"
         aria-pressed={view.noteMode === 'window'}
         onclick={() => (view.noteMode = 'window')}>依時間出現</button
       >
       <button
-        class="btn"
-        class:is-active={view.noteMode === 'all'}
+        class="seg-btn"
         aria-pressed={view.noteMode === 'all'}
         onclick={() => (view.noteMode = 'all')}>全部同時顯示</button
       >
@@ -294,7 +292,7 @@
   <section class="section">
     <div class="section-title"><span>盤面校準與縮放</span></div>
     <p class="field-hint" style="margin-bottom: var(--space-3)">
-      只調整背景圖對齊，不影響座標與搜尋結果。
+      盤面底圖是向量繪製、和音符一起移動；這裡只改變畫面上的位置與大小，不影響座標與搜尋結果。
     </p>
 
     <label class="check" style="margin-bottom: var(--space-3)">

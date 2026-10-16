@@ -18,7 +18,8 @@
   import Icon, { type IconName } from './components/Icon.svelte';
   import SkeletonList from './components/SkeletonList.svelte';
   import { afterPaint } from './lib/frame';
-  import { reducedMotion, squash } from './lib/press';
+  import { reducedMotion } from './lib/press';
+  import { segmented } from './lib/segmented';
   import { playback } from './state/playback.svelte';
   import { errorLog } from './state/errorLog.svelte';
   import { markers } from './state/markers.svelte';
@@ -347,8 +348,7 @@
         >
           <button
             id="records-expand"
-            class="capsule-btn"
-            use:squash
+            class="capsule-btn press-squash"
             onclick={() => setCollapsed(false)}
             aria-label="展開譜面紀錄"
             title="展開譜面紀錄"
@@ -423,11 +423,10 @@
 
     <div class="column side-wrap">
       <aside class="pane side-column">
-        <div class="tabbar" role="group" aria-label="側欄面板">
+        <div class="tabbar seg" role="group" aria-label="側欄面板" use:segmented>
           {#each TABS as item (item.id)}
             <button
-              class="tab"
-              class:is-active={tab === item.id}
+              class="tab seg-btn"
               aria-pressed={tab === item.id}
               onclick={() => (tab = item.id)}
             >
@@ -626,54 +625,14 @@
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  /* 第一層：分段控制。整條是一個凹槽，選中的分頁是浮起的膠囊；
+  /* 第一層：分段控制。整條是一個凹槽，選中的分頁是滑動的反白膠囊；
      第二層（例如標註分頁裡的子頁）改用底線分頁，兩層一眼就分得出來。 */
   .tabbar {
-    display: flex;
-    gap: 2px;
     margin: var(--space-2);
-    padding: 3px;
-    background: var(--c-bg);
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius-md);
   }
 
   .tab {
-    display: inline-flex;
-    flex: 1 1 0;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
-    min-width: 0;
-    min-height: 28px;
-    padding: 0 var(--space-2);
-    color: var(--c-text-dim);
-    font: inherit;
-    font-size: var(--fs-sm);
-    white-space: nowrap;
-    background: none;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition:
-      background-color 120ms ease,
-      color 120ms ease;
-  }
-
-  .tab:hover {
-    color: var(--c-text);
-    background: var(--c-control);
-  }
-
-  .tab.is-active {
-    color: var(--c-on-invert);
-    font-weight: 600;
-    background: var(--c-text);
-  }
-
-  .tab:focus-visible {
-    outline: 2px solid var(--c-focus);
-    outline-offset: 1px;
+    padding: 0 var(--space-1);
   }
 
   .side-main {

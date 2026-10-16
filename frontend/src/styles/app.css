@@ -1,4 +1,6 @@
 /* MaiMotionDemo 前端樣式 tokens。
+   依 Claude Design「配色與字體組合」定案：按鈕與控制項一律膠囊（全圓角、無厚度、無外框），
+   選中以反白或主色標示；四組配色以 <html data-palette> 切換，見 lib/theme.svelte.ts。
    不使用漸層、半透明面板、巢狀卡片與左側強調邊框；所有面板為不透明純色。 */
 
 :root {
@@ -11,6 +13,14 @@
 
   --radius-sm: 4px;
   --radius-md: 6px;
+  --radius-lg: 8px;
+  /* 清單列、候選方案、影片卡等可點的列。 */
+  --radius-item: 16px;
+  /* 浮出的選單、通知。 */
+  --radius-pop: 18px;
+  /* 對話框。 */
+  --radius-dialog: 24px;
+  --radius-pill: 999px;
 
   --fs-xs: 11px;
   --fs-sm: 12px;
@@ -21,8 +31,16 @@
   --lh-tight: 1.35;
   --lh-normal: 1.6;
 
-  --font-sans: "Segoe UI", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", "Noto Sans Mono", monospace;
+  /* 互動動畫的曲線，見 Claude Design「互動動畫」。 */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
+
+  --font-cjk: 'Noto Sans TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+
+  /* 1a 現狀：沒有指定配色時的底。 */
+  --font-sans: 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: 'Cascadia Mono', 'Consolas', 'Noto Sans Mono', var(--font-cjk), monospace;
 
   --c-bg: #0b0d11;
   --c-panel: #14181e;
@@ -38,12 +56,138 @@
   --c-right: #4fb8f5;
   --c-accent: #f0b429;
   --c-danger: #ef5f78;
+  --c-danger-bg: #3a1c24;
+
+  --c-primary: #4fb8f5;
+  --c-on-primary: #0b0d11;
+  --c-on-danger: #0b0d11;
+  /* 反白（選中的分段、分頁）。 */
+  --c-invert-bg: #e9edf4;
+  --c-on-invert: #0b0d11;
+  /* L／R 色塊上的字。 */
+  --c-on-hand: #0b0d11;
   --c-focus: #8fd2ff;
 
-  --c-on-invert: #0b0d11;
+  /* Temoto-1 兩張選項卡：常磐色（ときわいろ）與茜色（あかねいろ）。深色底提高明度維持對比。 */
+  --c-tokiwa: #3fae76;
+  --c-akane: #e0565c;
+  /* 選中時填滿整張卡的顏色：常磐色 #007b43、茜色 #b7282e 原值，配白字。 */
+  --c-tokiwa-deep: #007b43;
+  --c-akane-deep: #b7282e;
 
-  /* 讓原生捲軸、輸入框拉桿等瀏覽器元件使用深色外觀。 */
+  --c-scrim: #050608;
+  --shadow-pop: 0 12px 32px #000000;
+  --shadow-dialog: 0 24px 64px #000000;
+  --shadow-knob: 0 1px 4px #00000059;
+
   color-scheme: dark;
+}
+
+/* 1b 機台霓虹：偏藍紫的黑，洋紅與青更飽和，標題與數字用 Chakra Petch／JetBrains Mono。 */
+:root[data-palette='neon'] {
+  --font-sans: var(--font-cjk);
+  --font-display: 'Chakra Petch', var(--font-cjk);
+  --font-mono: 'JetBrains Mono', var(--font-cjk), monospace;
+
+  --c-bg: #0a0a14;
+  --c-panel: #13131f;
+  --c-control: #1c1c2c;
+  --c-control-hover: #26263a;
+  --c-border: #2a2a3e;
+  --c-border-strong: #3c3c56;
+  --c-text: #ececf6;
+  --c-text-dim: #a3a3bd;
+  --c-text-strong: #ffffff;
+
+  --c-left: #ff5fb3;
+  --c-right: #3fd6f0;
+  --c-accent: #ffd23f;
+  --c-danger: #ff6b8a;
+  --c-danger-bg: #3a1a2a;
+
+  --c-primary: #3fd6f0;
+  --c-on-primary: #0a0a14;
+  --c-on-danger: #0a0a14;
+  --c-invert-bg: #ececf6;
+  --c-on-invert: #0a0a14;
+  --c-on-hand: #0a0a14;
+  --c-focus: #8ae8f8;
+
+  --c-scrim: #040409;
+}
+
+/* 1c 暖墨：暖灰底，珊瑚與青綠，標題用楷體（霞鶩文楷，沒有時退回標楷體）、數字用 IBM Plex Mono。 */
+:root[data-palette='ink'] {
+  --font-sans: var(--font-cjk);
+  --font-display: 'LXGW WenKai TC', 'DFKai-SB', 'BiauKai', 'KaiTi', var(--font-cjk);
+  --font-mono: 'IBM Plex Mono', var(--font-cjk), monospace;
+
+  --c-bg: #100e0c;
+  --c-panel: #1a1714;
+  --c-control: #24201c;
+  --c-control-hover: #2f2a25;
+  --c-border: #332d27;
+  --c-border-strong: #4a4239;
+  --c-text: #efe9e1;
+  --c-text-dim: #ab9f92;
+  --c-text-strong: #fffaf3;
+
+  --c-left: #f47a6b;
+  --c-right: #4cc3b0;
+  --c-accent: #f2b350;
+  --c-danger: #f0705f;
+  --c-danger-bg: #3a201a;
+
+  --c-primary: #4cc3b0;
+  --c-on-primary: #100e0c;
+  --c-on-danger: #100e0c;
+  --c-invert-bg: #efe9e1;
+  --c-on-invert: #100e0c;
+  --c-on-hand: #100e0c;
+  --c-focus: #8fded1;
+
+  --c-scrim: #070605;
+}
+
+/* 1d 淺色工作室：淺底適合白天與投影，盤面保持黑；色值加深以維持對比。 */
+:root[data-palette='studio'] {
+  --font-sans: var(--font-cjk);
+  --font-display: 'Space Grotesk', var(--font-cjk);
+  --font-mono: 'DM Mono', var(--font-cjk), monospace;
+
+  --c-bg: #e9e9e6;
+  --c-panel: #f7f7f5;
+  --c-control: #efefec;
+  --c-control-hover: #e3e3df;
+  --c-border: #d6d6d1;
+  --c-border-strong: #bdbdb6;
+  --c-text: #1c1d20;
+  --c-text-dim: #5e6066;
+  --c-text-strong: #000000;
+
+  --c-left: #d63c7a;
+  --c-right: #1f72c9;
+  --c-accent: #d9861a;
+  --c-danger: #c22f45;
+  --c-danger-bg: #f6dfe2;
+
+  --c-primary: #1f72c9;
+  --c-on-primary: #ffffff;
+  --c-on-danger: #ffffff;
+  --c-invert-bg: #1c1d20;
+  --c-on-invert: #f7f7f5;
+  --c-on-hand: #ffffff;
+  --c-focus: #1f72c9;
+
+  --c-tokiwa: #007b43;
+  --c-akane: #b7282e;
+
+  --c-scrim: #7d7d78;
+  --shadow-pop: 0 12px 32px #0000002e;
+  --shadow-dialog: 0 24px 64px #00000040;
+  --shadow-knob: 0 1px 4px #00000040;
+
+  color-scheme: light;
 }
 
 * {
@@ -74,6 +218,7 @@ h2,
 h3,
 h4 {
   margin: 0;
+  font-family: var(--font-display);
   font-weight: 600;
   line-height: var(--lh-tight);
 }
@@ -160,7 +305,8 @@ ul {
   gap: var(--space-2);
 }
 
-/* 控制元件 */
+/* 控制元件：一律膠囊。無外框（保留 1px 透明框線讓高度與舊版一致），
+   一般按鈕是凸起的灰底，主要動作用主色，選中用反白。按下時整顆縮到 0.96。 */
 
 button,
 input,
@@ -174,81 +320,84 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  min-height: 30px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--c-control);
-  color: var(--c-text);
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--c-control-hover);
+  color: var(--c-text-strong);
   font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    filter 120ms ease,
+    transform 90ms ease-out;
 }
 
 .btn:hover:not(:disabled) {
-  background: var(--c-control-hover);
+  background: var(--c-border-strong);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .btn:disabled {
+  background: transparent;
+  border: 1px dashed var(--c-border-strong);
   color: var(--c-text-dim);
+  font-weight: 400;
   cursor: not-allowed;
-  border-color: var(--c-border);
+  opacity: 0.6;
 }
 
 .btn.is-active,
 .btn[aria-pressed='true'] {
-  background: var(--c-text);
-  border-color: var(--c-text);
+  background: var(--c-invert-bg);
   color: var(--c-on-invert);
   font-weight: 600;
 }
 
-/* 選中狀態的 hover 必須比 .btn:hover 更具體，否則會被改成深色底配深色字。 */
+/* 選中狀態的 hover 必須比 .btn:hover 更具體，否則會被改成灰底。 */
 .btn.is-active:hover:not(:disabled),
 .btn[aria-pressed='true']:hover:not(:disabled) {
-  background: var(--c-text-strong);
-  border-color: var(--c-text-strong);
+  background: var(--c-invert-bg);
   color: var(--c-on-invert);
+  filter: brightness(1.08);
 }
 
 .btn--primary {
-  background: var(--c-right);
-  border-color: var(--c-right);
-  color: var(--c-on-invert);
+  background: var(--c-primary);
+  color: var(--c-on-primary);
   font-weight: 600;
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: #74c8fa;
-  border-color: #74c8fa;
-}
-
-.btn--primary:disabled {
-  background: var(--c-control);
-  border-color: var(--c-border);
-  color: var(--c-text-dim);
-  font-weight: 400;
+  background: var(--c-primary);
+  filter: brightness(1.1);
 }
 
 .btn--danger {
   background: var(--c-danger);
-  border-color: var(--c-danger);
-  color: var(--c-on-invert);
+  color: var(--c-on-danger);
   font-weight: 600;
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: #f27e92;
-  border-color: #f27e92;
+  background: var(--c-danger);
+  filter: brightness(1.1);
 }
 
-/* 無填滿按鈕：沒有底色與邊框，hover 才出現淡底，用在側欄這類次要入口。 */
+/* 無填滿按鈕：沒有底色，hover 才出現淡底，用在側欄這類次要入口。 */
 .btn--ghost {
   justify-content: flex-start;
-  background: none;
-  border-color: transparent;
+  background: transparent;
   color: var(--c-text-dim);
+  font-weight: 400;
 }
 
 .btn--ghost:hover:not(:disabled) {
@@ -261,26 +410,79 @@ textarea {
 }
 
 .btn--icon {
-  min-width: 34px;
-  padding: 0 var(--space-2);
+  min-width: 32px;
+  padding: 0 12px;
+}
+
+.btn--round {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  background: var(--c-control);
+  color: var(--c-text);
+}
+
+.btn--round:hover:not(:disabled) {
+  background: var(--c-border-strong);
+}
+
+/* 對話框標題（各對話框的 .dialog-head 內的 h2）。 */
+.dialog-head h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c-text-strong);
 }
 
 .input,
 .select,
 .textarea {
   width: 100%;
-  padding: var(--space-2);
+  min-height: 34px;
+  padding: 0 14px;
   background: var(--c-control);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  color: var(--c-text-strong);
   font-size: var(--fs-sm);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: var(--c-border-strong);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--c-primary);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--c-text-dim);
+}
+
+.select {
+  cursor: pointer;
 }
 
 .textarea {
+  padding: 14px 16px;
+  border-radius: var(--radius-pop);
   font-family: var(--font-mono);
   line-height: 1.7;
   resize: vertical;
   min-height: 120px;
+}
+
+/* 多行輸入（備註等）不用膠囊：圓角 18 的方框，和 .textarea 一致，只是沿用一般字型。 */
+textarea.input {
+  padding: 10px 14px;
+  border-radius: var(--radius-pop);
+  line-height: var(--lh-normal);
 }
 
 .input.is-invalid,
@@ -290,27 +492,560 @@ textarea {
 
 .input--narrow {
   width: 84px;
+  padding: 0 12px;
+  text-align: right;
 }
 
+/* 原生拉桿：8px 膠囊軌道，白心主色框的圓點。填滿的部分由 NumberField 的 .slider-fill 畫。 */
 input[type='range'] {
+  appearance: none;
   width: 100%;
-  accent-color: var(--c-right);
+  height: 28px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
 }
 
-input[type='checkbox'] {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--c-right);
-  cursor: pointer;
+input[type='range']::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--c-control-hover);
 }
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
+  border-radius: var(--radius-pill);
+  background: var(--c-on-primary);
+  border: 4px solid var(--c-primary);
+  box-shadow: var(--shadow-knob);
+  transition: transform 160ms var(--ease-out);
+}
+
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+input[type='range']:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 勾選框一律畫成開關：圓點 220ms 帶微回彈、底色 180ms；按住時圓點拉寬 4px，往移動方向延伸。 */
+input[type='checkbox'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  margin: 1px 0 0;
+  border-radius: var(--radius-pill);
+  background: var(--c-control-hover);
+  cursor: pointer;
+  transition: background-color 180ms ease;
+}
+
+input[type='checkbox']::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--c-text-dim);
+  transition:
+    left 220ms var(--ease-spring),
+    width 140ms var(--ease-out),
+    background-color 180ms ease;
+}
+
+input[type='checkbox']:checked {
+  background: var(--c-primary);
+}
+
+input[type='checkbox']:checked::before {
+  left: 17px;
+  background: var(--c-on-primary);
+}
+
+input[type='checkbox']:active:not(:disabled)::before {
+  width: 18px;
+}
+
+input[type='checkbox']:checked:active:not(:disabled)::before {
+  left: 13px;
+}
+
+input[type='checkbox']:disabled {
+  background: transparent;
+  outline: 1px dashed var(--c-border-strong);
+  outline-offset: -1px;
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+input[type='checkbox']:disabled::before {
+  background: var(--c-border-strong);
+}
+
+input[type='checkbox']:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+/* 單選：實心主色圓配白點；未選是凹槽圓。 */
+input[type='radio'] {
+  appearance: none;
+  flex: none;
+  display: inline-grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  border-radius: var(--radius-pill);
+  background: var(--c-control);
+  border: 1px solid var(--c-border-strong);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+input[type='radio']::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--c-on-primary);
+  transform: scale(0);
+  transition: transform 200ms var(--ease-spring);
+}
+
+input[type='radio']:checked {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+}
+
+input[type='radio']:checked::before {
+  transform: scale(1);
+}
+
+/* 分段控制：凹槽裡放等寬膠囊，選中項反白。掛上 use:segmented 後，反白膠囊由容器的 ::before 畫，
+   在項目之間滑動（240ms，前緣先到、後緣跟上）；文字顏色 160ms，新選項延遲 60ms 等膠囊到位。 */
+.seg {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--c-control);
+}
+
+.seg--bare {
+  background: transparent;
+}
+
+.seg.has-seg::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  bottom: 3px;
+  left: var(--seg-l, 3px);
+  right: var(--seg-r, 3px);
+  border-radius: var(--radius-pill);
+  background: var(--c-invert-bg);
+  opacity: var(--seg-o, 0);
+  transition:
+    left var(--seg-ld, 0ms) var(--ease-out),
+    right var(--seg-rd, 0ms) var(--ease-out),
+    opacity 120ms ease;
+}
+
+/* 第二層分段（面板內的子頁）：沒有凹槽，滑動膠囊用淡色，選中字只加深，與第一層的反白區分。 */
+.seg--soft {
+  padding: 0;
+  background: transparent;
+}
+
+.seg--soft.has-seg::before {
+  top: 0;
+  bottom: 0;
+  background: var(--c-control-hover);
+}
+
+.seg-btn {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.seg-btn:hover:not(:disabled) {
+  color: var(--c-text-strong);
+}
+
+.seg-btn[aria-pressed='true'],
+.seg-btn[aria-selected='true'],
+.seg-btn[aria-checked='true'],
+.seg-btn.is-active {
+  color: var(--c-on-invert);
+  transition: color 160ms ease 60ms;
+}
+
+.seg-btn[aria-pressed='true']:hover,
+.seg-btn[aria-selected='true']:hover,
+.seg-btn[aria-checked='true']:hover,
+.seg-btn.is-active:hover {
+  color: var(--c-on-invert);
+}
+
+/* 動作尚未掛上（或伺服器端算繪）時，直接用底色標出選中項。 */
+.seg:not(.has-seg) > .seg-btn[aria-pressed='true'],
+.seg:not(.has-seg) > .seg-btn[aria-selected='true'],
+.seg:not(.has-seg) > .seg-btn[aria-checked='true'],
+.seg:not(.has-seg) > .seg-btn.is-active {
+  background: var(--c-invert-bg);
+}
+
+.seg--soft > .seg-btn {
+  height: 30px;
+  font-weight: 500;
+}
+
+.seg--soft > .seg-btn[aria-pressed='true'],
+.seg--soft > .seg-btn[aria-selected='true'],
+.seg--soft > .seg-btn[aria-checked='true'],
+.seg--soft > .seg-btn.is-active,
+.seg--soft > .seg-btn[aria-pressed='true']:hover,
+.seg--soft > .seg-btn.is-active:hover {
+  color: var(--c-text-strong);
+  font-weight: 600;
+}
+
+.seg--soft:not(.has-seg) > .seg-btn[aria-pressed='true'],
+.seg--soft:not(.has-seg) > .seg-btn.is-active {
+  background: var(--c-control-hover);
+}
+
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.seg-btn:focus-visible {
+  outline-offset: 1px;
+}
+
+.seg--mono .seg-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.seg--fit .seg-btn {
+  flex: 0 0 auto;
+}
+
+.seg--sm .seg-btn {
+  height: 24px;
+  padding: 0 8px;
+}
+
+/* 動作按鈕組：凹槽裡放沒有選中狀態的透明圓角鈕（逐格、微調、檢查這類一排相關動作）。 */
+.btn-group {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--c-control);
+}
+
+.btn-group--fill {
+  display: flex;
+}
+
+.btn-group-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    transform 90ms ease-out;
+}
+
+.btn-group--fill .btn-group-item {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+}
+
+.btn-group.mono .btn-group-item {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.btn-group-item:hover:not(:disabled) {
+  background: var(--c-control-hover);
+}
+
+.btn-group-item:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.btn-group-item:disabled {
+  color: var(--c-text-dim);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 浮出面板（下拉選單、右鍵選單、浮動面板）：圓角 18、面板色、陰影。
+   開啟：淡入 140ms ease-out；下移 4px、由 0.97 放大到 1，180ms。項目逐一延遲 15ms、起始 40ms。
+   收合由 lib/pop.ts 的 popOut 處理。 */
+.pop {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--c-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-pop);
+  box-shadow: var(--shadow-pop);
+  animation:
+    pop-fade 140ms ease-out,
+    pop-in 180ms var(--ease-out);
+}
+
+.pop-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  animation:
+    pop-fade 160ms ease-out both,
+    pop-item-in 200ms var(--ease-out) both;
+  animation-delay: calc(40ms + var(--i, 0) * 15ms);
+  transition: background-color 120ms ease;
+}
+
+.pop-item:hover:not(:disabled),
+.pop-item:focus-visible {
+  background: var(--c-control);
+}
+
+.pop-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.pop-item:disabled {
+  color: var(--c-text-dim);
+  cursor: not-allowed;
+}
+
+.pop-divider {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--c-border);
+}
+
+@keyframes pop-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
+@keyframes pop-item-in {
+  from {
+    transform: translateY(-3px);
+  }
+}
+
+/* 選單裡的勾選記號：線條畫出 160ms，延遲 120ms。 */
+.check-draw path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 160ms var(--ease-out) 120ms forwards;
+}
+
+@keyframes check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 評分方式選項卡（參數頁）：只放大字名稱，顏色由右下角的扇形漸層呈現（使用者指定，例外於「不用漸層」）。
+   點選時，模型色由右下角展開填滿整張卡（clip-path 圓形放大），底色全部不透明。
+   Temoto-1 兩張卡只用常磐色與茜色區分。用法：
+   <button class="model-card model-card--tokiwa" role="radio" aria-checked=…><span class="model-card-name">Temoto-1</span></button> */
+.model-card {
+  --model: var(--c-primary);
+  --model-fill: var(--c-primary);
+  --on-model: var(--c-on-primary);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  min-height: 72px;
+  padding: 12px 16px;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--radius-item);
+  background: var(--c-control);
+  color: var(--c-text-strong);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+/* 扇形：右下角一層原色（常磐色 #007b43、茜色 #b7282e 原值）的四分之一圓（使用者指定）。
+   用真正的圓（border-radius）畫、由卡片的 overflow 裁成四分之一：radial-gradient 的硬邊不會反鋸齒，
+   邊緣看起來會有鋸齒。半徑約為卡片寬度的 31%（卡片是 inline-size 容器，用 cqi）。 */
+.model-card::before {
+  content: '';
+  position: absolute;
+  right: -31cqi;
+  bottom: -31cqi;
+  z-index: -2;
+  width: 62cqi;
+  height: 62cqi;
+  border-radius: 50%;
+  background: var(--model-fan, var(--model-fill));
+  transition: filter 160ms ease;
+}
+
+/* 填滿層：平常縮成右下角一點，選中時展開蓋滿。 */
+.model-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--model-fill);
+  clip-path: circle(0% at 100% 100%);
+  transition: clip-path 460ms var(--ease-out);
+}
+
+.model-card--tokiwa {
+  --model: var(--c-tokiwa);
+  --model-fill: var(--c-tokiwa-deep);
+  --on-model: #ffffff;
+}
+
+.model-card--akane {
+  --model: var(--c-akane);
+  --model-fill: var(--c-akane-deep);
+  --on-model: #ffffff;
+}
+
+.model-card:hover:not(:disabled)::before {
+  filter: brightness(1.12);
+}
+
+.model-card:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.model-card[aria-pressed='true']::after,
+.model-card[aria-checked='true']::after,
+.model-card.is-active::after {
+  clip-path: circle(150% at 100% 100%);
+}
+
+.model-card-name {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: color 200ms ease 120ms;
+}
+
+/* 側欄拉窄時名稱不斷行：卡片本身當容器，太窄就縮小字級。 */
+.model-card {
+  container-type: inline-size;
+}
+
+@container (max-width: 132px) {
+  .model-card-name {
+    font-size: 16px;
+  }
+}
+
+@container (max-width: 104px) {
+  .model-card-name {
+    font-size: 13px;
+  }
+}
+
+.model-card[aria-pressed='true'] .model-card-name,
+.model-card[aria-checked='true'] .model-card-name,
+.model-card.is-active .model-card-name {
+  color: var(--on-model);
+}
+
+.model-card:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-card::after,
+  .model-card-name {
+    transition: none;
+  }
+}
+
 
 .check {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
-  font-size: var(--fs-sm);
+  gap: 10px;
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 
@@ -375,63 +1110,65 @@ input[type='checkbox'] {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  padding: 1px var(--space-2);
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--radius-sm);
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--c-control-hover);
+  color: var(--c-text);
   font-size: var(--fs-xs);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .badge--live {
-  background: var(--c-right);
-  border-color: var(--c-right);
-  color: var(--c-on-invert);
+  background: var(--c-primary);
+  color: var(--c-on-primary);
 }
 
 .badge--sample {
   background: var(--c-accent);
-  border-color: var(--c-accent);
-  color: var(--c-on-invert);
+  color: var(--c-on-hand);
 }
 
 .badge--danger {
   background: var(--c-danger);
-  border-color: var(--c-danger);
-  color: var(--c-on-invert);
+  color: var(--c-on-danger);
 }
 
 .badge--left {
   background: var(--c-left);
-  border-color: var(--c-left);
-  color: var(--c-on-invert);
+  color: var(--c-on-hand);
 }
 
 .badge--right {
   background: var(--c-right);
-  border-color: var(--c-right);
-  color: var(--c-on-invert);
+  color: var(--c-on-hand);
 }
 
 .badge--quiet {
   background: var(--c-control);
+  color: var(--c-text-dim);
 }
 
+/* 提示框：跟通知同一套，底色混入少量語氣色、框線混入較多，都是不透明的純色。 */
 .alert {
-  padding: var(--space-3);
+  --tone: var(--c-border-strong);
+  padding: var(--space-3) 14px;
   border: 1px solid var(--c-border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-item);
   background: var(--c-control);
   font-size: var(--fs-sm);
   line-height: var(--lh-normal);
 }
 
 .alert--error {
-  border-color: var(--c-danger);
+  background: color-mix(in srgb, var(--c-danger) 14%, var(--c-panel));
+  border-color: color-mix(in srgb, var(--c-danger) 45%, var(--c-panel));
 }
 
 .alert--warn {
-  border-color: var(--c-accent);
+  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-panel));
+  border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-panel));
 }
 
 .alert-title {
@@ -487,15 +1224,16 @@ input[type='checkbox'] {
 
 .bar-track {
   height: 6px;
-  background: var(--c-control);
-  border: 1px solid var(--c-border);
-  border-radius: 999px;
+  background: var(--c-control-hover);
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  background: var(--c-right);
+  border-radius: var(--radius-pill);
+  background: var(--c-primary);
+  transition: width 200ms var(--ease-out);
 }
 
 .linkish {
@@ -505,7 +1243,7 @@ input[type='checkbox'] {
   background: none;
   border: none;
   padding: 0;
-  color: var(--c-right);
+  color: var(--c-primary);
   font-size: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -536,6 +1274,55 @@ html,
 /* 按鈕圖示被按下時壓扁再彈回，見 lib/press.ts。 */
 .is-squashing .icon {
   animation: icon-squash 260ms cubic-bezier(0.3, 0.7, 0.4, 1.4);
+}
+
+/* 收合／展開側欄鈕：按住期間圖示被上下壓扁，放開才帶回彈地彈回原狀（:active 涵蓋滑鼠與空白鍵）。 */
+.press-squash .icon {
+  transition: transform 420ms var(--ease-spring);
+}
+
+.press-squash:active .icon {
+  transform: scale(1.22, 0.5);
+  transition: transform 110ms ease-out;
+}
+
+/* 前後移動鈕的圖示往按下的方向彈一下再回位（帶一點回彈），見 lib/press.ts bounce。 */
+.is-bouncing-left .icon {
+  animation: icon-bounce-left 340ms var(--ease-out);
+}
+
+.is-bouncing-right .icon {
+  animation: icon-bounce-right 340ms var(--ease-out);
+}
+
+@keyframes icon-bounce-left {
+  0% {
+    transform: translateX(0);
+  }
+  35% {
+    transform: translateX(-5px);
+  }
+  70% {
+    transform: translateX(1.5px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes icon-bounce-right {
+  0% {
+    transform: translateX(0);
+  }
+  35% {
+    transform: translateX(5px);
+  }
+  70% {
+    transform: translateX(-1.5px);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
 
 @keyframes icon-squash {
@@ -597,6 +1384,25 @@ html,
 @media (prefers-reduced-motion: reduce) {
   .skeleton {
     animation: none;
+  }
+
+  .press-squash .icon,
+  .press-squash:active .icon {
+    transition-duration: 1ms;
+  }
+
+  .pop,
+  .pop-item,
+  .check-draw path {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+
+  .seg.has-seg::before,
+  input[type='checkbox'],
+  input[type='checkbox']::before,
+  .btn {
+    transition-duration: 1ms;
   }
 
   .skeleton-veil {

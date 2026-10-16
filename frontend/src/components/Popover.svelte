@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, type Snippet } from 'svelte';
+  import { popOut } from '../lib/pop';
 
   interface Props {
     /** 視窗座標；align='end' 時以右緣對齊 x。 */
@@ -64,13 +65,14 @@
 
 <div
   bind:this={panel}
-  class="popover"
+  class="popover pop"
   role="dialog"
   aria-label={label}
   tabindex="-1"
   style={`left:${left}px;top:${top}px;width:${width}px`}
   onkeydown={onKeydown}
   oncontextmenu={(event) => event.preventDefault()}
+  out:popOut|global
 >
   {@render children()}
 </div>
@@ -79,27 +81,6 @@
   .popover {
     position: fixed;
     z-index: 50;
-    display: flex;
-    flex-direction: column;
     max-height: min(420px, calc(100vh - 16px));
-    padding: var(--space-1);
-    background: var(--c-control);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 12px 32px #000000;
-    animation: popover-in 120ms cubic-bezier(0.2, 0.9, 0.3, 1);
-  }
-
-  @keyframes popover-in {
-    from {
-      opacity: 0;
-      transform: translateY(-4px);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .popover {
-      animation: none;
-    }
   }
 </style>

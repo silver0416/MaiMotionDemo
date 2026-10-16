@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { segmented } from '../lib/segmented';
   import { tick } from 'svelte';
   import Icon from './Icon.svelte';
   import MajdataSearchPanel from './MajdataSearchPanel.svelte';
@@ -149,13 +150,12 @@
 >
   <header class="dialog-head">
     <h2 id="search-title">搜尋譜面</h2>
-    <div class="targets" role="tablist" aria-label="搜尋目標">
+    <div class="targets seg" role="tablist" aria-label="搜尋目標" use:segmented>
       {#each TARGETS as item (item.id)}
         <button
           bind:this={tabs[item.id]}
           id={`search-tab-${item.id}`}
-          class="btn target"
-          class:is-active={target === item.id}
+          class="seg-btn target"
           role="tab"
           aria-selected={target === item.id}
           aria-controls={`search-panel-${item.id}`}
@@ -170,7 +170,7 @@
       {/each}
     </div>
     <span class="spacer"></span>
-    <button class="btn btn--icon" onclick={requestClose} disabled={locked} aria-label="關閉">
+    <button class="btn btn--round" onclick={requestClose} disabled={locked} aria-label="關閉">
       <Icon name="x" />
     </button>
   </header>
@@ -224,9 +224,9 @@
     padding: 0;
     color: var(--c-text);
     background: var(--c-panel);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-md);
-    box-shadow: 0 24px 64px #000000;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-dialog);
+    box-shadow: var(--shadow-dialog);
   }
 
   .dialog[open] {
@@ -274,25 +274,8 @@
     border-top: 1px solid var(--c-border);
   }
 
-  .targets {
-    display: flex;
-    gap: 2px;
-    padding: 2px;
-    background: var(--c-bg);
-    border: 1px solid var(--c-border);
-    /* 外框圓角＝按鈕圓角＋內距，兩層弧線才會同心。 */
-    border-radius: calc(var(--radius-md) + 2px);
-  }
-
   .target {
-    min-height: 26px;
-    padding: 0 var(--space-3);
-    font-size: var(--fs-xs);
-    border-color: transparent;
-  }
-
-  .target:not(.is-active) {
-    background: transparent;
+    padding: 0 14px;
   }
 
   .tabpanel {
@@ -320,5 +303,14 @@
     .tabpanel {
       animation: none;
     }
+  }
+
+  /* Claude Design 定案的對話框：標題列左側多留空間，標題用顯示字型。 */
+  .dialog-head {
+    padding: 16px 16px 16px 24px;
+  }
+
+  .dialog-foot {
+    padding: 14px 16px 14px 20px;
   }
 </style>

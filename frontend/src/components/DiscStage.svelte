@@ -1,5 +1,5 @@
 <script lang="ts">
-  import maimaiBackground from '../../../resource/maimai.png';
+  import DiscBoard from './DiscBoard.svelte';
   import {
     BUTTONS,
     IMAGE_HEIGHT,
@@ -52,10 +52,22 @@
   import { formatClock } from '../lib/format';
   import { session } from '../state/session.svelte';
   import { playback } from '../state/playback.svelte';
+  import { reducedMotion } from '../lib/press';
   import { view } from '../state/view.svelte';
   import type { Hand, Note, PalmPlacement, PathSample, Point } from '../lib/types';
 
   const time = $derived(playback.time);
+
+  /** 播放／暫停切換時，盤面中央閃現目前狀態的圖示，放大並淡出（Claude Design「互動動畫」2c）。 */
+  let flash = $state<{ id: number; playing: boolean } | null>(null);
+  let lastPlaying: boolean | null = null;
+  $effect(() => {
+    const playing = playback.playing;
+    if (lastPlaying !== null && playing !== lastPlaying && !reducedMotion()) {
+      flash = { id: (flash?.id ?? 0) + 1, playing };
+    }
+    lastPlaying = playing;
+  });
   const calibration = $derived(view.calibration);
   const center = $derived(centerPx(calibration));
   const discRadius = $derived(radiusPx(calibration));
@@ -405,7 +417,7 @@
   const handMarkerRadius = $derived(len(0.075));
   // 右手方框畫得比左手圓稍大，交接時兩手位置重疊也看得出兩個標記。
 
-  // 盤面圓幾乎佔滿背景圖，額外留白避免標記與文字被裁掉。
+  // 盤面圓幾乎佔滿畫布，額外留白避免標記與文字被裁掉。
   const MARGIN_X = 90;
   const MARGIN_TOP = 105;
   const MARGIN_BOTTOM = 105;
@@ -422,14 +434,8 @@
     aria-label="maimai 盤面：音符與左右手軌跡"
   >
     <g transform={zoomTransform}>
-      <image
-        href={maimaiBackground}
-        x="0"
-        y="0"
-        width={IMAGE_WIDTH}
-        height={IMAGE_HEIGHT}
-        preserveAspectRatio="none"
-      />
+      <!-- 盤面底圖：純向量繪製（DiscBoard），以校準的圓心與半徑為準，不再使用 maimai.png。 -->
+      <DiscBoard {center} radius={discRadius} />
 
       {#if view.showCalibrationRing}
         <g class="calib">
@@ -785,6 +791,20 @@
       {/if}
     </g>
   </svg>
+  {#if flash}
+    {#key flash.id}
+      <div
+        class="play-flash"
+        class:is-playing={flash.playing}
+        aria-hidden="true"
+        onanimationend={(event) => {
+          if (event.animationName.includes('flash-fade')) flash = null;
+        }}
+      >
+        <span class="flash-icon"><span class="flash-a"></span><span class="flash-b"></span></span>
+      </div>
+    {/key}
+  {/if}
   {#if session.loading}
     <!-- 分析或載入中：舊譜面的盤面已經不相關，蓋上骨架（延遲淡入，很快載完就不會閃）。 -->
     <div class="skeleton-veil disc-veil" role="status" aria-label={session.phase === 'analyzing' ? '分析中' : '載入中'}>
@@ -820,9 +840,10 @@
     animation: skeleton-pulse 1.3s ease-in-out infinite;
   }
 
+  /* 盤面永遠是黑底，骨架用固定的深灰，不隨淺色配色變亮。 */
   .skeleton-ring {
     fill: none;
-    stroke: var(--c-control);
+    stroke: #1e242d;
     stroke-width: 26;
   }
 
@@ -832,7 +853,73 @@
   }
 
   .skeleton-dot {
-    fill: var(--c-control-hover);
+    fill: #272f3a;
+  }
+
+  .play-flash {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 4;
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    margin: -32px 0 0 -32px;
+    border-radius: var(--radius-pill);
+    background: #14181e;
+    color: #ffffff;
+    pointer-events: none;
+    animation:
+      flash-fade 420ms ease-out 80ms both,
+      flash-grow 500ms var(--ease-out) both;
+  }
+
+  .flash-icon {
+    position: relative;
+    width: 22px;
+    height: 22px;
+  }
+
+  .flash-a,
+  .flash-b {
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+  }
+
+  .flash-a {
+    clip-path: polygon(8% 0%, 54% 25%, 54% 75%, 8% 100%);
+  }
+
+  .flash-b {
+    clip-path: polygon(54% 25%, 100% 50%, 100% 50%, 54% 75%);
+  }
+
+  .play-flash.is-playing .flash-a {
+    clip-path: polygon(8% 0%, 40% 0%, 40% 100%, 8% 100%);
+  }
+
+  .play-flash.is-playing .flash-b {
+    clip-path: polygon(64% 0%, 96% 0%, 96% 100%, 64% 100%);
+  }
+
+  @keyframes flash-fade {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes flash-grow {
+    from {
+      transform: scale(0.9);
+    }
+    to {
+      transform: scale(1.25);
+    }
   }
 
   .disc-veil-label {

@@ -1,7 +1,14 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
-  import { ADVANCED_FIELDS, CONFIG_RANGE, DEFAULT_BASE, FIELD_LABEL } from '../lib/contract';
+  import {
+    ADVANCED_FIELDS,
+    CONFIG_RANGE,
+    DEFAULT_BASE,
+    FIELD_LABEL,
+    TEMOTO_LABEL,
+    TEMOTO_MODELS,
+  } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
   import type { ConfigDraft, V3PreferenceControls } from '../lib/types';
@@ -23,6 +30,11 @@
 
   const config = $derived(session.config);
   const R = CONFIG_RANGE;
+
+  /** Temoto-1 兩張卡畫面上只有名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
+  const COLOR_NAME = { tokiwa: '常磐色', akane: '茜色' } as const;
+  /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
+  const usingTemoto = $derived(config.mlModel !== null);
 
   // 進階區預設收起；裡面有欄位超出範圍時自動展開，避免錯誤藏在看不到的地方。
   let advancedOpen = $state(false);
@@ -47,13 +59,46 @@
 
 <div class="stack">
   <section class="section">
-    <div class="section-title">
-      <span>打法偏好</span>
+    <div class="section-title" id="scoring-title">
+      <span>評分方式</span>
       {#if session.stale}
         <span class="badge badge--quiet">需重新生成</span>
       {/if}
     </div>
+    <div class="models" role="radiogroup" aria-labelledby="scoring-title">
+      <button
+        class="model-card model-card--v3"
+        role="radio"
+        aria-checked={config.mlModel === null}
+        onclick={() => session.setMlModel(null)}
+      >
+        <span class="model-card-name">V3</span>
+      </button>
+      {#each TEMOTO_MODELS as model (model.id)}
+        <button
+          class={`model-card model-card--${model.color}`}
+          role="radio"
+          aria-checked={config.mlModel === model.id}
+          aria-label={`${TEMOTO_LABEL}（${COLOR_NAME[model.color]}）`}
+          onclick={() => session.setMlModel(model.id)}
+        >
+          <span class="model-card-name">{TEMOTO_LABEL}</span>
+        </button>
+      {/each}
+    </div>
+    <p class="field-hint" style="margin-top: var(--space-2)">
+      {TEMOTO_LABEL} 要先跑一次 V3 再照模型修正重算，分析時間約為 V3 的 2–4 倍；結果仍由核心確認可行，不代表官方判定。
+    </p>
+  </section>
+
+  <section class="section">
+    <div class="section-title">
+      <span>{usingTemoto ? '規則' : '打法偏好'}</span>
+    </div>
     <div class="stack">
+      {#if usingTemoto}
+        <p class="field-hint">打法由 {TEMOTO_LABEL} 決定，四個打法偏好滑桿不使用；下面的規則開關照常有效。</p>
+      {:else}
       <NumberField
         label="左右分工傾向"
         hint="越高越偏好左手留在左側、右手留在右側。仍允許在較自然時由另一隻手跨區幫忙。"
@@ -97,6 +142,7 @@
         error={errorOf('handoverWillingness')}
         onValue={(value) => setV3('handoverWillingness', value)}
       />
+      {/if}
       <label class="check">
         <input
           type="checkbox"
@@ -352,6 +398,26 @@
 </div>
 
 <style>
+  /* 評分方式：V3 卡佔一整列，兩張 Temoto-1 卡並排。 */
+  .models {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  .models .model-card--v3 {
+    grid-column: 1 / -1;
+  }
+
+  /* V3 卡：中性色的扇形，選中時填滿反白色。 */
+  .model-card--v3 {
+    --model: var(--c-border-strong);
+    --model-fan: var(--c-border-strong);
+    --model-fill: var(--c-invert-bg);
+    --on-model: var(--c-on-invert);
+    min-height: 56px;
+  }
+
   .advanced > summary {
     list-style: none;
     display: flex;

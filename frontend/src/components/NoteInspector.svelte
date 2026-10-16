@@ -352,8 +352,8 @@
 <style>
   .section :global(.note-list) {
     max-height: 220px;
-    border: 1px solid var(--c-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-item);
+    background: var(--c-bg);
     padding: var(--space-1);
   }
 
@@ -364,13 +364,14 @@
     grid-template-columns: 38px 46px minmax(0, 1fr) auto 44px;
     align-items: center;
     gap: 1px var(--space-1);
-    padding: var(--space-1) var(--space-2);
+    padding: var(--space-1) 10px;
     font-size: var(--fs-sm);
     text-align: left;
-    background: var(--c-panel);
+    background: transparent;
     border: 1px solid transparent;
-    border-radius: var(--radius-sm);
+    border-radius: 12px;
     cursor: pointer;
+    transition: background-color 120ms ease;
   }
 
   .cell-id {
@@ -410,7 +411,7 @@
 
   .note-row.is-selected {
     border-color: var(--c-accent);
-    background: var(--c-control);
+    background: var(--c-control-hover);
   }
 
   .cell-hand {

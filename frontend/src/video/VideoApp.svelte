@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { bounce } from '../lib/press';
+  import { segmented } from '../lib/segmented';
   import { onMount, untrack } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import VideoFinder from './VideoFinder.svelte';
@@ -828,21 +830,31 @@
         aria-label="影片位置"
       />
       <div class="control-row">
-        <button class="btn btn--icon" onclick={togglePlay} disabled={!src} aria-label={paused ? '播放' : '暫停'} title="播放／暫停（Space）">
-          <Icon name={paused ? 'play' : 'pause'} size={14} />
+        <!-- 播放／暫停：圓形主色鈕，三角以 clip-path 變形成雙槓（與主視窗播放鍵同一套動畫）。 -->
+        <button
+          class="btn btn--primary play"
+          class:is-playing={!paused}
+          onclick={togglePlay}
+          disabled={!src}
+          aria-label={paused ? '播放' : '暫停'}
+          title="播放／暫停（Space）"
+        >
+          <span class="morph" aria-hidden="true"><span class="morph-a"></span><span class="morph-b"></span></span>
         </button>
-        <button class="btn btn--icon" onclick={() => stepFrame(-1)} disabled={!src} aria-label="上一格" title="上一格（←）">
-          <Icon name="chevron-left" size={14} />
-        </button>
-        <button class="btn btn--icon" onclick={() => stepFrame(1)} disabled={!src} aria-label="下一格" title="下一格（→）">
-          <Icon name="chevron-right" size={14} />
-        </button>
-        <button class="btn btn--icon" onclick={replay} disabled={!src || !synced} aria-label="重播這顆" title="重播這顆（R）">
-          <Icon name="rotate-ccw" size={14} />
-        </button>
-        <div class="rates" role="group" aria-label="播放速度">
+        <div class="btn-group" role="group" aria-label="逐格">
+          <button class="btn-group-item" use:bounce={-1} onclick={() => stepFrame(-1)} disabled={!src} aria-label="上一格" title="上一格（←）">
+            <Icon name="chevron-left" size={14} />
+          </button>
+          <button class="btn-group-item" use:bounce={1} onclick={() => stepFrame(1)} disabled={!src} aria-label="下一格" title="下一格（→）">
+            <Icon name="chevron-right" size={14} />
+          </button>
+          <button class="btn-group-item" onclick={replay} disabled={!src || !synced} aria-label="重播這顆" title="重播這顆（R）">
+            <Icon name="rotate-ccw" size={14} />
+          </button>
+        </div>
+        <div class="seg seg--mono rates" role="group" aria-label="播放速度" use:segmented>
           {#each RATES as rate (rate)}
-            <button class="btn rate" aria-pressed={userRate === rate} onclick={() => setRate(rate)} disabled={!src}>{rate}×</button>
+            <button class="seg-btn rate" aria-pressed={userRate === rate} onclick={() => setRate(rate)} disabled={!src}>{rate}×</button>
           {/each}
         </div>
         <span class="spacer"></span>
@@ -859,10 +871,12 @@
   </main>
 
   <aside class="side">
-    <div class="tabs" role="group" aria-label="影片面板">
-      <button class="btn tab" aria-pressed={side === 'sync'} onclick={() => ((side = 'sync'), (autoSide = false))}>對齊與跟隨</button>
-      <button class="btn tab" aria-pressed={side === 'find'} onclick={() => ((side = 'find'), (autoSide = false))}>找影片</button>
-      <button class="btn tab" aria-pressed={side === 'auto'} onclick={() => ((side = 'auto'), (autoSide = false))}>自動預填</button>
+    <div class="tabs">
+      <div class="seg" role="group" aria-label="影片面板" use:segmented>
+        <button class="seg-btn" aria-pressed={side === 'sync'} onclick={() => ((side = 'sync'), (autoSide = false))}>對齊與跟隨</button>
+        <button class="seg-btn" aria-pressed={side === 'find'} onclick={() => ((side = 'find'), (autoSide = false))}>找影片</button>
+        <button class="seg-btn" aria-pressed={side === 'auto'} onclick={() => ((side = 'auto'), (autoSide = false))}>自動預填</button>
+      </div>
     </div>
 
     <div class="side-body scroll">
@@ -939,20 +953,20 @@
           {#if synced}
             <div class="field">
               <span class="field-label">微調</span>
-              <div class="row row-wrap">
-                <button class="btn" onclick={() => nudge(-1 / fps)} title="影片往前一格對齊">−1 格</button>
-                <button class="btn" onclick={() => nudge(1 / fps)} title="影片往後一格對齊">+1 格</button>
-                <button class="btn" onclick={() => nudge(-0.01)}>−10ms</button>
-                <button class="btn" onclick={() => nudge(0.01)}>+10ms</button>
+              <div class="btn-group btn-group--fill mono">
+                <button class="btn-group-item" onclick={() => nudge(-1 / fps)} title="影片往前一格對齊">−1 格</button>
+                <button class="btn-group-item" onclick={() => nudge(1 / fps)} title="影片往後一格對齊">+1 格</button>
+                <button class="btn-group-item" onclick={() => nudge(-0.01)}>−10ms</button>
+                <button class="btn-group-item" onclick={() => nudge(0.01)}>+10ms</button>
               </div>
               <span class="field-hint">判定那一格看起來還沒打到就按「+1 格」，已經打完就按「−1 格」。</span>
             </div>
             <div class="field">
               <span class="field-label">檢查</span>
-              <div class="row row-wrap">
-                <button class="btn" onclick={() => showAt(chart?.firstTime)} disabled={chart?.firstTime === null}>第一顆</button>
-                <button class="btn" onclick={() => showAt(chart?.selected?.time)} disabled={!chart?.selected}>選取的音符</button>
-                <button class="btn" onclick={() => showAt(chart?.lastTime)} disabled={chart?.lastTime === null}>最後一顆</button>
+              <div class="btn-group btn-group--fill">
+                <button class="btn-group-item" onclick={() => showAt(chart?.firstTime)} disabled={chart?.firstTime === null}>第一顆</button>
+                <button class="btn-group-item" onclick={() => showAt(chart?.selected?.time)} disabled={!chart?.selected}>選取的音符</button>
+                <button class="btn-group-item" onclick={() => showAt(chart?.lastTime)} disabled={chart?.lastTime === null}>最後一顆</button>
               </div>
               <span class="field-hint">最後一顆也對得上，整首就沒有跑掉。</span>
             </div>
@@ -970,31 +984,32 @@
             {/each}
           </div>
           {#if cue.mode === 'segment'}
+            <!-- 片段設定：三組分段選擇，放在凹下的底塊裡。 -->
             <div class="cue-grid">
-              <label class="field">
-                <span class="field-label">判定前</span>
-                <select class="select" bind:value={cue.pre}>
+              <div class="cue-field">
+                <span class="cue-label" id="cue-pre"><span>判定前</span><span>秒</span></span>
+                <div class="seg seg--mono seg--sm" role="group" aria-labelledby="cue-pre" use:segmented>
                   {#each [0.2, 0.3, 0.4, 0.6, 0.8, 1, 1.5] as value (value)}
-                    <option {value}>{value} 秒</option>
+                    <button class="seg-btn" aria-pressed={cue.pre === value} onclick={() => (cue.pre = value)}>{value}</button>
                   {/each}
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">判定後</span>
-                <select class="select" bind:value={cue.post}>
+                </div>
+              </div>
+              <div class="cue-field">
+                <span class="cue-label" id="cue-post"><span>判定後</span><span>秒</span></span>
+                <div class="seg seg--mono seg--sm" role="group" aria-labelledby="cue-post" use:segmented>
                   {#each [0, 0.1, 0.2, 0.3, 0.5, 0.8] as value (value)}
-                    <option {value}>{value} 秒</option>
+                    <button class="seg-btn" aria-pressed={cue.post === value} onclick={() => (cue.post = value)}>{value}</button>
                   {/each}
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">速度</span>
-                <select class="select" bind:value={cue.rate}>
+                </div>
+              </div>
+              <div class="cue-field">
+                <span class="cue-label" id="cue-rate"><span>速度</span></span>
+                <div class="seg seg--mono seg--sm" role="group" aria-labelledby="cue-rate" use:segmented>
                   {#each [0.25, 0.5, 0.75, 1] as value (value)}
-                    <option {value}>{value}×</option>
+                    <button class="seg-btn" aria-pressed={cue.rate === value} onclick={() => (cue.rate = value)}>{value}×</button>
                   {/each}
-                </select>
-              </label>
+                </div>
+              </div>
             </div>
             <label class="check">
               <input type="checkbox" bind:checked={cue.land} />
@@ -1070,6 +1085,13 @@
     justify-content: center;
     min-height: 200px;
     overflow: hidden;
+    /* 影片區永遠是黑底（淺色配色也一樣），文字用固定的淺色。 */
+    background: #000;
+    color: #e9edf4;
+  }
+
+  .screen :global(.muted) {
+    color: #9ba6b6;
   }
 
   video {
@@ -1096,15 +1118,16 @@
 
   .progress {
     width: 240px;
-    height: 4px;
+    height: 6px;
     background: var(--c-control);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-pill);
     overflow: hidden;
   }
 
   .progress-fill {
     height: 100%;
-    background: var(--c-right);
+    border-radius: var(--radius-pill);
+    background: var(--c-primary);
   }
 
   .controls {
@@ -1120,17 +1143,54 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--space-2);
+  }
+
+  .play {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
+  .morph {
+    position: relative;
+    width: 13px;
+    height: 13px;
+  }
+
+  .morph-a,
+  .morph-b {
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    transition: clip-path 220ms var(--ease-out);
+  }
+
+  .morph-a {
+    clip-path: polygon(8% 0%, 54% 25%, 54% 75%, 8% 100%);
+  }
+
+  .morph-b {
+    clip-path: polygon(54% 25%, 100% 50%, 100% 50%, 54% 75%);
+  }
+
+  .play.is-playing .morph-a {
+    clip-path: polygon(8% 0%, 40% 0%, 40% 100%, 8% 100%);
+  }
+
+  .play.is-playing .morph-b {
+    clip-path: polygon(64% 0%, 96% 0%, 96% 100%, 64% 100%);
   }
 
   .rates {
-    display: flex;
-    gap: var(--space-1);
-    margin-left: var(--space-2);
+    flex: none;
   }
 
   .rate {
-    padding: 0 var(--space-2);
+    min-width: 42px;
+    height: 30px;
+    padding: 0 8px;
   }
 
   .clock {
@@ -1153,15 +1213,8 @@
   }
 
   .tabs {
-    display: flex;
-    gap: var(--space-1);
-    padding: var(--space-2);
+    padding: 10px 12px;
     border-bottom: 1px solid var(--c-border);
-  }
-
-  .tab {
-    flex: 1 1 0;
-    min-width: 0;
   }
 
   .side-body {
@@ -1174,7 +1227,10 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    line-height: var(--lh-tight);
+    padding: 10px 14px;
+    border-radius: var(--radius-item);
+    background: var(--c-control);
+    line-height: var(--lh-normal);
   }
 
   .linked-title {
@@ -1202,9 +1258,25 @@
   }
 
   .cue-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--radius-item);
+    background: var(--c-bg);
+  }
+
+  .cue-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cue-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--fs-xs);
+    color: var(--c-text-dim);
   }
 
   .keys {
@@ -1212,12 +1284,25 @@
   }
 
   kbd {
-    padding: 0 var(--space-1);
-    border: 1px solid var(--c-border-strong);
-    border-radius: var(--radius-sm);
-    background: var(--c-control);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: var(--radius-pill);
+    background: var(--c-control-hover);
+    color: var(--c-text);
     font-family: var(--font-mono);
-    font-size: var(--fs-xs);
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .morph-a,
+    .morph-b {
+      transition: none;
+    }
   }
 
   @media (max-width: 820px) {

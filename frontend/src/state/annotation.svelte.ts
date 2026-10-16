@@ -17,7 +17,7 @@ import {
   lineName,
   MAIN_LINE,
   merge,
-  modelMark,
+  modelMarks,
   sameGroup,
   nextLineColor,
   neededParts,
@@ -599,9 +599,10 @@ export class AnnotationStore {
     const solution = session.solutions[session.solutionIndex] ?? session.solutions[0];
     if (!solution) return 0;
     let count = 0;
+    const models = modelMarks(solution, this.ordered);
     for (const note of this.ordered) {
       if (!note.key) continue;
-      const model = modelMark(solution, note);
+      const model = models.get(note.id) ?? {};
       let filled = false;
       for (const part of this.#parts(note)) {
         const marks = lineMarks(this.draft, this.lineOfStep(note, part));
