@@ -1,6 +1,6 @@
 [package]
 name = "mai-motion-demo"
-version = "1.0.0"
+version = "1.0.5"
 edition = "2021"
 rust-version = "1.85"
 description = "Maimai hand motion visualizer"

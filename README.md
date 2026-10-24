@@ -2,12 +2,12 @@
 
 把 simai 譜面變成可播放的左右手動作動畫，在 maimai 圓盤上呈現 Tap、Hold、Touch、Slide 的打法，並比較不同的雙手分配方案。
 
-下載：[Windows x64](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.0/MaiMotionDemo-v1.0.0-windows-x64.exe) · [macOS（universal）](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.0/MaiMotionDemo-v1.0.0-macos-universal.zip) · [Linux AppImage](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.0/MaiMotionDemo-v1.0.0-linux-x64.AppImage) · [Linux deb](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.0/MaiMotionDemo-v1.0.0-linux-x64.deb) · [所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [使用手冊](USER_GUIDE.md)
+下載：[Windows x64](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.5/MaiMotionDemo-v1.0.5-windows-x64.exe) · [macOS（universal）](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.5/MaiMotionDemo-v1.0.5-macos-universal.zip) · [Linux AppImage](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.5/MaiMotionDemo-v1.0.5-linux-x64.AppImage) · [Linux deb](https://github.com/silver0416/MaiMotionDemo/releases/download/v1.0.5/MaiMotionDemo-v1.0.5-linux-x64.deb) · [所有版本](https://github.com/silver0416/MaiMotionDemo/releases) · [使用手冊](USER_GUIDE.md)
 
 ## 使用
 
 1. 下載執行檔後直接開啟，不需安裝。若 Windows 缺少 WebView2，請安裝 [Microsoft WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)。macOS 與 Linux 版由 GitHub Actions 自動建置，未簽章：macOS 第一次開啟請在 Finder 按右鍵選「打開」；Linux 的 AppImage 需先加上執行權限。
-2. 按左側「新增」貼上 simai 譜面或整份 `maidata.txt`，或按「搜尋譜面」從 simai Wiki、Majdata 匯入。
+2. 按左側「新增」貼上 simai 譜面或整份 `maidata.txt`，或按「搜尋譜面」從 simai Wiki、adxdls、Majdata 匯入。
 3. 按「播放」觀看左右手動作；粉紅 **L** 是左手、藍色 **R** 是右手。
 
 範例：
@@ -26,11 +26,11 @@
 - 時間軸可加標籤（按 M 或雙擊時間軸上方），拖曳片段把手設定循環範圍
 - 「音符」可一鍵選取目前播放時間最接近的音符
 - 譜面紀錄可分資料夾、加標籤、篩選與排序；多選後可批量移動、加標籤、刪除，或把多份標記檔匯出成一個檔案、一次匯入
-- 「標註」記錄真人實際的左右手、Slide 換手與備註，可複製分享、匯入合併（「新增」也能直接貼標註檔），並和模型比對
+- 「標註」記錄真人實際的左右手、Slide 換手與備註，可複製分享、匯入合併（「新增」也能直接貼標註檔），並和模型比對；逐顆清單可多選後一次標左右手、建立分組或分支
 - 「影片同步」開獨立視窗對照 YouTube 手元影片或自己錄的影片：對齊一次後，選音符就自動慢速播放那一段；播放、暫停與速度兩個視窗同步，對齊會照譜面與影片記住
 - 每次開啟自動檢查更新，可以直接在程式內下載新版並重新啟動，舊版會自動移除
 - 「設定」可查看版本與應用程式種類、檢查更新、切換深淺模式與配色（機台霓虹、現狀、暖墨、淺色工作室）、複製匯入錯誤紀錄回報，以及清除暫存或全部資料
 
 ## 注意
 
-分析在本機完成。只有搜尋譜面時會連線 simai Wiki 或 Majdata；使用影片同步時會從 GitHub 下載 yt-dlp（與 Deno），並連線 YouTube 搜尋、下載影片，影片只存在本機。結果是依規則推算的打法建議，不代表官方判定或唯一正確打法；「未找到可行方案」也不表示譜面無法遊玩。
+分析在本機完成。只有搜尋譜面時會連線 simai Wiki、adxdls 或 Majdata；使用影片同步時會從 GitHub 下載 yt-dlp（與 Deno），並連線 YouTube 搜尋、下載影片，影片只存在本機。結果是依規則推算的打法建議，不代表官方判定或唯一正確打法；「未找到可行方案」也不表示譜面無法遊玩。
