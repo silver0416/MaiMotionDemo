@@ -37,7 +37,7 @@
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { videoSync } from '../state/videoSync.svelte';
-  import { addToGroup, cancelGroup, markGroupAt, playGroup, removeFromGroup, removeGroup } from '../state/groups';
+  import { addToGroup, cancelGroup, groupPicked, markGroupAt, playGroup, removeFromGroup, removeGroup } from '../state/groups';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
@@ -201,7 +201,10 @@
 
   function finishBranch(end: Step) {
     const branch = annotation.finishMark(end);
-    if (!branch) return;
+    if (branch) branchCreated(branch);
+  }
+
+  function branchCreated(branch: { name: string; from: number; to: number; parent: string; merge: string }) {
     toasts.show({
       id: 'branch-create',
       tone: 'ok',
@@ -223,12 +226,62 @@
     });
   }
 
-  let menu = $state<{ stepKey: string; x: number; y: number } | null>(null);
+  /** fromBar：從選取工具列的「更多」打開，選單只放批次動作。 */
+  let menu = $state<{ stepKey: string; x: number; y: number; fromBar?: boolean } | null>(null);
   const menuStep = $derived(menu ? (annotation.steps.find((step) => step.key === menu?.stepKey) ?? null) : null);
+  /** 在選取的列上按右鍵（或從工具列打開）時，選單改成對全部選取的批次動作。 */
+  const menuBulk = $derived(
+    !!menu && annotation.picking && (!!menu.fromBar || annotation.picked.includes(menu.stepKey)),
+  );
+
+  /** 選取涵蓋幾顆音符（Slide 的起點與滑行算同一顆）。 */
+  const pickedNotes = $derived(new Set(annotation.pickedSteps.map((step) => step.note.id)).size);
+
+  /**
+   * 對選取的步驟一次做的動作；右鍵選單與工具列的「⋯」共用。
+   * 分組與分支在工具列上已經有按鈕，從工具列打開時（onRow 為 false）不重複列出。
+   */
+  function bulkItems(onRow: boolean): MenuItem[] {
+    const steps = annotation.pickedSteps;
+    const n = steps.length;
+    const notes = pickedNotes;
+    const items: MenuItem[] = [
+      { id: 'pick-L', label: `左手 L（${n} 步）`, icon: 'hand' },
+      { id: 'pick-R', label: `右手 R（${n} 步）`, icon: 'hand' },
+      ...CONFIDENCES.map(
+        (value, index): MenuItem => ({
+          id: `pick-conf-${value}`,
+          label: `信心：${CONFIDENCE_LABEL[value]}`,
+          icon: 'circle-dot',
+          divider: index === 0,
+        }),
+      ),
+      { id: 'pick-confirm', label: '確認預填', icon: 'check', divider: true },
+      { id: 'pick-clear', label: '清除手', icon: 'eraser' },
+    ];
+    if (onRow && annotation.groupsAvailable && notes >= 2) {
+      items.push({ id: 'pick-group', label: `建立分組（${notes} 顆）`, icon: 'brackets', divider: true });
+    }
+    if (onRow && n > 0 && records.activeId) {
+      items.push({
+        id: 'pick-branch',
+        label: `建立分支（${annotation.rangeText(steps[0].time, steps[n - 1].time)}）`,
+        icon: 'git-branch',
+        divider: !(annotation.groupsAvailable && notes >= 2),
+      });
+    }
+    if (onRow) items.push({ id: 'unpick', label: '取消選取這步', icon: 'circle-dot', divider: true });
+    items.push(
+      { id: 'pick-all', label: '全選目前清單', icon: 'list-checks', divider: !onRow },
+      { id: 'pick-end', label: '結束選取', icon: 'x' },
+    );
+    return items;
+  }
 
   const menuItems = $derived.by<MenuItem[]>(() => {
     const target = menuStep;
     if (!target) return [];
+    if (menuBulk) return bulkItems(!menu?.fromBar);
     // 分出與併入的線都看目前選的路線，選單只留標記本身。
     const items: MenuItem[] = [];
     if (pending) {
@@ -268,6 +321,10 @@
       if (items.length > 0) groupItems[0].divider = true;
       items.push(...groupItems);
     }
+    items.push(
+      { id: 'pick', label: picking ? '加入選取' : '選取', icon: 'circle-check', divider: true },
+      { id: 'pick-all', label: '全選目前清單', icon: 'list-checks' },
+    );
     return items;
   });
 
@@ -276,8 +333,13 @@
     menu = { stepKey: step.key, x: event.clientX, y: event.clientY };
   }
 
-  /** 列上按選單鍵或 Shift+F10，和右鍵一樣打開選單。 */
+  /** 列上按選單鍵或 Shift+F10，和右鍵一樣打開選單；Ctrl+Space 加入或移出選取。 */
   function onRowKeydown(step: Step, event: KeyboardEvent) {
+    if (event.key === ' ' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      togglePick(step.key);
+      return;
+    }
     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
     event.preventDefault();
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -288,6 +350,10 @@
     const target = menuStep;
     menu = null;
     if (!target) return;
+    if (id.startsWith('pick') || id === 'unpick') {
+      runPick(id, target);
+      return;
+    }
     const [action, line] = id.split(':');
     if (action === 'start') annotation.markStart(target);
     else if (action === 'end') finishBranch(target);
@@ -301,6 +367,139 @@
     else if (action === 'group-in') addToGroup(Number(line), target.note);
     else if (action === 'group-out') removeFromGroup(Number(line), target.note);
     else if (action === 'group-delete') removeGroup(Number(line));
+  }
+
+  // ---- 多選：比照左側譜面紀錄。Ctrl／⌘ 點選加入或移出、Shift 點選範圍、Ctrl+A 全選、Esc 結束。
+  // 選取模式中點一下只切換選取，不換目前這一步；選取與批次動作放在 annotation（A／D 也要用）。
+  const picking = $derived(annotation.picking);
+  const pickedSet = $derived(new Set(annotation.picked));
+  /**
+   * Shift 範圍選取的起點與基底：選取中以最後一次 Ctrl 點選（或右鍵選取）的那一步為起點，
+   * 範圍以外、在那之前就選好的步驟（基底）保留；連續 Shift 點選只調整範圍本身。
+   * 不在選取模式時一律從目前這一步拉範圍。
+   */
+  let anchor: string | null = null;
+  let base: string[] = [];
+
+  /** 工具列顯示的步數；收起轉場期間維持最後的數字，不會閃成 0。 */
+  let shownCount = $state(0);
+  $effect(() => {
+    if (annotation.picking && annotation.picked.length > 0) shownCount = annotation.picked.length;
+  });
+
+  // 結束選取（Esc、×、批次後清空、換譜）時忘掉起點，下次從目前這一步重新開始。
+  $effect(() => {
+    if (annotation.picking) return;
+    anchor = null;
+    base = [];
+  });
+
+  // 篩選換掉、步驟不在清單上時移出選取；全部移出就結束選取模式。
+  $effect(() => {
+    if (!annotation.picking) return;
+    const keys = new Set(rows.map((step) => step.key));
+    const kept = annotation.picked.filter((key) => keys.has(key));
+    if (kept.length !== annotation.picked.length) annotation.setPicked(kept);
+  });
+
+  // 切到別的子分頁時清單不在畫面上，不留著看不見的選取（免得 A／D 標到它們）。
+  $effect(() => {
+    if (view !== 'label' && annotation.picking) annotation.endPicking();
+  });
+
+  /** 改變選取並把這一步當作下一次 Shift 範圍的起點。 */
+  function setAnchor(key: string, keys: string[]) {
+    annotation.setPicked(keys);
+    anchor = key;
+    base = keys;
+  }
+
+  function togglePick(key: string) {
+    setAnchor(key, pickedSet.has(key) ? annotation.picked.filter((item) => item !== key) : [...annotation.picked, key]);
+  }
+
+  /** Shift 點選：起點到這一步（含兩端）加上基底。 */
+  function pickRange(key: string) {
+    if (!picking) {
+      anchor = current?.key ?? null;
+      base = [];
+    }
+    const order = rows.map((step) => step.key);
+    const from = order.indexOf(anchor ?? '');
+    const to = order.indexOf(key);
+    if (from < 0 || to < 0) {
+      setAnchor(key, [...new Set([...base, key])]);
+      return;
+    }
+    const range = order.slice(Math.min(from, to), Math.max(from, to) + 1);
+    annotation.setPicked([...new Set([...base, ...range])]);
+  }
+
+  function pickAll() {
+    const keys = rows.map((step) => step.key);
+    if (keys.length > 0) setAnchor(keys[0], keys);
+  }
+
+  /** 右鍵「選取」：進入選取模式並加入這一步。 */
+  function startPicking(key: string) {
+    const keys = picking ? annotation.picked : [];
+    setAnchor(key, keys.includes(key) ? keys : [...keys, key]);
+  }
+
+  function onItemClick(step: Step, event: MouseEvent) {
+    if (event.shiftKey) {
+      // 不讓瀏覽器順便把兩次點選之間的文字反白。
+      window.getSelection()?.removeAllRanges();
+      pickRange(step.key);
+      return;
+    }
+    if (event.ctrlKey || event.metaKey || picking) {
+      togglePick(step.key);
+      return;
+    }
+    annotation.selectStep(step);
+  }
+
+  /** 清單聚焦時 Ctrl+A 全選目前篩選後的步驟。 */
+  function onListKeydown(event: KeyboardEvent) {
+    if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'a') return;
+    if (!(event.target instanceof HTMLElement) || !event.target.closest('.virtual')) return;
+    event.preventDefault();
+    pickAll();
+  }
+
+  function branchFromPicked() {
+    const steps = annotation.pickedSteps;
+    if (steps.length === 0) return;
+    const branch = annotation.branchFromSteps(steps[0], steps[steps.length - 1]);
+    if (branch) branchCreated(branch);
+    else toasts.show({ id: 'branch-create', tone: 'warn', title: '無法建立分支', body: '選取的範圍內沒有可以分出的步驟。' });
+  }
+
+  function runPick(id: string, target: Step | null) {
+    if (id === 'pick' && target) startPicking(target.key);
+    else if (id === 'unpick' && target) togglePick(target.key);
+    else if (id === 'pick-all') pickAll();
+    else if (id === 'pick-end') annotation.endPicking();
+    else if (id === 'pick-L') annotation.pickHand('L');
+    else if (id === 'pick-R') annotation.pickHand('R');
+    else if (id.startsWith('pick-conf-')) annotation.pickConfidence(id.slice('pick-conf-'.length) as Confidence);
+    else if (id === 'pick-confirm') annotation.pickConfirm();
+    else if (id === 'pick-clear') annotation.pickClear();
+    else if (id === 'pick-group') groupPicked();
+    else if (id === 'pick-branch') branchFromPicked();
+  }
+
+  /** 工具列的「更多」：批次選單貼在按鈕下方。 */
+  function openBarMenu(event: MouseEvent) {
+    const first = annotation.picked[0];
+    if (!first) return;
+    if (menu?.fromBar) {
+      menu = null;
+      return;
+    }
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    menu = { stepKey: first, x: rect.left, y: rect.bottom + 4, fromBar: true };
   }
 
   // ---- 分組（以顆為單位）：畫在清單左側的軸上（打法分支圖的右邊），重疊的分組往右排 ----
@@ -829,7 +1028,8 @@
           <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
         {/if}
         <p class="xsmall muted keys">
-          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認
+          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認<br />
+          清單上 <kbd>Ctrl</kbd>／<kbd>Shift</kbd>+點選可以多選，選取時 <kbd>A</kbd>/<kbd>D</kbd> 一次標全部選取、<kbd>Esc</kbd> 結束
         </p>
       </section>
 
@@ -853,7 +1053,8 @@
       </section>
     </div>
 
-    <div class="lower" style={`height:${shownList}px`}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="lower" style={`height:${shownList}px`} onkeydown={onListKeydown}>
       <ResizeHandle
         label="調整標註清單高度"
         side="top"
@@ -864,20 +1065,59 @@
         direction={-1}
         onChange={setListHeight}
       />
+      <!-- 篩選列與選取工具列疊在同一格互換（和左側譜面紀錄同樣的轉場），高度不變，清單不會跳動。 -->
       <div class="list-head">
-        <Dropdown
-          options={FILTERS}
-          value={annotation.filter}
-          onChange={(next) => (annotation.filter = next)}
-          label="篩選"
-          align="start"
-        />
-        <span class="xsmall muted">{rows.length} 步</span>
-        {#if pending}
-          <span class="badge" role="status">選取分支終點</span>
-          <span class="spacer"></span>
-          <button class="btn btn--ghost" onclick={() => annotation.cancelMark()} title="取消標記分支（Esc）">取消</button>
-        {/if}
+        <div class="head-layer head-filter" class:is-shut={picking} inert={picking}>
+          <Dropdown
+            options={FILTERS}
+            value={annotation.filter}
+            onChange={(next) => (annotation.filter = next)}
+            label="篩選"
+            align="start"
+          />
+          <span class="xsmall muted">{rows.length} 步</span>
+          {#if pending}
+            <span class="badge" role="status">選取分支終點</span>
+            <span class="spacer"></span>
+            <button class="btn btn--ghost" onclick={() => annotation.cancelMark()} title="取消標記分支（Esc）">取消</button>
+          {/if}
+        </div>
+        <div class="head-layer head-bar" class:is-shut={!picking} inert={!picking}>
+          <div class="selection" role="toolbar" aria-label="選取的步驟">
+            <span class="small selection-count">已選 <strong>{shownCount}</strong> 步</span>
+            <span class="spacer"></span>
+            <button
+              class="btn pick-action"
+              disabled={!annotation.groupsAvailable || pickedNotes < 2}
+              onclick={groupPicked}
+              title={annotation.groupsAvailable ? '選到的音符建成一組（可以不相連，至少兩顆）' : '目前的結果不是這筆紀錄的原文，無法分組'}
+            >
+              <Icon name="brackets" size={14} />分組
+            </button>
+            <button
+              class="btn pick-action"
+              disabled={!records.activeId || annotation.picked.length === 0}
+              onclick={branchFromPicked}
+              title="以選取中最早到最晚的步驟為範圍建立打法分支"
+            >
+              <Icon name="git-branch" size={14} />分支
+            </button>
+            <button
+              class="btn btn--icon"
+              class:is-open={menu?.fromBar}
+              onclick={openBarMenu}
+              aria-label="其他批次動作"
+              aria-haspopup="menu"
+              aria-expanded={!!menu?.fromBar}
+              title="左右手、信心、確認預填、清除手…"
+            >
+              <Icon name="more-horizontal" size={15} />
+            </button>
+            <button class="btn btn--icon" onclick={() => annotation.endPicking()} aria-label="結束選取" title="結束選取（Esc）">
+              <Icon name="x" size={15} />
+            </button>
+          </div>
+        </div>
       </div>
       {#if pending}
         <div class="mark-bar">
@@ -930,6 +1170,7 @@
                 annotation.noteNumber(step.note) >= groupPending.first &&
                 annotation.noteNumber(step.note) <= groupPending.last)}
             class:is-selected={current?.key === step.key}
+            class:is-picked={picking && pickedSet.has(step.key)}
             class:is-current={currentKey === step.key}
             data-step={step.key}
             style={`${style}${
@@ -942,7 +1183,7 @@
             }`}
             role="option"
             aria-selected={current?.key === step.key}
-            onclick={() => annotation.selectStep(step)}
+            onclick={(event) => onItemClick(step, event)}
             oncontextmenu={(event) => openMenu(step, event)}
             onkeydown={(event) => onRowKeydown(step, event)}
           >
@@ -962,7 +1203,9 @@
               {row.first ? row.number : `↳${row.number}`}
             </span>
             <span class="mono xsmall muted time">{formatClock(step.time)}</span>
-            <span class="what small">{stepLabel(step, session.pathById)}</span>
+            <span class="what small">
+              {stepLabel(step, session.pathById)}{#if picking && pickedSet.has(step.key)}<span class="sr-only">（已選取）</span>{/if}
+            </span>
             <span class="hands small mono" class:is-prefilled={row.prefilled} class:is-empty={!row.text}>
               {row.text || '未標'}
             </span>
@@ -989,7 +1232,7 @@
         items={menuItems}
         x={menu.x}
         y={menu.y}
-        label={`第 ${annotation.stepRef(menuStep)} 顆的動作`}
+        label={menuBulk ? `選取的 ${annotation.picked.length} 步的動作` : `第 ${annotation.stepRef(menuStep)} 顆的動作`}
         onSelect={selectMenu}
         onClose={() => (menu = null)}
       />
@@ -1366,11 +1609,89 @@
   }
 
   .list-head {
+    --swap-ease: cubic-bezier(0.3, 0.7, 0.2, 1);
+    display: grid;
+    min-height: 49px;
+    padding: var(--space-2) var(--space-4);
+    overflow: hidden;
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  /* 兩層疊在同一格：關上的那層淡出並略為位移（篩選列往上、工具列往下），曲線與時長同左側譜面紀錄。 */
+  .head-layer {
+    grid-area: 1 / 1;
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--c-border);
+    min-width: 0;
+    transition:
+      opacity 180ms ease 60ms,
+      transform 260ms var(--swap-ease);
+  }
+
+  .head-layer.is-shut {
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 120ms ease,
+      transform 260ms var(--swap-ease);
+  }
+
+  .head-filter.is-shut {
+    transform: translateY(-10px);
+  }
+
+  .head-bar.is-shut {
+    transform: translateY(8px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .head-layer,
+    .head-layer.is-shut {
+      transition: none;
+    }
+  }
+
+  /* 選取工具列：和左側譜面紀錄的選取列同一款膠囊，取代篩選列。 */
+  .selection {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    height: 32px;
+    padding: 0 var(--space-1) 0 14px;
+    background: var(--c-control);
+    border-radius: var(--radius-pill);
+  }
+
+  .selection-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .selection .btn--icon {
+    flex: none;
+    min-height: 26px;
+    min-width: 26px;
+    padding: 0;
+    background: none;
+    border-color: transparent;
+  }
+
+  .selection .btn--icon:hover:not(:disabled),
+  .selection .btn--icon.is-open {
+    background: var(--c-control-hover);
+  }
+
+  /* 分組、分支：工具列上常用的兩個動作，圖示加文字；其他批次動作收在「⋯」。 */
+  .selection .pick-action {
+    flex: none;
+    gap: var(--space-1);
+    min-height: 26px;
+    padding: 0 10px 0 8px;
   }
 
   /* 上方編輯區吃剩下的高度，內容多時自己捲動。 */
@@ -1455,6 +1776,16 @@
 
   .item.is-selected {
     background: var(--c-control-hover);
+  }
+
+  /* 多選中的步驟：比照左側譜面紀錄，淺底加一圈主色細框（整圈，不是左側色條）。 */
+  .item.is-picked {
+    background: var(--c-control-hover);
+    box-shadow: inset 0 0 0 1px var(--c-primary);
+  }
+
+  .item.is-picked .num {
+    color: var(--c-primary);
   }
 
   /* ---- 分組軸：同一組的列在左側連成一條線，頭尾留一點空隙並收圓角 ---- */

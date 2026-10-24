@@ -83,7 +83,7 @@ impl<'a> Parser<'a> {
             return Ok(0.0);
         }
         let spec = self.enclosed('[', ']')?;
-        self.duration(&spec, start)
+        self.length(&spec, start, true)
     }
     fn enclosed(&mut self, open: char, close: char) -> Result<String, Diagnostic> {
         let start = self.at;
@@ -139,8 +139,21 @@ impl<'a> Parser<'a> {
 
     /// `[n:m]`、`[#秒]`、`[bpm#n:m]`。回傳秒數。
     fn duration(&self, s: &str, start: usize) -> Result<f64, Diagnostic> {
+        self.length(s, start, false)
+    }
+    /// `[n:m]`、`[#秒數]`、`[bpm#n:m]` 換成秒。`allow_zero` 給 Hold 用：
+    /// `1h[1:0]`、`Ch[#0]` 和省略括號的 `1h` 一樣是長度 0 的 Hold（官方譜轉出的 maidata 會這樣寫）；
+    /// Slide 的移動時間仍須大於 0。
+    fn length(&self, s: &str, start: usize, allow_zero: bool) -> Result<f64, Diagnostic> {
+        let amount = |text: &str| {
+            if allow_zero && text.trim().parse::<f64>() == Ok(0.0) {
+                Ok(0.0)
+            } else {
+                self.positive(text, start)
+            }
+        };
         let result = if let Some(seconds) = s.strip_prefix('#') {
-            self.positive(seconds, start)?
+            amount(seconds)?
         } else {
             let (bpm, rest) = if let Some((b, r)) = s.split_once('#') {
                 (self.positive(b, start)?, r)
@@ -150,10 +163,20 @@ impl<'a> Parser<'a> {
             let (n, m) = rest.split_once(':').ok_or_else(|| {
                 self.error("invalid", "長度需寫成 [n:m]、[#秒數] 或 [bpm#n:m]", start)
             })?;
-            240.0 * self.positive(m, start)? / self.positive(n, start)? / bpm
+            240.0 * amount(m)? / self.positive(n, start)? / bpm
         };
-        if !result.is_finite() || result <= 0.0 || result > 120.0 {
-            return Err(self.error("invalid", "單一長音時間須大於 0 且不超過 120 秒", start));
+        let too_short = if allow_zero {
+            result < 0.0
+        } else {
+            result <= 0.0
+        };
+        if !result.is_finite() || too_short || result > 120.0 {
+            let message = if allow_zero {
+                "Hold 長度不可為負，且不超過 120 秒"
+            } else {
+                "單一長音時間須大於 0 且不超過 120 秒"
+            };
+            return Err(self.error("invalid", message, start));
         }
         Ok(result)
     }

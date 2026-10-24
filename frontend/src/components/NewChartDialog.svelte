@@ -376,11 +376,19 @@
                   {wikiDifficultyLabel(record.wiki.difficulty)}
                 </span>
               </dd>
+            {:else if record.adx}
+              <dd>
+                adxdls・{record.adx.title}
+                <span class="muted">
+                  {WIKI_TYPE_LABEL[record.adx.chartType] ?? record.adx.chartType}
+                  {wikiDifficultyLabel(record.adx.difficulty)}
+                </span>
+              </dd>
             {:else}
               <dd>手動貼上</dd>
             {/if}
           </dl>
-          {#if sourceChanged && (record.majdata || record.wiki)}
+          {#if sourceChanged && (record.majdata || record.wiki || record.adx)}
             <p class="field-hint">
               來源資訊會保留，但原文已和來源不同；之後從搜尋匯入同一張會直接開啟這筆修改過的紀錄。
             </p>

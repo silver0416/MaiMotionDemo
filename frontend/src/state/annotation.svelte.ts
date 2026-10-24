@@ -4,6 +4,7 @@ import { CANCELLED, evaluateAnnotation, nextRequestId } from '../lib/api';
 import {
   type AnnotationBranch,
   type AnnotationDraft,
+  CONFIDENCE_LABEL,
   cleanDraft,
   composeMark,
   emptyDraft,
@@ -53,6 +54,7 @@ import type {
 import { playback } from './playback.svelte';
 import { recordTitle, records, type ChartRecord } from './records.svelte';
 import { session } from './session.svelte';
+import { toasts } from './toasts.svelte';
 
 const ANNOTATOR_KEY = 'maimotion.annotator.v1';
 const ADVANCE_KEY = 'maimotion.annotate-advance.v1';
@@ -166,6 +168,7 @@ export class AnnotationStore {
     this.recordId = record?.id ?? null;
     this.pendingStart = null;
     this.groupStart = null;
+    this.endPicking();
     this.draft = (record && cleanDraft(record.annotation)) ?? emptyDraft(record ? recordTitle(record) : '');
     if (record && !this.draft.title) this.draft.title = recordTitle(record);
     if (this.#syncAlignment()) this.#scheduleSave();
@@ -352,6 +355,15 @@ export class AnnotationStore {
       merge: this.lineOfStep(last.note, last.part),
     });
     if (branch) this.cancelMark();
+    return branch;
+  }
+
+  /** 直接以兩步為範圍建立分支（多選時用）：從目前路線在第一步走的線分出，併入在最後一步走的線。 */
+  branchFromSteps(first: Step, last: Step): AnnotationBranch | null {
+    this.pendingStart = first.key;
+    this.pendingFrom = this.lineOfStep(first.note, first.part);
+    const branch = this.finishMark(last);
+    if (!branch) this.cancelMark();
     return branch;
   }
 
@@ -686,6 +698,135 @@ export class AnnotationStore {
     }
     if (count > 0) this.#touch();
     return count;
+  }
+
+  // ---- 多選（逐顆清單）：以步驟為單位一次標很多步 ----
+  //
+  // Ctrl／Shift 點選或右鍵「選取」進入選取模式；這時點清單只切換選取、不換目前這一步，
+  // A／D 套用到全部選取。批次改動做完只跳一次提示，可以復原。
+
+  picking = $state(false);
+  /** 選取的步驟 key（點選順序）。 */
+  picked = $state<string[]>([]);
+
+  /** 選取的步驟，依時間排列；已經不存在的略過。 */
+  get pickedSteps(): Step[] {
+    return this.picked
+      .map((key) => this.#stepIndex.get(key))
+      .filter((index): index is number => index !== undefined)
+      .sort((a, b) => a - b)
+      .map((index) => this.steps[index]);
+  }
+
+  /** 設定選取；清空就結束選取模式，不會留下「已選 0 步」。 */
+  setPicked(keys: string[]): void {
+    this.picked = keys;
+    this.picking = keys.length > 0;
+  }
+
+  endPicking(): void {
+    this.picking = false;
+    this.picked = [];
+  }
+
+  #partsByNote(steps: Step[]): Map<Note, Set<StepPart>> {
+    const map = new Map<Note, Set<StepPart>>();
+    for (const step of steps) map.set(step.note, (map.get(step.note) ?? new Set<StepPart>()).add(step.part));
+    return map;
+  }
+
+  /** 這些步驟都標成同一隻手（起點／接觸寫手，滑行寫滑行的手）。 */
+  setHandMany(steps: Step[], hand: Hand): number {
+    for (const [note, parts] of this.#partsByNote(steps)) {
+      this.#edit(note, (mark) => {
+        // 只標其中一步時，和單步標註一樣清掉另一步沒看過的預填。
+        if (parts.size === 1) this.#dropOtherPrefill(note, mark, [...parts][0]);
+        if (parts.has('hand')) mark.hand = hand;
+        if (parts.has('track')) mark.track = hand;
+      });
+    }
+    return steps.length;
+  }
+
+  setConfidenceMany(steps: Step[], confidence: Confidence): number {
+    for (const step of steps) this.setConfidence(step.note, confidence, step.part);
+    return steps.length;
+  }
+
+  /** 清掉這些步驟的手（滑行連同換手）；信心與備註保留。回傳實際清掉的步數。 */
+  clearHandsMany(steps: Step[]): number {
+    let count = 0;
+    for (const [note, parts] of this.#partsByNote(steps)) {
+      const mark = this.mark(note);
+      const filled = [...parts].filter((part) => (part === 'hand' ? mark?.hand : mark?.track) !== undefined).length;
+      if (filled === 0) continue;
+      count += filled;
+      this.#edit(note, (next) => {
+        if (parts.size === 1) this.#dropOtherPrefill(note, next, [...parts][0]);
+        if (parts.has('hand')) delete next.hand;
+        if (parts.has('track')) {
+          delete next.track;
+          delete next.handovers;
+        }
+      });
+    }
+    return count;
+  }
+
+  /** 把這些步驟所在音符的預填確認為真人資料；回傳確認的音符數。 */
+  confirmMany(steps: Step[]): number {
+    let count = 0;
+    for (const note of this.#partsByNote(steps).keys()) if (this.#confirmNote(note)) count += 1;
+    if (count > 0) this.#touch();
+    return count;
+  }
+
+  /** 批次改動：記下改動前的草稿，做完跳一次可復原的提示。 */
+  #batch(run: () => number, done: (count: number) => string, none: string): void {
+    const before = $state.snapshot(this.draft) as AnnotationDraft;
+    const count = run();
+    if (count === 0) {
+      toasts.show({ id: 'annotation-batch', tone: 'info', title: none });
+      return;
+    }
+    toasts.show({
+      id: 'annotation-batch',
+      tone: 'ok',
+      title: done(count),
+      body: '按「復原」可以還原。',
+      action: { label: '復原', icon: 'rotate-ccw', run: () => this.restore(before) },
+    });
+  }
+
+  /** 選取的步驟標同一隻手；wholeNote 時連同這些音符的其他步驟一起標（Shift+A／D）。 */
+  pickHand(hand: Hand, wholeNote = false): void {
+    const picked = this.pickedSteps;
+    const ids = new Set(picked.map((step) => step.note.id));
+    const steps = wholeNote ? this.steps.filter((step) => ids.has(step.note.id)) : picked;
+    this.#batch(
+      () => this.setHandMany(steps, hand),
+      (count) => `已把 ${count} 步標成${hand === 'L' ? '左手' : '右手'}`,
+      '沒有選取的步驟',
+    );
+  }
+
+  pickConfidence(confidence: Confidence): void {
+    const steps = this.pickedSteps;
+    this.#batch(
+      () => this.setConfidenceMany(steps, confidence),
+      (count) => `已把 ${count} 步的信心設成「${CONFIDENCE_LABEL[confidence]}」`,
+      '沒有選取的步驟',
+    );
+  }
+
+  pickConfirm(): void {
+    const steps = this.pickedSteps;
+    this.#batch(() => this.confirmMany(steps), (count) => `已確認 ${count} 顆的預填`, '選取的步驟沒有預填');
+  }
+
+  pickClear(): void {
+    const steps = this.pickedSteps;
+    this.#batch(() => this.clearHandsMany(steps), (count) => `已清除 ${count} 步的手`, '選取的步驟還沒標手');
   }
 
   /** 各種清除範圍會影響的數量（含所有打法分支），用在按鈕與確認文字。 */
@@ -1107,10 +1248,18 @@ export class AnnotationStore {
     const notes = this.notesBetween(start, note);
     if (notes.length < 2) return { kind: 'too-short' };
     this.groupStart = null;
-    const group: NoteGroup = {
-      keys: notes.map((item) => item.key ?? '').filter((key) => key !== ''),
-      ...(this.annotator ? { by: this.annotator } : {}),
-    };
+    return this.createGroup(notes);
+  }
+
+  /** 以這些音符（不必相連）建立一組；同樣的分組已經存在時不重複建立。 */
+  createGroup(notes: Note[]): { kind: 'created' | 'exists' | 'too-short'; index?: number } | null {
+    if (!this.groupsAvailable) return null;
+    const keys = [...new Set(notes)]
+      .filter((item) => !!item.key)
+      .sort((a, b) => this.noteNumber(a) - this.noteNumber(b))
+      .map((item) => item.key ?? '');
+    if (keys.length < 2) return { kind: 'too-short' };
+    const group: NoteGroup = { keys, ...(this.annotator ? { by: this.annotator } : {}) };
     const existing = this.draft.groups.findIndex((item) => sameGroup(this.#resolved(item), group));
     if (existing >= 0) return { kind: 'exists', index: existing };
     this.draft.groups.push(group);
@@ -1350,6 +1499,16 @@ export class AnnotationStore {
     if (event.key === 'Escape' && this.pendingStart) {
       this.cancelMark();
       return true;
+    }
+    if (this.picking) {
+      if (event.key === 'Escape') {
+        this.endPicking();
+        return true;
+      }
+      if (key === 'a' || key === 'd') {
+        this.pickHand(key === 'a' ? 'L' : 'R', event.shiftKey);
+        return true;
+      }
     }
     if (key === 'n') {
       this.nextTodo();

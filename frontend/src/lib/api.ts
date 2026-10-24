@@ -1,9 +1,12 @@
 import type {
+  AdxChartPayload,
+  AdxIndexPayload,
   AnalyzeRequest,
   AnalyzeResponse,
   EvaluateRequest,
   EvaluateResponse,
   AppDistribution,
+  ChartSearchPayload,
   DownloadedUpdate,
   MajdataChartSummary,
   UpdateAsset,
@@ -87,18 +90,39 @@ export async function fetchWikiChart(
   return await invoke<WikiChartPayload>('wiki_fetch_chart', { pageId, chartType, difficulty });
 }
 
+/** 經由 Rust 載入 adxdls 目錄；force=false 時優先用記憶體或 24 小時快取。 */
+export async function refreshAdxIndex(force: boolean): Promise<AdxIndexPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<AdxIndexPayload>('adx_refresh_index', { force });
+}
+
+/** 經由 Rust 取得 adxdls 某首歌某個難度的譜面（只含該難度的 maidata）。 */
+export async function fetchAdxChart(slug: string, difficulty: string): Promise<AdxChartPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<AdxChartPayload>('adx_fetch_chart', { slug, difficulty });
+}
+
+/** simai Wiki＋adxdls 合併搜尋（本機索引，不連網）；兩邊索引都沒有時 reject。 */
+export async function searchCharts(
+  query: string,
+  chartType: 'all' | WikiChartType = 'all',
+): Promise<ChartSearchPayload> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<ChartSearchPayload>('chart_search', { query, chartType });
+}
+
 export interface WikiCacheInfo {
   files: number;
   bytes: number;
 }
 
-/** simai Wiki 磁碟快取（索引＋歌曲頁）的用量。只有桌面版可用。 */
+/** 譜面網站（simai Wiki＋adxdls）磁碟快取的用量。只有桌面版可用。 */
 export async function wikiCacheInfo(): Promise<WikiCacheInfo> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<WikiCacheInfo>('wiki_cache_info');
 }
 
-/** 清除 simai Wiki 磁碟快取與 Rust 記憶體中的索引；回傳清除前的用量。 */
+/** 清除譜面網站（simai Wiki＋adxdls）磁碟快取與 Rust 記憶體中的索引；回傳清除前的用量。 */
 export async function clearWikiCache(): Promise<WikiCacheInfo> {
   const { invoke } = await import('@tauri-apps/api/core');
   return await invoke<WikiCacheInfo>('wiki_clear_cache');

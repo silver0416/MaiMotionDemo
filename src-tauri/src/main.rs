@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod adx;
+mod chart_search;
 mod handcam;
 mod majdata;
 mod self_update;
@@ -226,6 +228,42 @@ async fn wiki_fetch_chart(
     wiki::fetch_chart(&app, &state, page_id, chart_type, difficulty).await
 }
 
+/// 下載／更新 adxdls 目錄。行為與 wiki_refresh_index 相同（記憶體 → 新鮮快取 → 網站 → 過期快取）。
+#[tauri::command]
+async fn adx_refresh_index(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, adx::AdxState>,
+    force: bool,
+) -> Result<adx::AdxIndexPayload, String> {
+    adx::refresh_index(&app, &state, force).await
+}
+
+/// 下載 adxdls 的 maidata.txt，只留指定難度（已用既有 parser 驗證）。
+/// `difficulty` 與 wiki_fetch_chart 相同。
+#[tauri::command]
+async fn adx_fetch_chart(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, adx::AdxState>,
+    slug: String,
+    difficulty: String,
+) -> Result<adx::AdxChartPayload, String> {
+    let difficulty =
+        wiki::Difficulty::from_param(&difficulty).ok_or_else(|| "難度無效".to_string())?;
+    adx::fetch_chart(&app, &state, &slug, difficulty).await
+}
+
+/// simai Wiki＋adxdls 合併搜尋（只查本機索引）。`chart_type` 為 `all`／`standard`／`deluxe`。
+#[tauri::command]
+async fn chart_search(
+    app: tauri::AppHandle,
+    wiki_state: tauri::State<'_, wiki::WikiState>,
+    adx_state: tauri::State<'_, adx::AdxState>,
+    query: String,
+    chart_type: Option<String>,
+) -> Result<chart_search::ChartSearchPayload, String> {
+    chart_search::search(&app, &wiki_state, &adx_state, &query, chart_type.as_deref())
+}
+
 /// 目前這份建置的發佈通路：portable／installed；debug 建置回 dev。
 #[tauri::command]
 fn app_distribution() -> String {
@@ -240,25 +278,64 @@ async fn check_update(
     update::check(&client.0).await
 }
 
-/// simai Wiki 磁碟快取（索引＋歌曲頁）的用量。
+/// 譜面網站（simai Wiki＋adxdls）磁碟快取的用量。
 #[tauri::command]
 fn wiki_cache_info(app: tauri::AppHandle) -> wiki::WikiCacheInfo {
-    wiki::cache_info(&app)
+    let wiki = wiki::cache_info(&app);
+    let adx = adx_cache_usage(&app);
+    wiki::WikiCacheInfo {
+        files: wiki.files + adx.files,
+        bytes: wiki.bytes + adx.bytes,
+    }
 }
 
-/// 清除 simai Wiki 磁碟快取與記憶體索引；回傳清除前的用量。
+/// 清除譜面網站（simai Wiki＋adxdls）的磁碟快取與記憶體索引；回傳清除前的用量。
 #[tauri::command]
 fn wiki_clear_cache(
     app: tauri::AppHandle,
     state: tauri::State<'_, wiki::WikiState>,
+    adx_state: tauri::State<'_, adx::AdxState>,
 ) -> Result<wiki::WikiCacheInfo, String> {
-    wiki::clear_cache(&app, &state)
+    let adx = adx_cache_usage(&app);
+    adx::clear_memory(&adx_state);
+    match std::fs::remove_dir_all(adx::cache_dir(&wiki::cache_base(&app))) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("無法清除 adxdls 快取：{error}")),
+    }
+    let wiki = wiki::clear_cache(&app, &state)?;
+    Ok(wiki::WikiCacheInfo {
+        files: wiki.files + adx.files,
+        bytes: wiki.bytes + adx.bytes,
+    })
+}
+
+fn adx_cache_usage(app: &tauri::AppHandle) -> wiki::WikiCacheInfo {
+    fn walk(dir: &std::path::Path, usage: &mut wiki::WikiCacheInfo) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => walk(&entry.path(), usage),
+                Ok(kind) if kind.is_file() => {
+                    usage.files += 1;
+                    usage.bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut usage = wiki::WikiCacheInfo { files: 0, bytes: 0 };
+    walk(&adx::cache_dir(&wiki::cache_base(app)), &mut usage);
+    usage
 }
 
 fn main() {
     let majdata_client = majdata::build_client().expect("Failed to initialize Majdata HTTP client");
     let update_client = update::build_client().expect("Failed to initialize update HTTP client");
     let wiki_client = wiki::build_client().expect("Failed to initialize simai Wiki HTTP client");
+    let adx_client = adx::build_client().expect("Failed to initialize adxdls HTTP client");
     let video_client = video::build_client().expect("Failed to initialize video tool HTTP client");
     let handcam_client = handcam::build_client().expect("Failed to initialize model HTTP client");
     let self_update_client =
@@ -287,6 +364,7 @@ fn main() {
         .manage(MajdataClient(majdata_client))
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
+        .manage(adx::AdxState::new(adx_client))
         .manage(video::VideoState::new(video_client))
         .manage(handcam::HandcamState::new(handcam_client))
         .manage(self_update::SelfUpdateState::new(
@@ -309,6 +387,9 @@ fn main() {
             wiki_fetch_chart,
             wiki_cache_info,
             wiki_clear_cache,
+            adx_refresh_index,
+            adx_fetch_chart,
+            chart_search,
             video::commands::video_open_window,
             video::commands::video_tools_status,
             video::commands::video_install_tool,

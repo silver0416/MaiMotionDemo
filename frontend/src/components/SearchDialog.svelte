@@ -15,7 +15,7 @@
   type Target = 'majdata' | 'wiki';
 
   const TARGETS: { id: Target; label: string }[] = [
-    { id: 'wiki', label: 'simai Wiki' },
+    { id: 'wiki', label: 'simai Wiki・adxdls' },
     { id: 'majdata', label: 'Majdata' },
   ];
   const TARGET_KEY = 'maimotion.searchTarget';
@@ -274,7 +274,9 @@
     border-top: 1px solid var(--c-border);
   }
 
+  /* 分頁名稱長短不一（「simai Wiki・adxdls」比 Majdata 長），依內容寬度排，不平分。 */
   .target {
+    flex: 0 0 auto;
     padding: 0 14px;
   }
 

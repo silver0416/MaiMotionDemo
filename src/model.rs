@@ -212,6 +212,9 @@ pub struct SolverConfig {
     pub glide_distance: f64,
     /// 手掌圓形近似的半徑，盤面半徑為 1；0 表示關閉同時 Touch 覆蓋。
     pub palm_radius: f64,
+    /// 備用手掌半徑：用 palm_radius 整首找不到方案時，才改用這個半徑重試（例如開頭雙手拍滿
+    /// Touch 的寫法）。不大於 palm_radius，或 palm_radius 為 0（關閉手掌覆蓋）時不重試。
+    pub palm_fallback_radius: f64,
     /// V3：Slide 依判定佇列抄近（可跳區、進最後判定區就算完成）。預設 false：
     /// 手沿星星路徑畫到終點，偷懶只靠手掌範圍同時覆蓋多條 Slide 或順手點到 Tap。
     pub slide_shortcut: bool,
@@ -249,6 +252,7 @@ struct SolverConfigWire {
     slide_pickup_seconds: f64,
     glide_distance: f64,
     palm_radius: f64,
+    palm_fallback_radius: f64,
     slide_shortcut: bool,
     hold_early_release: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -287,6 +291,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             slide_pickup_seconds: c.slide_pickup_seconds,
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
+            palm_fallback_radius: c.palm_fallback_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
             ml_model: c.ml_model.clone(),
@@ -321,6 +326,7 @@ impl From<SolverConfigWire> for SolverConfig {
             slide_pickup_seconds: c.slide_pickup_seconds,
             glide_distance: c.glide_distance,
             palm_radius: c.palm_radius,
+            palm_fallback_radius: c.palm_fallback_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
             ml_model: c.ml_model,
@@ -436,6 +442,7 @@ impl Default for SolverConfig {
             slide_pickup_seconds: 0.12,
             glide_distance: 0.8,
             palm_radius: 0.5,
+            palm_fallback_radius: 0.7,
             slide_shortcut: false,
             hold_early_release: false,
             ml_model: None,
@@ -550,6 +557,11 @@ impl SolverConfig {
         }
         if !self.palm_radius.is_finite() || !(0.0..=1.0).contains(&self.palm_radius) {
             return Err("手掌半徑必須為 0–1；0 表示關閉".into());
+        }
+        if !self.palm_fallback_radius.is_finite()
+            || !(0.0..=1.0).contains(&self.palm_fallback_radius)
+        {
+            return Err("備用手掌半徑必須為 0–1；不大於手掌半徑時不使用".into());
         }
         if values.iter().any(|v| !v.is_finite() || *v <= 0.0) {
             return Err("時間與速度參數必須為有限正數".into());

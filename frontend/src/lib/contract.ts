@@ -38,6 +38,7 @@ export const DEFAULT_BASE: BaseSolverConfig = {
   preparationSeconds: 1,
   repetitionSeconds: 0.15,
   palmRadius: 0.5,
+  palmFallbackRadius: 0.7,
   holdEarlyRelease: false,
 };
 
@@ -318,6 +319,7 @@ export const CONFIG_RANGE = {
   slidePickupSeconds: { min: 0, max: 2 },
   glideDistance: { min: 0, max: 2 },
   palmRadius: { min: 0, max: 1 },
+  palmFallbackRadius: { min: 0, max: 1 },
   preparationSeconds: { min: 0.01, max: 10 },
   repetitionSeconds: { min: 0.001, max: 10 },
   homePreference: { min: 0, max: 100 },
@@ -338,6 +340,7 @@ export const FIELD_LABEL: Record<string, string> = {
   slidePickupSeconds: 'Slide 最晚接上時間',
   glideDistance: '相鄰連擊滑移距離',
   palmRadius: '手掌半徑',
+  palmFallbackRadius: '備用手掌半徑',
   preparationSeconds: '開始前預備時間',
   repetitionSeconds: '同手連打判定間隔',
   homePreference: '左右分工傾向',
@@ -358,6 +361,7 @@ export const ADVANCED_FIELDS = new Set<string>([
   'slidePickupSeconds',
   'glideDistance',
   'palmRadius',
+  'palmFallbackRadius',
   'preparationSeconds',
   'repetitionSeconds',
   'firstSeconds',
@@ -418,6 +422,9 @@ export function validateConfig(config: ConfigDraft, firstSeconds: number): Confi
   }
   if (!Number.isFinite(config.palmRadius) || config.palmRadius < 0 || config.palmRadius > 1) {
     issues.push({ field: 'palmRadius', message: '手掌半徑必須是 0–1；0 表示關閉手掌覆蓋' });
+  }
+  if (outside(config.palmFallbackRadius, CONFIG_RANGE.palmFallbackRadius)) {
+    issues.push({ field: 'palmFallbackRadius', message: '備用手掌半徑必須是 0–1' });
   }
   if (config.preparationSeconds > 10) {
     issues.push({ field: 'preparationSeconds', message: '預備時間最多 10 秒' });

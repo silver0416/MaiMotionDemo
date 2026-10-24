@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import Icon from './Icon.svelte';
   import ContextMenu, { type MenuItem } from './ContextMenu.svelte';
   import Popover from './Popover.svelte';
   import Dropdown from './Dropdown.svelte';
+  import OverallMemoDialog from './OverallMemoDialog.svelte';
   import {
     TAG_COLORS,
     cleanName,
@@ -264,6 +265,7 @@
     }
     return [
       { id: 'edit', label: '查看／編輯', icon: 'pencil' },
+      { id: 'memo', label: '整首備註…', icon: 'text-cursor' },
       { id: 'export', label: '匯出標記檔', icon: 'download' },
       { id: 'tag', label: '標籤…', icon: 'tag' },
       { id: 'folder', label: '移到資料夾…', icon: 'folder' },
@@ -311,6 +313,9 @@
     switch (action) {
       case 'edit':
         onEdit(record);
+        break;
+      case 'memo':
+        memoRecord = record;
         break;
       case 'export':
         await exportIds(ids);
@@ -362,6 +367,9 @@
       toggleSelect(record.id);
     }
   }
+
+  /** 右鍵「整首備註…」打開的紀錄；null 表示對話框關著。 */
+  let memoRecord = $state<ChartRecord | null>(null);
 
   // ---- 資料夾／標籤的選擇與管理（浮動面板） ----
 
@@ -646,11 +654,16 @@
   let listEl: HTMLElement | null = $state(null);
 
   // 從搜尋視窗跳到既有紀錄時，把那一列捲進可視範圍並選取。
+  // 只跟著開啟中的紀錄（與清單元素）重跑：選取改變不能觸發，否則在別列按右鍵時
+  // 選取會被拉回開啟中的那筆、清單捲回去，捲動又把剛開的右鍵選單關掉。
   $effect(() => {
     const id = records.activeId;
+    const list = listEl;
     if (!id) return;
-    if (!multi && selected[0] !== id) selectOnly(id);
-    listEl?.querySelector(`[data-record-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
+    untrack(() => {
+      if (!multi && selected[0] !== id) selectOnly(id);
+    });
+    list?.querySelector(`[data-record-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'nearest' });
   });
 
   // 分析中點別的譜直接中斷換過去，不必等。瀏覽器預覽沒有核心，只能開啟已快取的分析。
@@ -962,6 +975,8 @@
     onClose={closeMenu}
   />
 {/if}
+
+<OverallMemoDialog bind:record={memoRecord} />
 
 {#if chipMenu}
   <ContextMenu

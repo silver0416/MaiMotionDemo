@@ -11,12 +11,17 @@ fn run(source: &str, solver_config: SolverConfig) -> AnalyzeResponse {
         solver_config,
     })
 }
+/// 這裡測的是判定規則與手掌幾何的界線，關掉備用手掌半徑，不讓它把「做不到」救回來。
 fn configs() -> [SolverConfig; 3] {
     [
         SolverConfig::default(),
         SolverConfig::v2(),
         SolverConfig::v3(),
     ]
+    .map(|c| SolverConfig {
+        palm_fallback_radius: 0.0,
+        ..c
+    })
 }
 fn ok(source: &str, c: SolverConfig) -> AnalyzeResponse {
     let r = run(source, c);

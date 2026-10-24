@@ -30,9 +30,10 @@ const JUMP_SECONDS = 0.15;
 function queryFor(): string {
   const record = records.active;
   if (!record) return '';
-  if (record.wiki) {
-    const type = record.wiki.chartType === 'deluxe' ? 'でらっくす譜面' : WIKI_TYPE_LABEL[record.wiki.chartType];
-    return searchQuery(`${record.wiki.title} ${type}`, wikiDifficultyLabel(record.wiki.difficulty));
+  const origin = record.wiki ?? record.adx;
+  if (origin) {
+    const type = origin.chartType === 'deluxe' ? 'でらっくす譜面' : WIKI_TYPE_LABEL[origin.chartType];
+    return searchQuery(`${origin.title} ${type}`, wikiDifficultyLabel(origin.difficulty));
   }
   const title = record.majdata?.title || maidataField(record.source, 'title') || recordTitle(record);
   // 解析時取難度最高的 &inote_N。

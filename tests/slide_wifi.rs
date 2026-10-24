@@ -135,6 +135,7 @@ fn v3_one_spread_hand_can_play_wifi_while_the_other_holds() {
     }
     let mut narrow = shortcut();
     narrow.palm_radius = 0.2;
+    narrow.palm_fallback_radius = 0.0;
     assert_eq!(
         run("(120){4}1w5[4:2]/8h[4:8],E", narrow).status,
         "no_solution"
@@ -218,6 +219,7 @@ fn wifi_requires_both_hands_and_sufficient_palm_width() {
             "no_solution"
         );
         c.palm_radius = 0.2;
+        c.palm_fallback_radius = 0.0;
         assert_eq!(run("(120){4}1w5[4:2],E", c).status, "no_solution");
     }
 }
@@ -272,6 +274,7 @@ fn wifi_is_deterministic_and_late_pickup_stays_synchronous() {
     let mut c = shortcut();
     c.top_k = 1;
     c.palm_radius = 0.2;
+    c.palm_fallback_radius = 0.0;
     let r = run(source, c.clone());
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
     let a: Vec<_> = r.solutions[0]
@@ -343,6 +346,7 @@ fn v3_default_wifi_is_drawn_to_the_end_by_palms() {
     }
     let mut narrow = SolverConfig::v3();
     narrow.palm_radius = 0.2;
+    narrow.palm_fallback_radius = 0.0;
     assert_eq!(
         run("(120){4}1w5[4:2]/8h[4:8],E", narrow).status,
         "no_solution"

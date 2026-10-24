@@ -773,10 +773,7 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
     tasks.sort_by(|a, b| {
         a.start
             .total_cmp(&b.start)
-            .then_with(|| b.continuation.cmp(&a.continuation))
-            .then_with(|| chart.notes[a.note].button.cmp(&chart.notes[b.note].button))
-            .then_with(|| a.mode.cmp(b.mode))
-            .then_with(|| a.note.cmp(&b.note))
+            .then_with(|| group_order(a, b, chart))
     });
     if tasks.len() > MAX_TASKS {
         return Err(Diagnostic::plain(
@@ -785,6 +782,29 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
         ));
     }
     Ok(tasks)
+}
+
+/// 同時音的展開順序：接續中的 Slide 先，再依按鍵（Touch 為區號），同按鍵的 Slide 先於 Tap。
+/// 先展開的 Slide 讓手接上之後，起點上的 Tap 才能由同一隻手順帶碰到。
+fn group_order(a: &Task, b: &Task, chart: &Chart) -> std::cmp::Ordering {
+    b.continuation
+        .cmp(&a.continuation)
+        .then_with(|| chart.notes[a.note].button.cmp(&chart.notes[b.note].button))
+        .then_with(|| a.mode.cmp(b.mode))
+        .then_with(|| a.note.cmp(&b.note))
+}
+
+/// tasks() 依精確的開始時間排序，求解迴圈卻把差在 EPS 內的任務當成同一組。Slide 起點由頭時間
+/// 加等待推算，可能比同一時刻的音符晚 1e-14 秒，於是 group_order 失效、Slide 被排到組尾。
+/// 回傳整組依 group_order 重排的順序；和現有順序相同時回傳 None。
+fn canonical_group(group: &[Task], chart: &Chart) -> Option<Vec<Task>> {
+    let mut order = group.to_vec();
+    order.sort_by(|a, b| group_order(a, b, chart));
+    let same = order
+        .iter()
+        .zip(group)
+        .all(|(a, b)| a.note == b.note && a.mode == b.mode);
+    (!same).then_some(order)
 }
 
 /// 一段動作的距離、速度與跨側成本（已乘權重）。抽出來是為了在改寫動作段時
@@ -2497,6 +2517,53 @@ fn solve_traced(
     mut trace: Option<&mut Vec<String>>,
     rules: Option<&HandRules>,
 ) -> Result<Vec<Solution>, Diagnostic> {
+    let result = solve_relaxing_holds(chart, c, trace.as_deref_mut(), rules);
+    // 手掌半徑以平常的大小為主：整首都走不通時，才改用較大的備用半徑重試並註明。
+    match result {
+        Err(e)
+            if c.palm_radius > 0.0
+                && c.palm_fallback_radius > c.palm_radius
+                && matches!(e.code.as_str(), "no_solution" | "annotation_infeasible") =>
+        {
+            let wider = SolverConfig {
+                palm_radius: c.palm_fallback_radius,
+                ..c.clone()
+            };
+            // 備用半徑也走不通時，回報走得比較遠的那一處（開頭的問題已被備用半徑解掉時，
+            // 使用者需要看到的是後面真正卡住的地方）。
+            let mut solutions =
+                solve_relaxing_holds(chart, &wider, trace, rules).map_err(|wide| {
+                    let later = wide.time_seconds.unwrap_or(f64::NEG_INFINITY)
+                        > e.time_seconds.unwrap_or(f64::INFINITY);
+                    if later {
+                        let mut wide = wide;
+                        wide.message = format!(
+                            "（已改用備用手掌半徑 {} 重試）{}",
+                            c.palm_fallback_radius, wide.message
+                        );
+                        wide
+                    } else {
+                        e
+                    }
+                })?;
+            for solution in &mut solutions {
+                solution.warnings.push(format!(
+                    "手掌半徑 {} 找不到可行方案，此方案改用備用手掌半徑 {}。",
+                    c.palm_radius, c.palm_fallback_radius
+                ));
+            }
+            Ok(solutions)
+        }
+        other => other,
+    }
+}
+
+fn solve_relaxing_holds(
+    chart: &Chart,
+    c: &SolverConfig,
+    mut trace: Option<&mut Vec<String>>,
+    rules: Option<&HandRules>,
+) -> Result<Vec<Solution>, Diagnostic> {
     let result = solve_chain(chart, c, trace.as_deref_mut(), rules);
     // Hold 一律按完是偏好不是硬規則：整首都找不到方案時才允許提早放手，並註明。
     match result {
@@ -2729,220 +2796,233 @@ fn solve_with(
                 continue;
             }
         }
-        let candidates = palm_candidates(group, chart, c.palm_radius);
-        let touch_groups = touch_groups(group, chart);
-        let in_touch_group: Vec<bool> = (0..group.len())
-            .map(|i| touch_groups.iter().any(|g| g.contains(&i)))
-            .collect();
-        let mut next = vec![];
-        // 依標註剔除的狀態數；整組都被剔除時要回報是標註走不通，而不是模型本身無解。
-        let mut rejected = 0usize;
-        // 第三個欄位標記由 Touch Group 過半判定連帶完成、沒有實際接觸的 Touch。
-        let mut pending: Vec<(State, Vec<bool>, Vec<bool>)> = beam
-            .into_iter()
-            .map(|state| (state, vec![true; group.len()], vec![false; group.len()]))
-            .collect();
-        while let Some((state, remaining, auto)) = pending.pop() {
-            if cancelled() {
-                return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
-            }
-            if expansions > MAX_EXPANSIONS
-                || clock.elapsed() > BUDGET
-                || pending.len() + next.len() > MAX_GROUP_STATES
-            {
-                return Err(Diagnostic::plain(
-                    "search_limit",
-                    "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
-                ));
-            }
-            // Touch Group 成員最後展開：其他音符先分到手，剩下接不到的 Touch 才交給過半判定。
-            let next_task = (0..group.len())
-                .find(|j| remaining[*j] && !in_touch_group[*j])
-                .or_else(|| remaining.iter().position(|todo| *todo));
-            let Some(i) = next_task else {
-                let Some(mut state) =
-                    settle_touch_groups(state, &auto, &touch_groups, group, chart)
-                else {
-                    continue;
-                };
-                if let Some(context) = &v2_context {
-                    context.refresh(&mut state)?;
+        // 這組的順序被浮點誤差打亂時，先照原順序展開（結果與校準時相同）；整組都走不通才改用
+        // 標準順序重來一次。順序只是搜尋策略，不同順序能展開出的接法不完全一樣。
+        let mut retry = canonical_group(group, chart).map(|order| (order, beam.clone()));
+        let mut reordered: Option<Vec<Task>> = None;
+        let mut next = loop {
+            let group = reordered.as_deref().unwrap_or(group);
+            let candidates = palm_candidates(group, chart, c.palm_radius);
+            let touch_groups = touch_groups(group, chart);
+            let in_touch_group: Vec<bool> = (0..group.len())
+                .map(|i| touch_groups.iter().any(|g| g.contains(&i)))
+                .collect();
+            let mut next = vec![];
+            // 依標註剔除的狀態數；整組都被剔除時要回報是標註走不通，而不是模型本身無解。
+            let mut rejected = 0usize;
+            // 第三個欄位標記由 Touch Group 過半判定連帶完成、沒有實際接觸的 Touch。
+            let mut pending: Vec<(State, Vec<bool>, Vec<bool>)> = beam
+                .into_iter()
+                .map(|state| (state, vec![true; group.len()], vec![false; group.len()]))
+                .collect();
+            while let Some((state, remaining, auto)) = pending.pop() {
+                if cancelled() {
+                    return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
                 }
-                if let Some(context) = &v3_context {
-                    context.refresh(&mut state)?;
+                if expansions > MAX_EXPANSIONS
+                    || clock.elapsed() > BUDGET
+                    || pending.len() + next.len() > MAX_GROUP_STATES
+                {
+                    return Err(Diagnostic::plain(
+                        "search_limit",
+                        "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                    ));
                 }
-                if rules.is_some_and(|r| !r.satisfied(&state)) {
-                    rejected += 1;
-                    continue;
-                }
-                next.push(state);
-                continue;
-            };
-            let task = &group[i];
-            let mut after = remaining.clone();
-            after[i] = false;
-            if task.mode == "slide"
-                && (state.finished.contains(&task.note) || state.bundled.contains_key(&task.note))
-            {
-                pending.push((state, after, auto));
-                continue;
-            }
-            if let Some(&(progress, bound)) = state.suspended.get(&task.note) {
-                for hand in [Hand::L, Hand::R] {
-                    expansions += 1;
-                    let Some(resumed) = resume_slide(&state, task, hand, progress, chart) else {
+                // Touch Group 成員最後展開：其他音符先分到手，剩下接不到的 Touch 才交給過半判定。
+                let next_task = (0..group.len())
+                    .find(|j| remaining[*j] && !in_touch_group[*j])
+                    .or_else(|| remaining.iter().position(|todo| *todo));
+                let Some(i) = next_task else {
+                    let Some(mut state) =
+                        settle_touch_groups(state, &auto, &touch_groups, group, chart)
+                    else {
                         continue;
                     };
-                    for mut s in assign(&resumed, task, hand, chart, c, false) {
-                        if let Some(context) = &v3_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        pending.push((s, after.clone(), auto.clone()));
+                    if let Some(context) = &v2_context {
+                        context.refresh(&mut state)?;
                     }
-                }
-                // 最後一段一定要有手接回去；其餘時間可以繼續等：這段路徑的移動量，
-                // 以及「晚一段才接回」多出來的壓縮成本，先記進排序用的預存。
-                if !task.last {
                     if let Some(context) = &v3_context {
-                        let next_bound = context.resume_bound(task, chart, progress, task.end)?;
-                        let share = context.deposit(task, chart)? + next_bound - bound;
-                        let mut waiting = state.clone();
-                        waiting.pending += share;
-                        *waiting.deposit.entry(task.note).or_default() += share;
-                        waiting.suspended.insert(task.note, (progress, next_bound));
-                        pending.push((waiting, after, auto));
+                        context.refresh(&mut state)?;
                     }
-                }
-                continue;
-            }
-            // 準時的接觸優先；只有兩手都無法準時完成這顆音符時，才展開 Touch 在
-            // Critical Perfect 區間內的晚接觸。relaxed 為整譜重試，一律展開。
-            let before = pending.len();
-            for late in [false, true] {
-                if late && !relaxed && pending.len() > before {
-                    break;
-                }
-                for hand in [Hand::L, Hand::R] {
-                    expansions += 1;
-                    for mut s in assign(&state, task, hand, chart, c, late) {
-                        s.lenient_in_group |= late;
-                        if let Some(context) = &v2_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        if let Some(context) = &v3_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        pending.push((s, after.clone(), auto.clone()));
-                    }
-                    if late {
+                    if rules.is_some_and(|r| !r.satisfied(&state)) {
+                        rejected += 1;
                         continue;
                     }
-                    expansions += 1;
-                    if let Some(mut s) = extend_palm_to_touch(&state, task, hand, chart, c) {
-                        if let Some(context) = &v2_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        if let Some(context) = &v3_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        pending.push((s, after.clone(), auto.clone()));
-                    }
-                    expansions += 1;
-                    if let Some(mut s) = brush_touch(&state, task, hand, chart, c) {
-                        if let Some(context) = &v2_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        if let Some(context) = &v3_context {
-                            context.update(&state, &mut s)?;
-                        }
-                        pending.push((s, after.clone(), auto.clone()));
-                    }
-                }
-                if !matches!(chart.notes[task.note].kind.as_str(), "touch" | "touchHold") {
+                    next.push(state);
+                    continue;
+                };
+                let task = &group[i];
+                let mut after = remaining.clone();
+                after[i] = false;
+                if task.mode == "slide"
+                    && (state.finished.contains(&task.note)
+                        || state.bundled.contains_key(&task.note))
+                {
+                    pending.push((state, after, auto));
                     continue;
                 }
-                for candidate in &candidates {
-                    if !candidate.covered.contains(&i)
-                        || candidate.covered.iter().any(|j| !remaining[*j])
-                    {
-                        continue;
+                if let Some(&(progress, bound)) = state.suspended.get(&task.note) {
+                    for hand in [Hand::L, Hand::R] {
+                        expansions += 1;
+                        let Some(resumed) = resume_slide(&state, task, hand, progress, chart)
+                        else {
+                            continue;
+                        };
+                        for mut s in assign(&resumed, task, hand, chart, c, false) {
+                            if let Some(context) = &v3_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            pending.push((s, after.clone(), auto.clone()));
+                        }
                     }
-                    let mut after_palm = remaining.clone();
-                    for j in &candidate.covered {
-                        after_palm[*j] = false;
+                    // 最後一段一定要有手接回去；其餘時間可以繼續等：這段路徑的移動量，
+                    // 以及「晚一段才接回」多出來的壓縮成本，先記進排序用的預存。
+                    if !task.last {
+                        if let Some(context) = &v3_context {
+                            let next_bound =
+                                context.resume_bound(task, chart, progress, task.end)?;
+                            let share = context.deposit(task, chart)? + next_bound - bound;
+                            let mut waiting = state.clone();
+                            waiting.pending += share;
+                            *waiting.deposit.entry(task.note).or_default() += share;
+                            waiting.suspended.insert(task.note, (progress, next_bound));
+                            pending.push((waiting, after, auto));
+                        }
+                    }
+                    continue;
+                }
+                // 準時的接觸優先；只有兩手都無法準時完成這顆音符時，才展開 Touch 在
+                // Critical Perfect 區間內的晚接觸。relaxed 為整譜重試，一律展開。
+                let before = pending.len();
+                for late in [false, true] {
+                    if late && !relaxed && pending.len() > before {
+                        break;
                     }
                     for hand in [Hand::L, Hand::R] {
-                        let variants: Vec<PalmCandidate> = if !c.is_legacy() {
-                            candidate
-                                .centers
-                                .iter()
-                                .map(|center| PalmCandidate {
+                        expansions += 1;
+                        for mut s in assign(&state, task, hand, chart, c, late) {
+                            s.lenient_in_group |= late;
+                            if let Some(context) = &v2_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            if let Some(context) = &v3_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            pending.push((s, after.clone(), auto.clone()));
+                        }
+                        if late {
+                            continue;
+                        }
+                        expansions += 1;
+                        if let Some(mut s) = extend_palm_to_touch(&state, task, hand, chart, c) {
+                            if let Some(context) = &v2_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            if let Some(context) = &v3_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            pending.push((s, after.clone(), auto.clone()));
+                        }
+                        expansions += 1;
+                        if let Some(mut s) = brush_touch(&state, task, hand, chart, c) {
+                            if let Some(context) = &v2_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            if let Some(context) = &v3_context {
+                                context.update(&state, &mut s)?;
+                            }
+                            pending.push((s, after.clone(), auto.clone()));
+                        }
+                    }
+                    if !matches!(chart.notes[task.note].kind.as_str(), "touch" | "touchHold") {
+                        continue;
+                    }
+                    for candidate in &candidates {
+                        if !candidate.covered.contains(&i)
+                            || candidate.covered.iter().any(|j| !remaining[*j])
+                        {
+                            continue;
+                        }
+                        let mut after_palm = remaining.clone();
+                        for j in &candidate.covered {
+                            after_palm[*j] = false;
+                        }
+                        for hand in [Hand::L, Hand::R] {
+                            let variants: Vec<PalmCandidate> = if !c.is_legacy() {
+                                candidate
+                                    .centers
+                                    .iter()
+                                    .map(|center| PalmCandidate {
+                                        covered: candidate.covered.clone(),
+                                        centers: vec![*center],
+                                    })
+                                    .collect()
+                            } else {
+                                vec![PalmCandidate {
                                     covered: candidate.covered.clone(),
-                                    centers: vec![*center],
-                                })
-                                .collect()
-                        } else {
-                            vec![PalmCandidate {
-                                covered: candidate.covered.clone(),
-                                centers: candidate.centers.clone(),
-                            }]
-                        };
-                        for variant in &variants {
-                            expansions += 1;
-                            for mut s in assign_palm(&state, variant, group, hand, chart, c, late) {
-                                s.lenient_in_group |= late;
-                                if let Some(context) = &v2_context {
-                                    context.update(&state, &mut s)?;
+                                    centers: candidate.centers.clone(),
+                                }]
+                            };
+                            for variant in &variants {
+                                expansions += 1;
+                                for mut s in
+                                    assign_palm(&state, variant, group, hand, chart, c, late)
+                                {
+                                    s.lenient_in_group |= late;
+                                    if let Some(context) = &v2_context {
+                                        context.update(&state, &mut s)?;
+                                    }
+                                    if let Some(context) = &v3_context {
+                                        context.update(&state, &mut s)?;
+                                    }
+                                    pending.push((s, after_palm.clone(), auto.clone()));
                                 }
-                                if let Some(context) = &v3_context {
-                                    context.update(&state, &mut s)?;
-                                }
-                                pending.push((s, after_palm.clone(), auto.clone()));
                             }
                         }
                     }
                 }
-            }
-            // 還沒接上的 Slide 可先不接；排序鍵預存其完整路徑的分攤成本。
-            let deferrable = task.mode == "slide"
-                && !task.last
-                && task.end
-                    <= chart.notes[task.note].motion_start.unwrap() + c.slide_pickup_seconds + EPS;
-            // Late pickup resolves an occupied hand or another simultaneous
-            // contact. It is not a way to shorten an uncontested Slide's
-            // opposite-side exposure for free below the comfort threshold.
-            let pickup_conflict = c.is_legacy()
-                || after
-                    .iter()
-                    .enumerate()
-                    .any(|(j, todo)| *todo && group[j].mode != "slide")
-                || [Hand::L, Hand::R]
-                    .iter()
-                    .all(|hand| assign(&state, task, *hand, chart, c, false).is_empty());
-            if deferrable && !state.engaged.contains_key(&task.note) && pickup_conflict {
-                let dt = task.end - task.start;
-                let span = task.span.max(EPS);
-                let share = if let Some(context) = &v2_context {
-                    context.deposit(task, chart)?
-                } else if let Some(context) = &v3_context {
-                    context.deposit(task, chart)?
-                } else {
-                    c.distance_weight * task.path_length * dt / span
-                        + c.speed_weight * task.path_length.powi(2) * dt
-                            / span.powi(2)
-                            / c.speed_reference.powi(2)
-                };
-                let mut deferred = state.clone();
-                deferred.pending += share;
-                *deferred.deposit.entry(task.note).or_default() += share;
-                pending.push((deferred, after.clone(), auto.clone()));
-            }
-            // Slide 尾判只看手何時進入最後判定區；進入後若同組或 Slide 結束前還有別的音符
-            // 需要手，可以不再追完剩下的路徑。這個選擇要在進入判定區的 checkpoint 就做，
-            // 等衝突真的出現時手已經多追了一段，因此以「結束前有新音符」預判，不套用
-            // 同組準時優先的過濾。
-            let needed_elsewhere = task.mode == "slide"
-                && (after.iter().enumerate().any(|(j, todo)| {
+                // 還沒接上的 Slide 可先不接；排序鍵預存其完整路徑的分攤成本。
+                let deferrable = task.mode == "slide"
+                    && !task.last
+                    && task.end
+                        <= chart.notes[task.note].motion_start.unwrap()
+                            + c.slide_pickup_seconds
+                            + EPS;
+                // Late pickup resolves an occupied hand or another simultaneous
+                // contact. It is not a way to shorten an uncontested Slide's
+                // opposite-side exposure for free below the comfort threshold.
+                let pickup_conflict = c.is_legacy()
+                    || after
+                        .iter()
+                        .enumerate()
+                        .any(|(j, todo)| *todo && group[j].mode != "slide")
+                    || [Hand::L, Hand::R]
+                        .iter()
+                        .all(|hand| assign(&state, task, *hand, chart, c, false).is_empty());
+                if deferrable && !state.engaged.contains_key(&task.note) && pickup_conflict {
+                    let dt = task.end - task.start;
+                    let span = task.span.max(EPS);
+                    let share = if let Some(context) = &v2_context {
+                        context.deposit(task, chart)?
+                    } else if let Some(context) = &v3_context {
+                        context.deposit(task, chart)?
+                    } else {
+                        c.distance_weight * task.path_length * dt / span
+                            + c.speed_weight * task.path_length.powi(2) * dt
+                                / span.powi(2)
+                                / c.speed_reference.powi(2)
+                    };
+                    let mut deferred = state.clone();
+                    deferred.pending += share;
+                    *deferred.deposit.entry(task.note).or_default() += share;
+                    pending.push((deferred, after.clone(), auto.clone()));
+                }
+                // Slide 尾判只看手何時進入最後判定區；進入後若同組或 Slide 結束前還有別的音符
+                // 需要手，可以不再追完剩下的路徑。這個選擇要在進入判定區的 checkpoint 就做，
+                // 等衝突真的出現時手已經多追了一段，因此以「結束前有新音符」預判，不套用
+                // 同組準時優先的過濾。
+                let needed_elsewhere = task.mode == "slide"
+                    && (after.iter().enumerate().any(|(j, todo)| {
                     // 另一條已接上的 Slide 由原本的手繼續追，不算需要這隻手。
                     *todo
                         && group[j].note != task.note
@@ -2953,94 +3033,102 @@ fn solve_with(
                         let from = onsets.partition_point(|t| *t <= task.start + EPS);
                         onsets.get(from).is_some_and(|t| *t < end - EPS)
                     }));
-            // V3 預設畫完：不為了少畫一段而提早離手（交接、暫停接回照常），
-            // 只有整譜重試時才放寬。
-            let may_leave = leave || needed_elsewhere && (!c.is_v3() || c.slide_shortcut);
-            if task.mode == "slide" && may_leave && slide_judged(&state, task, chart) {
-                let mut done = state.clone();
-                done.finished.insert(task.note);
-                done.owners.remove(&task.note);
-                done.engaged.remove(&task.note);
-                done.used_early_slide = true;
-                pending.push((done, after.clone(), auto.clone()));
-            }
-            // V3：還沒進最後判定區、這隻手在 Slide 結束前另有用途時，可以先放開，
-            // 判定進度留在這裡，之後再接回去（真人常見的「滑一半、去打別的、再補完」）。
-            if c.is_v3()
-                && task.mode == "slide"
-                && needed_elsewhere
-                && !task.last
-                && task.samples.is_empty()
-                && !state.resumed.contains(&task.note)
-                && !state.wifi_pairs.contains_key(&task.note)
-                && !state.bundle_lead.contains_key(&task.note)
-                && state.owners.contains_key(&task.note)
-                && !slide_judged(&state, task, chart)
-            {
-                if let (Some(&pickup), Some(end)) = (
-                    state.engaged.get(&task.note),
-                    chart.notes[task.note].motion_end,
-                ) {
-                    let progress = (task.start - pickup) / (end - pickup);
-                    if progress > EPS
-                        && progress < 1.0 - EPS
-                        && end - task.start >= SUSPEND_MIN_REMAINING - EPS
-                    {
-                        if let Some(context) = &v3_context {
-                            let bound = context.resume_bound(task, chart, progress, task.end)?;
-                            let share = context.deposit(task, chart)? + bound;
-                            let mut paused = state.clone();
-                            paused.owners.remove(&task.note);
-                            paused.engaged.remove(&task.note);
-                            paused.suspended.insert(task.note, (progress, bound));
-                            paused.pending += share;
-                            *paused.deposit.entry(task.note).or_default() += share;
-                            pending.push((paused, after.clone(), auto.clone()));
+                // V3 預設畫完：不為了少畫一段而提早離手（交接、暫停接回照常），
+                // 只有整譜重試時才放寬。
+                let may_leave = leave || needed_elsewhere && (!c.is_v3() || c.slide_shortcut);
+                if task.mode == "slide" && may_leave && slide_judged(&state, task, chart) {
+                    let mut done = state.clone();
+                    done.finished.insert(task.note);
+                    done.owners.remove(&task.note);
+                    done.engaged.remove(&task.note);
+                    done.used_early_slide = true;
+                    pending.push((done, after.clone(), auto.clone()));
+                }
+                // V3：還沒進最後判定區、這隻手在 Slide 結束前另有用途時，可以先放開，
+                // 判定進度留在這裡，之後再接回去（真人常見的「滑一半、去打別的、再補完」）。
+                if c.is_v3()
+                    && task.mode == "slide"
+                    && needed_elsewhere
+                    && !task.last
+                    && task.samples.is_empty()
+                    && !state.resumed.contains(&task.note)
+                    && !state.wifi_pairs.contains_key(&task.note)
+                    && !state.bundle_lead.contains_key(&task.note)
+                    && state.owners.contains_key(&task.note)
+                    && !slide_judged(&state, task, chart)
+                {
+                    if let (Some(&pickup), Some(end)) = (
+                        state.engaged.get(&task.note),
+                        chart.notes[task.note].motion_end,
+                    ) {
+                        let progress = (task.start - pickup) / (end - pickup);
+                        if progress > EPS
+                            && progress < 1.0 - EPS
+                            && end - task.start >= SUSPEND_MIN_REMAINING - EPS
+                        {
+                            if let Some(context) = &v3_context {
+                                let bound =
+                                    context.resume_bound(task, chart, progress, task.end)?;
+                                let share = context.deposit(task, chart)? + bound;
+                                let mut paused = state.clone();
+                                paused.owners.remove(&task.note);
+                                paused.engaged.remove(&task.note);
+                                paused.suspended.insert(task.note, (progress, bound));
+                                paused.pending += share;
+                                *paused.deposit.entry(task.note).or_default() += share;
+                                pending.push((paused, after.clone(), auto.clone()));
+                            }
                         }
                     }
                 }
+                // 沒有任何一手接得到的 Touch，交給 Touch Group 過半判定；整組結束時再驗證過半。
+                if pending.len() == before && in_touch_group[i] {
+                    let mut grouped = auto.clone();
+                    grouped[i] = true;
+                    pending.push((state, after, grouped));
+                }
+                if cancelled() {
+                    return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
+                }
+                if expansions > MAX_EXPANSIONS
+                    || clock.elapsed() > BUDGET
+                    || pending.len() + next.len() > MAX_GROUP_STATES
+                {
+                    return Err(Diagnostic::plain(
+                        "search_limit",
+                        "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                    ));
+                }
             }
-            // 沒有任何一手接得到的 Touch，交給 Touch Group 過半判定；整組結束時再驗證過半。
-            if pending.len() == before && in_touch_group[i] {
-                let mut grouped = auto.clone();
-                grouped[i] = true;
-                pending.push((state, after, grouped));
-            }
-            if cancelled() {
-                return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
-            }
-            if expansions > MAX_EXPANSIONS
-                || clock.elapsed() > BUDGET
-                || pending.len() + next.len() > MAX_GROUP_STATES
-            {
-                return Err(Diagnostic::plain(
-                    "search_limit",
-                    "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
-                ));
-            }
-        }
-        if next.is_empty() {
-            let mut d = if rejected > 0 {
-                Diagnostic::plain(
-                    "annotation_infeasible",
-                    ANNOTATION_INFEASIBLE_MESSAGE.into(),
-                )
-            } else {
-                Diagnostic::plain(
+            if next.is_empty() {
+                if let Some((order, saved)) = retry.take() {
+                    reordered = Some(order);
+                    beam = saved;
+                    continue;
+                }
+                let mut d = if rejected > 0 {
+                    Diagnostic::plain(
+                        "annotation_infeasible",
+                        ANNOTATION_INFEASIBLE_MESSAGE.into(),
+                    )
+                } else {
+                    Diagnostic::plain(
                     "no_solution",
                     "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。".into(),
                 )
-            };
-            d.time_seconds = Some(time);
-            d.note_ids = group
-                .iter()
-                .map(|t| chart.notes[t.note].id.clone())
-                .collect();
-            d.note_ids.sort();
-            d.note_ids.dedup();
-            d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
-            return Err(d);
-        }
+                };
+                d.time_seconds = Some(time);
+                d.note_ids = group
+                    .iter()
+                    .map(|t| chart.notes[t.note].id.clone())
+                    .collect();
+                d.note_ids.sort();
+                d.note_ids.dedup();
+                d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
+                return Err(d);
+            }
+            break next;
+        };
         if c.is_v2() {
             v2::remove_unnecessary_deferrals(&mut next);
         } else if c.is_v3() {

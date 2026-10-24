@@ -47,6 +47,19 @@ export interface WikiOrigin {
   pageUrl: string;
 }
 
+/** 從 adxdls 匯入時記下的來源；同 slug＋difficulty 視為同一張（slug 已區分 Standard／DX）。 */
+export interface AdxOrigin {
+  slug: string;
+  chartType: 'standard' | 'deluxe';
+  difficulty: WikiDifficultyKey;
+  title: string;
+  artist: string;
+  /** 定數字串（`12.8` 等）。 */
+  level: string | null;
+  designer: string | null;
+  pageUrl: string;
+}
+
 export function wikiDifficultyLabel(key: string): string {
   return WIKI_DIFFICULTIES.find((item) => item.key === key)?.label ?? key;
 }
@@ -63,6 +76,7 @@ export interface ChartRecord {
   majdata?: MajdataOrigin;
   /** 舊紀錄沒有這個欄位。 */
   wiki?: WikiOrigin;
+  adx?: AdxOrigin;
   /** 使用者在時間軸上加的標籤，依時間排序。 */
   markers?: TimelineMarker[];
   /** 真人手順標註草稿（lib/annotation.ts）；舊紀錄沒有。 */
@@ -222,16 +236,17 @@ export function sourceHeading(source: string): string {
   return line?.trim() ?? '（空白）';
 }
 
-/** Wiki 匯入的原文只有譜面本文，標題改用來源資訊，並註明種類與難度區分同曲的多筆。 */
-export function wikiHeading(wiki: WikiOrigin): string {
+/** 譜面網站（Wiki／adxdls）匯入的一筆只有一個難度，標題改用來源資訊，並註明種類與難度區分同曲的多筆。 */
+export function wikiHeading(wiki: Pick<WikiOrigin, 'title' | 'chartType' | 'difficulty'>): string {
   return `${wiki.title}（${WIKI_TYPE_LABEL[wiki.chartType] ?? wiki.chartType} ${wikiDifficultyLabel(wiki.difficulty)}）`;
 }
 
-/** 主標：自訂名稱，沒有就用 Wiki 來源或譜面開頭。 */
+/** 主標：自訂名稱，沒有就用 Wiki／adxdls 來源或譜面開頭。 */
 export function recordTitle(record: ChartRecord): string {
   const name = record.name?.trim();
   if (name) return name;
-  return record.wiki ? wikiHeading(record.wiki) : sourceHeading(record.source);
+  const origin = record.wiki ?? record.adx;
+  return origin ? wikiHeading(origin) : sourceHeading(record.source);
 }
 
 /** 副標：新增時間。 */
@@ -269,6 +284,9 @@ export function recordSearchText(record: ChartRecord): string {
     record.majdata?.designer ?? '',
     record.majdata?.uploader ?? '',
     record.wiki ? wikiHeading(record.wiki) : '',
+    record.adx ? wikiHeading(record.adx) : '',
+    record.adx?.artist ?? '',
+    record.adx?.designer ?? '',
     record.name || maidataField(record.source, 'title') || record.wiki ? '' : sourceHeading(record.source),
   ]
     .join('\n')
@@ -279,6 +297,7 @@ export interface AddOptions {
   name?: string;
   majdata?: MajdataOrigin;
   wiki?: WikiOrigin;
+  adx?: AdxOrigin;
   /** 預設新增後就切過去；批量匯入時不切換目前的譜面。 */
   activate?: boolean;
 }
@@ -384,6 +403,10 @@ export class Records {
     );
   }
 
+  findByAdx(slug: string, difficulty: string): ChartRecord | null {
+    return this.items.find((item) => item.adx?.slug === slug && item.adx.difficulty === difficulty) ?? null;
+  }
+
   findByHash(sourceHash: string): ChartRecord | null {
     return this.items.find((item) => item.sourceHash === sourceHash) ?? null;
   }
@@ -398,6 +421,7 @@ export class Records {
       ...(name ? { name } : {}),
       ...(options.majdata ? { majdata: options.majdata } : {}),
       ...(options.wiki ? { wiki: options.wiki } : {}),
+      ...(options.adx ? { adx: options.adx } : {}),
     };
     this.items = [record, ...this.items];
     if (options.activate !== false) this.activeId = record.id;
@@ -423,8 +447,17 @@ export class Records {
     void dbPut(STORE_RECORDS, $state.snapshot(next));
   }
 
+  /** 既有紀錄補上 adxdls 來源（原文完全相同的舊紀錄）。已有 adxdls 來源的不覆蓋。 */
+  attachAdx(id: string, adx: AdxOrigin): void {
+    const index = this.items.findIndex((item) => item.id === id);
+    if (index < 0 || this.items[index].adx) return;
+    const next = { ...this.items[index], adx };
+    this.items[index] = next;
+    void dbPut(STORE_RECORDS, $state.snapshot(next));
+  }
+
   /**
-   * 編輯既有紀錄的名稱與原文。來源資訊（Majdata／Wiki）保留；
+   * 編輯既有紀錄的名稱與原文。來源資訊（Majdata／Wiki／adxdls）保留；
    * 原文改變時換掉雜湊，舊原文若沒有其他紀錄使用，一併清掉它的分析快取。
    */
   async update(id: string, changes: { name: string; source: string }): Promise<ChartRecord | null> {

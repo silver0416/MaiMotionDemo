@@ -249,6 +249,17 @@ pub fn search_cached(
     Ok(search_songs_filtered(&index, query, filter))
 }
 
+/// 合併搜尋用：在已載入的索引上執行 `read`；索引不在記憶體也沒有磁碟快取時回傳 None。
+pub fn with_index<R>(
+    app: &AppHandle,
+    state: &WikiState,
+    read: impl FnOnce(&[WikiSong]) -> R,
+) -> Option<R> {
+    ensure_memory(app, state).ok()?;
+    let index = state.index.read().ok()?;
+    Some(read(&index))
+}
+
 /// 記憶體沒有 index 時，從磁碟快取補（新鮮或過期皆可），仍沒有才報錯。
 fn ensure_memory(app: &AppHandle, state: &WikiState) -> Result<(), String> {
     let has_data = state

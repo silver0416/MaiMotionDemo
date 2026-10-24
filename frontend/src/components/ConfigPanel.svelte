@@ -360,6 +360,16 @@
             error={errorOf('palmRadius')}
             onValue={(value) => set('palmRadius', value)}
           />
+          <NumberField
+            label="備用手掌半徑"
+            hint="平常以上面的手掌半徑為主；整首都找不到方案時，才改用這個較大的半徑重試，結果會註明。不大於手掌半徑或關閉手掌覆蓋時不使用。"
+            value={config.palmFallbackRadius}
+            min={R.palmFallbackRadius.min}
+            max={R.palmFallbackRadius.max}
+            step={0.05}
+            error={errorOf('palmFallbackRadius')}
+            onValue={(value) => set('palmFallbackRadius', value)}
+          />
           <p class="field-hint">{PALM_APPROX_HINT}</p>
           <p class="field-hint">
             只有同一判定時間的 Touch／Touch Hold 會被併成一掌，Tap 與 Slide 不會；

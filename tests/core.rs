@@ -148,6 +148,8 @@ fn palm_radius_can_be_disabled_or_reduced() {
             first_seconds: 0.0,
             solver_config: SolverConfig {
                 palm_radius: radius,
+                // 縮小半徑的效果本身：不讓備用半徑救回
+                palm_fallback_radius: 0.0,
                 ..SolverConfig::default()
             },
         });
@@ -1043,4 +1045,24 @@ fn hold_without_length_is_a_zero_length_hold() {
     }
     // 有左括號就必須正確結束。
     assert_eq!(analyze("(120){4}4h[4:1,E").status, "invalid");
+}
+
+#[test]
+fn explicit_zero_length_hold_matches_bracketless_hold() {
+    // 官方譜轉出的 maidata 會寫 `1h[1:0]`（例如 adxdls 的 XODUS MASTER），和省略括號的 `1h` 一樣是長度 0。
+    let r = analyze("(120){4}1h[1:0],Ch[#0],A7h[1:0]/E8h[120#4:0],2h,E");
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    assert_eq!(chart.notes.len(), 5);
+    for note in &chart.notes {
+        near(note.end_seconds, note.time_seconds);
+    }
+    for s in &r.solutions {
+        verify_segments(&s.left_segments);
+        verify_segments(&s.right_segments);
+    }
+    // 只有 Hold 放寬：負數、分母為 0、Slide 長度 0 仍是錯誤。
+    assert_eq!(analyze("(120){4}1h[1:-1],E").status, "invalid");
+    assert_eq!(analyze("(120){4}1h[0:1],E").status, "invalid");
+    assert_eq!(analyze("(120){4}1-5[1:0],E").status, "invalid");
 }

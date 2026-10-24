@@ -65,6 +65,7 @@ export async function exportRecords(ids: string[]): Promise<ExportResult | null>
         createdAt: new Date(snapshot.createdAt).toISOString(),
         ...(snapshot.majdata ? { majdata: snapshot.majdata } : {}),
         ...(snapshot.wiki ? { wiki: snapshot.wiki } : {}),
+        ...(snapshot.adx ? { adx: snapshot.adx } : {}),
       },
       annotation: toFile(draft, {
         source: snapshot.source,
@@ -211,6 +212,7 @@ export async function importItems(
         name: item.record.name,
         majdata: item.record.majdata,
         wiki: item.record.wiki,
+        adx: item.record.adx,
         activate: false,
       });
       summary.created += 1;

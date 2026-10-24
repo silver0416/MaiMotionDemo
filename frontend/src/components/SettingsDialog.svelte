@@ -711,12 +711,12 @@
           <p class="xsmall muted mono usage">
             {#if cacheCount !== null}<span>分析快取 {cacheCount} 筆</span>{/if}
             {#if wikiCache}
-              <span>simai Wiki 快取 {wikiCache.files} 個檔案・{formatBytes(wikiCache.bytes)}</span>
+              <span>譜面網站快取 {wikiCache.files} 個檔案・{formatBytes(wikiCache.bytes)}</span>
             {/if}
           </p>
           <p class="field-hint">
-            刪除已保存的分析結果{session.desktop ? '，以及 simai Wiki 的索引與歌曲頁快取' : ''}。
-            譜面紀錄、參數與顯示設定都會保留；下次開啟譜面時重新分析{session.desktop ? '，搜尋 Wiki 時重新下載索引' : ''}。
+            刪除已保存的分析結果{session.desktop ? '，以及 simai Wiki、adxdls 的索引與譜面快取' : ''}。
+            譜面紀錄、參數與顯示設定都會保留；下次開啟譜面時重新分析{session.desktop ? '，搜尋譜面網站時重新下載索引' : ''}。
           </p>
         </div>
         <div class="data-actions">

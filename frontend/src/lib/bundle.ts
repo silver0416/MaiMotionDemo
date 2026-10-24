@@ -4,7 +4,7 @@
 
 import { parseValue, serialize } from './annotation';
 import type { HandAnnotation } from './types';
-import type { MajdataOrigin, RecordTag, WikiOrigin } from '../state/records.svelte';
+import type { AdxOrigin, MajdataOrigin, RecordTag, WikiOrigin } from '../state/records.svelte';
 
 export const BUNDLE_FORMAT = 'maimotion-hand-annotation-bundle';
 export const BUNDLE_VERSION = 1;
@@ -20,6 +20,7 @@ export interface BundleRecord {
   createdAt?: string;
   majdata?: MajdataOrigin;
   wiki?: WikiOrigin;
+  adx?: AdxOrigin;
 }
 
 export interface BundleItem {
@@ -102,6 +103,10 @@ function cleanRecord(value: unknown): BundleRecord {
     'wiki',
     (v) => Number.isFinite(v.pageId) && typeof v.chartType === 'string' && typeof v.difficulty === 'string',
   );
+  const adx = origin<AdxOrigin>(
+    'adx',
+    (v) => typeof v.slug === 'string' && typeof v.chartType === 'string' && typeof v.difficulty === 'string',
+  );
   return {
     ...(text(raw.name) ? { name: text(raw.name) } : {}),
     ...(text(raw.folder) ? { folder: text(raw.folder) } : {}),
@@ -110,6 +115,7 @@ function cleanRecord(value: unknown): BundleRecord {
     ...(text(raw.createdAt) ? { createdAt: text(raw.createdAt) } : {}),
     ...(majdata ? { majdata } : {}),
     ...(wiki ? { wiki } : {}),
+    ...(adx ? { adx } : {}),
   };
 }
 

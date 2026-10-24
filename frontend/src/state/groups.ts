@@ -38,6 +38,31 @@ export function markGroupAt(note: Note | null): void {
   }
 }
 
+/** 多選時：選到的音符（不必相連）直接建成一組，可以復原。 */
+export function groupPicked(): void {
+  if (!annotation.groupsAvailable) {
+    toasts.show({ id: TOAST, tone: 'info', title: '無法標分組', body: '先從左側開啟譜面紀錄並產生結果。' });
+    return;
+  }
+  const before = annotation.snapshotGroups();
+  const result = annotation.createGroup(annotation.pickedSteps.map((step) => step.note));
+  if (!result) return;
+  if (result.kind === 'too-short') {
+    toasts.show({ id: TOAST, tone: 'warn', title: '一組至少要兩顆音符', body: '多選幾顆再建立分組。' });
+  } else if (result.kind === 'exists' && result.index !== undefined) {
+    toasts.show({ id: TOAST, tone: 'info', title: `已經有這一組（${annotation.groupName(result.index)}）` });
+  } else if (result.index !== undefined) {
+    const group = annotation.draft.groups[result.index];
+    toasts.show({
+      id: TOAST,
+      tone: 'ok',
+      title: `已標分組 ${annotation.groupName(result.index)}`,
+      body: `${group ? annotation.groupNotes(group).length : 0} 顆音符。會跟著標註一起匯出。`,
+      action: { label: '復原', icon: 'rotate-ccw', run: () => annotation.restoreGroups(before) },
+    });
+  }
+}
+
 export function cancelGroup(): void {
   annotation.cancelGroup();
   toasts.dismiss(TOAST);

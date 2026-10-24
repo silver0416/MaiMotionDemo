@@ -4,8 +4,16 @@
   import DiagnosticList from './DiagnosticList.svelte';
   import CopyDebugButton from './CopyDebugButton.svelte';
   import { STATUS_HINT, STATUS_LABEL } from '../lib/contract';
-  import { fetchWikiChart, openExternalUrl, refreshWikiIndex, searchWikiSongs } from '../lib/api';
+  import {
+    fetchAdxChart,
+    fetchWikiChart,
+    openExternalUrl,
+    refreshAdxIndex,
+    refreshWikiIndex,
+    searchCharts,
+  } from '../lib/api';
   import { hashText } from '../lib/db';
+  import { segmented } from '../lib/segmented';
   import {
     WIKI_DIFFICULTIES,
     WIKI_TYPE_LABEL,
@@ -13,6 +21,7 @@
     recordSearchText,
     recordTitle,
     records,
+    type AdxOrigin,
     type ChartRecord,
     type WikiDifficultyKey,
     type WikiOrigin,
@@ -23,13 +32,18 @@
   import type { DebugInput } from '../lib/debug';
   import { toasts } from '../state/toasts.svelte';
   import type {
+    AdxChartPayload,
     AnalyzeResponse,
     AnalyzeStatus,
+    ChartSearchHit,
     WikiChartPayload,
     WikiChartType,
-    WikiSong,
   } from '../lib/types';
 
+  /**
+   * 譜面網站分頁：simai Wiki 與 adxdls 合併搜尋。兩邊的索引各自載入、各自快取，
+   * 搜尋在 Rust 端合併（同種類、同歌名的合成一筆）；預覽時選要從哪邊載入。
+   */
   interface Props {
     /** 對話框開著且目前切到這個分頁。 */
     active: boolean;
@@ -49,12 +63,21 @@
 
   type TypeFilter = 'all' | WikiChartType;
   type Difficulty = (typeof WIKI_DIFFICULTIES)[number];
+  type Source = 'wiki' | 'adx';
+  type Payload = WikiChartPayload | AdxChartPayload;
 
   const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
     { id: 'all', label: '全部' },
     { id: 'standard', label: 'Standard' },
     { id: 'deluxe', label: 'DX' },
   ];
+  /** 預覽的來源切換依這個順序排。 */
+  const SOURCES: { id: Source; label: string }[] = [
+    { id: 'adx', label: 'adxdls' },
+    { id: 'wiki', label: 'simai Wiki' },
+  ];
+  const SOURCE_LABEL: Record<Source, string> = { wiki: 'simai Wiki', adx: 'adxdls' };
+  const SOURCE_KEY = 'maimotion.chartSource';
   const DIFFICULTY_SHORT: Record<WikiDifficultyKey, string> = {
     easy: 'EAS',
     basic: 'BAS',
@@ -69,6 +92,8 @@
   const MAX_SHOWN = 200;
 
   type IndexInfo = { count: number; fetchedAt: number; fromCache: boolean; stale: boolean };
+  type SourceIndex = { info: IndexInfo | null; loading: boolean; error: string | null };
+  type Ready = Record<Source, boolean>;
 
   type SearchState =
     | { kind: 'idle' }
@@ -76,24 +101,29 @@
     | { kind: 'waiting'; query: string; chartType: TypeFilter }
     | { kind: 'searching'; query: string; chartType: TypeFilter }
     | { kind: 'error'; query: string; chartType: TypeFilter; message: string }
-    | { kind: 'done'; query: string; chartType: TypeFilter; items: WikiSong[] };
+    | { kind: 'done'; query: string; chartType: TypeFilter; items: ChartSearchHit[]; ready: Ready };
 
   type Failure =
-    | { kind: 'download'; song: WikiSong; difficulty: Difficulty; message: string }
+    | { kind: 'download'; hit: ChartSearchHit; source: Source; difficulty: Difficulty; message: string }
     | {
         kind: 'analysis';
-        song: WikiSong;
+        hit: ChartSearchHit;
+        source: Source;
         difficulty: Difficulty;
         message: string;
-        payload: WikiChartPayload;
+        payload: Payload;
       }
     | {
         kind: 'rejected';
-        song: WikiSong;
+        hit: ChartSearchHit;
+        source: Source;
         difficulty: Difficulty;
         response: AnalyzeResponse;
-        payload: WikiChartPayload;
+        payload: Payload;
       };
+
+  /** 預覽表格的一列：該來源有列出的難度。 */
+  type Row = Difficulty & { level: string | null; designer: string | null; available: boolean };
 
   let root: HTMLElement | null = $state(null);
   let input: HTMLInputElement | null = $state(null);
@@ -104,28 +134,35 @@
   /** 最後一次送出的關鍵字；本機紀錄即時依這個字篩選。 */
   let submitted = $state('');
 
-  let index = $state<IndexInfo | null>(null);
-  let indexLoading = $state(false);
-  let indexError = $state<string | null>(null);
+  const indexes = $state<Record<Source, SourceIndex>>({
+    wiki: { info: null, loading: false, error: null },
+    adx: { info: null, loading: false, error: null },
+  });
+  const indexTokens: Record<Source, number> = { wiki: 0, adx: 0 };
+  const anyIndex = $derived(indexes.wiki.info !== null || indexes.adx.info !== null);
+  const anyLoading = $derived(indexes.wiki.loading || indexes.adx.loading);
 
-  /** 右側預覽的歌曲：pageId 與種類一起才唯一（Standard／DX 同名是兩筆）。 */
+  /** 兩邊都有時預設從哪邊載入；記在本機，下次沿用。 */
+  let preferred = $state<Source>(initialSource());
+
+  /** 右側預覽的歌曲。 */
   let selectedKey = $state<string | null>(null);
-  let importing = $state<{ key: string; difficulty: Difficulty; step: 'download' | 'analyze' } | null>(
-    null,
-  );
+  let importing = $state<{
+    key: string;
+    source: Source;
+    difficulty: Difficulty;
+    step: 'download' | 'analyze';
+  } | null>(null);
   let failure = $state<Failure | null>(null);
 
-  /** 已取得的文字譜；分析失敗後重試不必再抓一次。對話框完全關閉時清空。 */
-  const downloaded = new Map<string, WikiChartPayload>();
+  /** 已取得的譜面；分析失敗後重試不必再抓一次。對話框完全關閉時清空。 */
+  const downloaded = new Map<string, Payload>();
   let searchToken = 0;
-  let indexToken = 0;
 
   const searching = $derived(search.kind === 'searching');
   const busy = $derived(searching || importing !== null);
   const canSearch = $derived(!busy && query.trim().length > 0);
-  const canImport = $derived(
-    session.desktop && !busy && session.configIssues.length === 0,
-  );
+  const canImport = $derived(session.desktop && !busy && session.configIssues.length === 0);
   const rejectedStatus = $derived<AnalyzeStatus | null>(
     failure?.kind === 'rejected' ? (failure.response.status as AnalyzeStatus) : null,
   );
@@ -134,13 +171,35 @@
     locked = importing !== null;
   });
 
+  function initialSource(): Source {
+    try {
+      return localStorage.getItem(SOURCE_KEY) === 'wiki' ? 'wiki' : 'adx';
+    } catch {
+      return 'adx';
+    }
+  }
+
+  function choose(source: Source) {
+    preferred = source;
+    try {
+      localStorage.setItem(SOURCE_KEY, source);
+    } catch {
+      // 無法保存就只在這次生效。
+    }
+  }
+
   /**
    * 對話框打開或切到這個分頁時呼叫：聚焦輸入框、索引還沒載入才自動載入；
    * 關鍵字在別的分頁改過就用新字重搜（索引未就緒時 runSearch 會先排隊）。
    */
   export function activate() {
     input?.focus();
-    if (session.desktop && index === null && !indexLoading) void loadIndex(false);
+    if (session.desktop) {
+      for (const source of ['wiki', 'adx'] as const) {
+        const index = indexes[source];
+        if (index.info === null && !index.loading) void loadIndex(source, false);
+      }
+    }
     const text = query.trim();
     if (text.length > 0 && text !== submitted && canSearch) void runSearch();
   }
@@ -150,10 +209,53 @@
     if (importing === null) downloaded.clear();
   }
 
+  function hitKey(hit: ChartSearchHit): string {
+    return `${hit.chartType}:${hit.wiki?.pageId ?? ''}:${hit.adx?.slug ?? ''}`;
+  }
+
+  /** 這首歌實際使用的來源：偏好的那邊沒有就用另一邊。 */
+  function sourceOf(hit: ChartSearchHit): Source {
+    if (hit[preferred]) return preferred;
+    return hit.wiki ? 'wiki' : 'adx';
+  }
+
+  function typeLabel(chartType: string): string {
+    return WIKI_TYPE_LABEL[chartType as WikiChartType] ?? chartType;
+  }
+
+  function pageUrlOf(hit: ChartSearchHit, source: Source): string {
+    return (source === 'wiki' ? hit.wiki?.pageUrl : hit.adx?.pageUrl) ?? '';
+  }
+
+  /** 依固定順序列出這首歌在該來源的難度（Wiki DX 沒有 easy；adxdls 沒有 easy）。 */
+  function rowsOf(hit: ChartSearchHit, source: Source): Row[] {
+    return WIKI_DIFFICULTIES.flatMap((item): Row[] => {
+      if (source === 'wiki') {
+        const info = hit.wiki?.difficulties[item.key];
+        return info ? [{ ...item, level: info.level, designer: null, available: info.availabilityHint }] : [];
+      }
+      const info = hit.adx?.difficulties[item.key];
+      return info ? [{ ...item, level: info.level, designer: info.designer, available: true }] : [];
+    });
+  }
+
+  function localOf(hit: ChartSearchHit, source: Source, key: string): ChartRecord | null {
+    if (source === 'wiki') return hit.wiki ? records.findByWiki(hit.wiki.pageId, hit.chartType, key) : null;
+    return hit.adx ? records.findByAdx(hit.adx.slug, key) : null;
+  }
+
+  function failureTitle(current: Failure): string {
+    return `${current.hit.title}（${typeLabel(current.hit.chartType)} ${current.difficulty.label}）`;
+  }
+
   function debugInputOf(current: Failure): Omit<DebugInput, 'appVersion'> {
     const payload = current.kind === 'download' ? null : current.payload;
+    const extra: Record<string, string> =
+      current.source === 'wiki'
+        ? { 'Wiki page id': String(current.hit.wiki?.pageId ?? '—'), 'Wiki 標題': payload?.title ?? current.hit.title }
+        : { 'adxdls slug': current.hit.adx?.slug ?? '—', 'adxdls 標題': payload?.title ?? current.hit.title };
     return {
-      context: 'simai Wiki 匯入',
+      context: `${SOURCE_LABEL[current.source]} 匯入`,
       source: payload?.chartText ?? '',
       config:
         current.kind === 'analysis'
@@ -165,23 +267,26 @@
       response: current.kind === 'rejected' ? current.response : null,
       error: current.kind === 'rejected' ? null : current.message,
       extra: {
-        'Wiki page id': String(current.song.pageId),
-        'Wiki 標題': payload?.title ?? current.song.title,
-        種類: typeLabel(current.song.chartType),
+        ...extra,
+        種類: typeLabel(current.hit.chartType),
         難度: current.difficulty.label,
         Level: payload?.level ?? '—',
-        'Page URL': payload?.pageUrl ?? current.song.pageUrl,
+        'Page URL': payload?.pageUrl ?? pageUrlOf(current.hit, current.source),
       },
     };
   }
 
   /** 匯入失敗一律寫進設定頁的錯誤紀錄；相同錯誤由 errorLog 去重。 */
   function logFailure(current: Failure) {
+    const identity =
+      current.source === 'wiki'
+        ? `wiki:${current.hit.wiki?.pageId}:${current.hit.chartType}:${current.difficulty.key}`
+        : `adx:${current.hit.adx?.slug}:${current.difficulty.key}`;
     const entry: ImportFailure = {
       kind: current.kind,
-      origin: 'simai Wiki',
-      title: `${current.song.title}（${typeLabel(current.song.chartType)} ${current.difficulty.label}）`,
-      identity: `wiki:${current.song.pageId}:${current.song.chartType}:${current.difficulty.key}`,
+      origin: SOURCE_LABEL[current.source],
+      title: failureTitle(current),
+      identity,
       summary:
         current.kind === 'rejected'
           ? `${STATUS_LABEL[current.response.status as AnalyzeStatus] ?? current.response.status}：${current.response.diagnostics[0]?.message ?? '沒有診斷'}`
@@ -210,22 +315,6 @@
     void keepFocus(() => feedback);
   }
 
-  function songKey(song: WikiSong): string {
-    return `${song.chartType}:${song.pageId}`;
-  }
-
-  function typeLabel(chartType: string): string {
-    return WIKI_TYPE_LABEL[chartType as WikiChartType] ?? chartType;
-  }
-
-  /** 依固定順序列出這首歌在索引裡出現的難度（DX 沒有 easy）。 */
-  function difficultiesOf(song: WikiSong) {
-    return WIKI_DIFFICULTIES.filter((item) => song.difficulties[item.key] !== undefined).map((item) => ({
-      ...item,
-      info: song.difficulties[item.key],
-    }));
-  }
-
   function formatFetchedAt(seconds: number): string {
     const date = new Date(seconds * 1000);
     if (Number.isNaN(date.getTime())) return '';
@@ -236,42 +325,55 @@
     );
   }
 
-  // 設定頁清除了 Wiki 快取：Rust 端索引已不在，這裡的索引資訊與已下載的譜面一併作廢。
+  // 設定頁清除了快取：Rust 端兩邊的索引都已不在，這裡的索引資訊與已下載的譜面一併作廢。
   let seenWikiGeneration = cacheEvents.wikiGeneration;
   $effect(() => {
     const generation = cacheEvents.wikiGeneration;
     if (generation === seenWikiGeneration) return;
     seenWikiGeneration = generation;
-    indexToken += 1;
-    index = null;
-    indexLoading = false;
-    indexError = null;
+    for (const source of ['wiki', 'adx'] as const) {
+      indexTokens[source] += 1;
+      indexes[source] = { info: null, loading: false, error: null };
+    }
     if (importing === null) downloaded.clear();
   });
 
-  async function loadIndex(force: boolean) {
+  async function loadIndex(source: Source, force: boolean) {
     if (!session.desktop) return;
-    const token = ++indexToken;
-    indexLoading = true;
-    indexError = null;
+    const token = ++indexTokens[source];
+    indexes[source].loading = true;
+    indexes[source].error = null;
     try {
-      const payload = await refreshWikiIndex(force);
-      if (token !== indexToken) return;
-      index = {
-        count: payload.songs.length,
-        fetchedAt: payload.fetchedAt,
-        fromCache: payload.fromCache,
-        stale: payload.stale,
+      const info =
+        source === 'wiki'
+          ? await refreshWikiIndex(force).then((payload) => ({ ...payload, count: payload.songs.length }))
+          : await refreshAdxIndex(force);
+      if (token !== indexTokens[source]) return;
+      indexes[source].info = {
+        count: info.count,
+        fetchedAt: info.fetchedAt,
+        fromCache: info.fromCache,
+        stale: info.stale,
       };
     } catch (error) {
-      if (token !== indexToken) return;
+      if (token !== indexTokens[source]) return;
       // 已有索引時重新整理失敗，繼續沿用 Rust 記憶體中的舊索引。
-      indexError = messageOf(error);
+      indexes[source].error = messageOf(error);
     } finally {
-      if (token === indexToken) indexLoading = false;
+      if (token === indexTokens[source]) indexes[source].loading = false;
     }
-    if (index !== null && search.kind === 'waiting') {
+    if (token !== indexTokens[source] || importing !== null) return;
+    // 排隊中的搜尋在第一份索引就緒時送出；已經有結果但少了這個來源，就補搜一次。
+    if (search.kind === 'waiting' && anyIndex) {
       void runOnline(search.query, search.chartType);
+    } else if (search.kind === 'done' && !search.ready[source] && indexes[source].info !== null) {
+      void runOnline(search.query, search.chartType);
+    }
+  }
+
+  function refreshAll() {
+    for (const source of ['wiki', 'adx'] as const) {
+      if (!indexes[source].loading) void loadIndex(source, indexes[source].info !== null);
     }
   }
 
@@ -279,7 +381,7 @@
     const words = submitted.toLowerCase().split(/\s+/).filter((word) => word.length > 0);
     if (words.length === 0) return [];
     return records.items.filter((record) => {
-      if (typeFilter !== 'all' && record.wiki?.chartType !== typeFilter) return false;
+      if (typeFilter !== 'all' && (record.wiki ?? record.adx)?.chartType !== typeFilter) return false;
       const text = recordSearchText(record);
       return words.every((word) => text.includes(word));
     });
@@ -287,7 +389,7 @@
 
   const onlineItems = $derived(search.kind === 'done' ? search.items : []);
   const shownItems = $derived(onlineItems.slice(0, MAX_SHOWN));
-  const selected = $derived(onlineItems.find((song) => songKey(song) === selectedKey) ?? null);
+  const selected = $derived(onlineItems.find((hit) => hitKey(hit) === selectedKey) ?? null);
 
   async function runSearch(event?: SubmitEvent) {
     event?.preventDefault();
@@ -299,11 +401,11 @@
       void keepFocus(() => input);
       return;
     }
-    if (index === null) {
-      // 索引未就緒時不打後端（必定 reject）；載入中就等它完成，失敗則保留錯誤提示。
+    if (!anyIndex) {
+      // 兩邊索引都未就緒時不打後端（必定 reject）；載入中就等，失敗則保留錯誤提示。
       searchToken++;
       search = { kind: 'waiting', query: text, chartType: typeFilter };
-      if (!indexLoading) void loadIndex(false);
+      if (!anyLoading) refreshAll();
       void keepFocus(() => input);
       return;
     }
@@ -315,11 +417,17 @@
     const token = ++searchToken;
     search = { kind: 'searching', query: text, chartType };
     try {
-      const items = await searchWikiSongs(text, chartType);
+      const result = await searchCharts(text, chartType);
       if (token !== searchToken) return;
-      search = { kind: 'done', query: text, chartType, items };
-      if (!items.some((song) => songKey(song) === selectedKey)) {
-        selectedKey = items.length > 0 ? songKey(items[0]) : null;
+      search = {
+        kind: 'done',
+        query: text,
+        chartType,
+        items: result.items,
+        ready: { wiki: result.wikiReady, adx: result.adxReady },
+      };
+      if (!result.items.some((hit) => hitKey(hit) === selectedKey)) {
+        selectedKey = result.items.length > 0 ? hitKey(result.items[0]) : null;
       }
     } catch (error) {
       if (token !== searchToken) return;
@@ -331,14 +439,14 @@
   function setTypeFilter(next: TypeFilter) {
     if (typeFilter === next) return;
     typeFilter = next;
-    if (submitted.length > 0 && session.desktop && index !== null && !busy) {
+    if (submitted.length > 0 && session.desktop && anyIndex && !busy) {
       void runOnline(submitted, next);
     } else if (search.kind === 'waiting') {
       search = { ...search, chartType: next };
     }
   }
 
-  /** Page URL 用系統瀏覽器開啟；桌面版要擋掉 WebView 內導覽。 */
+  /** 外部連結用系統瀏覽器開啟；桌面版要擋掉 WebView 內導覽。 */
   async function openPageUrl(event: MouseEvent, url: string) {
     if (!session.desktop) return;
     event.preventDefault();
@@ -349,13 +457,31 @@
     }
   }
 
-  function originOf(song: WikiSong, difficulty: Difficulty, payload: WikiChartPayload): WikiOrigin {
+  function wikiOriginOf(hit: ChartSearchHit, difficulty: Difficulty, payload: Payload): WikiOrigin | null {
+    const song = hit.wiki;
+    if (!song) return null;
     return {
       pageId: song.pageId,
       chartType: song.chartType,
       difficulty: difficulty.key,
       title: payload.title.trim() || song.title,
       level: payload.level ?? song.difficulties[difficulty.key]?.level ?? null,
+      pageUrl: payload.pageUrl || song.pageUrl,
+    };
+  }
+
+  function adxOriginOf(hit: ChartSearchHit, difficulty: Difficulty, payload: Payload): AdxOrigin | null {
+    const song = hit.adx;
+    if (!song) return null;
+    const info = song.difficulties[difficulty.key];
+    return {
+      slug: song.slug,
+      chartType: song.chartType,
+      difficulty: difficulty.key,
+      title: payload.title.trim() || song.title,
+      artist: song.artist,
+      level: payload.level ?? info?.level ?? null,
+      designer: info?.designer ?? null,
       pageUrl: payload.pageUrl || song.pageUrl,
     };
   }
@@ -371,44 +497,58 @@
     await session.load(record.source);
   }
 
-  async function importChart(song: WikiSong, difficulty: Difficulty) {
+  async function fetchPayload(hit: ChartSearchHit, source: Source, difficulty: Difficulty): Promise<Payload> {
+    if (source === 'wiki') {
+      if (!hit.wiki) throw new Error('simai Wiki 沒有這首歌');
+      return await fetchWikiChart(hit.wiki.pageId, hit.chartType, difficulty.key);
+    }
+    if (!hit.adx) throw new Error('adxdls 沒有這首歌');
+    return await fetchAdxChart(hit.adx.slug, difficulty.key);
+  }
+
+  async function importChart(hit: ChartSearchHit, source: Source, difficulty: Difficulty) {
     if (!canImport) return;
     failure = null;
-    const known = records.findByWiki(song.pageId, song.chartType, difficulty.key);
+    const known = localOf(hit, source, difficulty.key);
     if (known) {
       await openLocal(known, `「${recordTitle(known)}」已經匯入過，直接開啟本機紀錄。`);
       return;
     }
-    const key = `${songKey(song)}:${difficulty.key}`;
-    let payload = downloaded.get(key);
+    const key = hitKey(hit);
+    const cacheKey = `${source}:${key}:${difficulty.key}`;
+    let payload = downloaded.get(cacheKey);
     if (payload === undefined) {
-      importing = { key: songKey(song), difficulty, step: 'download' };
+      importing = { key, source, difficulty, step: 'download' };
       try {
-        payload = await fetchWikiChart(song.pageId, song.chartType, difficulty.key);
-        downloaded.set(key, payload);
+        payload = await fetchPayload(hit, source, difficulty);
+        downloaded.set(cacheKey, payload);
       } catch (error) {
         importing = null;
-        failure = { kind: 'download', song, difficulty, message: messageOf(error) };
+        failure = { kind: 'download', hit, source, difficulty, message: messageOf(error) };
         logFailure(failure);
         focusFeedback();
         return;
       }
     }
-    // 原文 hash 為主：逐字相同就視為同一張，補上 Wiki 來源後直接開啟。
+    const wiki = source === 'wiki' ? wikiOriginOf(hit, difficulty, payload) : null;
+    const adx = source === 'adx' ? adxOriginOf(hit, difficulty, payload) : null;
+    // 原文 hash 為主：逐字相同就視為同一張，補上來源後直接開啟。
     const same = records.findByHash(await hashText(payload.chartText));
     if (same) {
       importing = null;
-      records.attachWiki(same.id, originOf(song, difficulty, payload));
+      if (wiki) records.attachWiki(same.id, wiki);
+      if (adx) records.attachAdx(same.id, adx);
       await openLocal(same, `本機已有內容完全相同的譜面「${recordTitle(same)}」，直接開啟。`);
       return;
     }
-    importing = { key: songKey(song), difficulty, step: 'analyze' };
+    importing = { key, source, difficulty, step: 'analyze' };
     const response = await session.analyze(payload.chartText, usable);
     importing = null;
     if (!response) {
       failure = {
         kind: 'analysis',
-        song,
+        hit,
+        source,
         difficulty,
         payload,
         message: session.errorMessage ?? '分析沒有完成，盤面維持原狀。',
@@ -418,78 +558,101 @@
       return;
     }
     if (!usable(response)) {
-      failure = { kind: 'rejected', song, difficulty, response, payload };
+      failure = { kind: 'rejected', hit, source, difficulty, response, payload };
       logFailure(failure);
       focusFeedback();
       return;
     }
-    await records.add(payload.chartText, { wiki: originOf(song, difficulty, payload) });
+    await records.add(payload.chartText, { ...(wiki ? { wiki } : {}), ...(adx ? { adx } : {}) });
     failure = null;
     onClose();
   }
 </script>
 
-{#snippet levelList(song: WikiSong)}
-  <ul class="levels" aria-label="難度">
-    {#each difficultiesOf(song) as item (item.key)}
+{#snippet levelList(hit: ChartSearchHit)}
+  {@const source = sourceOf(hit)}
+  <ul class="levels" aria-label={`難度（${SOURCE_LABEL[source]}）`}>
+    {#each rowsOf(hit, source) as item (item.key)}
       <li
         class="badge badge--quiet mono"
-        class:is-unavailable={!item.info.availabilityHint}
-        title={`${item.label}${item.info.availabilityHint ? '' : '（unavailable）'}`}
+        class:is-unavailable={!item.available}
+        title={`${item.label}${item.available ? '' : '（unavailable）'}`}
       >
         {DIFFICULTY_SHORT[item.key]}
-        {item.info.level ?? '?'}
+        {item.level ?? '?'}
       </li>
     {/each}
   </ul>
 {/snippet}
 
-<div bind:this={root} class="panel" aria-busy={busy || indexLoading}>
+{#snippet indexState(source: Source)}
+  {@const index = indexes[source]}
+  {@const label = SOURCE_LABEL[source]}
+  {#if index.loading}
+    <span class="xsmall row"><Icon name="loader" size={14} spin />{label} 索引載入中</span>
+  {:else if index.info && index.info.stale}
+    <span class="xsmall row">
+      <Icon name="triangle-alert" size={14} />{label} 連不上，使用舊索引
+      <span class="muted mono">{index.info.count} 首・{formatFetchedAt(index.info.fetchedAt)}</span>
+    </span>
+  {:else if index.info}
+    <span class="xsmall row">
+      <Icon name="circle-check" size={14} />{label}
+      <span class="muted mono">
+        {index.info.count} 首・{formatFetchedAt(index.info.fetchedAt)}{index.info.fromCache ? '・快取' : ''}
+      </span>
+    </span>
+  {:else if index.error}
+    <span class="xsmall row"><Icon name="circle-alert" size={14} />{label} 索引載入失敗</span>
+  {/if}
+{/snippet}
+
+<div bind:this={root} class="panel" aria-busy={busy || anyLoading}>
   <p class="source-note xsmall muted">
-    <span class="badge badge--quiet source">Source: simai Wiki</span>
-    Wiki 使用者轉錄的文字譜，note 位置與 timing 不保證與官方譜面完全一致。
+    同時搜尋 simai Wiki（使用者轉錄的文字譜）與
+    <a
+      class="url-link"
+      href="https://adxdls.saop.cc"
+      target="_blank"
+      rel="noopener noreferrer"
+      onclick={(event) => void openPageUrl(event, 'https://adxdls.saop.cc')}>adxdls</a
+    >（AstroDX 譜面目錄，目錄資料 CC BY 4.0），同一首歌合成一筆。譜面版權屬原權利人，note 位置與 timing 不保證與官方完全一致。
   </p>
 
   <div class="index-bar" role="status">
     {#if !session.desktop}
-      <span class="xsmall muted row"><Icon name="info" size={14} />瀏覽器預覽不載入 simai Wiki 索引</span>
-    {:else if indexLoading}
-      <span class="xsmall row"><Icon name="loader" size={14} spin />Loading simai Wiki index...</span>
-    {:else if index && index.stale}
-      <span class="xsmall row">
-        <Icon name="triangle-alert" size={14} />Offline / Wiki unavailable, using cached index
-        <span class="muted mono">{index.count} songs・{formatFetchedAt(index.fetchedAt)}</span>
-      </span>
-    {:else if index}
-      <span class="xsmall row">
-        <Icon name="circle-check" size={14} />simai Wiki index ready
-        <span class="muted mono">
-          {index.count} songs・{formatFetchedAt(index.fetchedAt)}{index.fromCache ? '・cached' : ''}
-        </span>
-      </span>
-    {:else if indexError}
-      <span class="xsmall row"><Icon name="circle-alert" size={14} />索引載入失敗，沒有可用的快取</span>
+      <span class="xsmall muted row"><Icon name="info" size={14} />瀏覽器預覽不載入譜面網站索引</span>
+    {:else}
+      {@render indexState('wiki')}
+      {@render indexState('adx')}
     {/if}
     <span class="spacer"></span>
     {#if session.desktop}
       <button
         class="btn filter"
-        onclick={() => loadIndex(index !== null)}
-        disabled={indexLoading || importing !== null}
-        title={index === null ? '重新嘗試載入索引' : '忽略快取，重新從 simai Wiki 抓取索引'}
+        onclick={refreshAll}
+        disabled={anyLoading || importing !== null}
+        title="忽略快取，重新從 simai Wiki 與 adxdls 抓取索引"
       >
-        <Icon name="refresh-cw" size={14} />{index === null && indexError ? '重試' : '重新整理索引'}
+        <Icon name="refresh-cw" size={14} />{!anyIndex && (indexes.wiki.error || indexes.adx.error)
+          ? '重試'
+          : '重新整理索引'}
       </button>
     {/if}
   </div>
-  {#if session.desktop && indexError && !indexLoading}
-    <p class="notice small field-error index-error">
-      {index ? `重新整理失敗，繼續使用目前的索引：${indexError}` : indexError}
-    </p>
+  {#if session.desktop}
+    {#each ['wiki', 'adx'] as const as source (source)}
+      {@const index = indexes[source]}
+      {#if index.error && !index.loading}
+        <p class="notice small field-error index-error">
+          {SOURCE_LABEL[source]}：{index.info ? `重新整理失敗，繼續使用目前的索引。${index.error}` : index.error}
+        </p>
+      {/if}
+    {/each}
   {/if}
 
   <form class="search-bar" role="search" onsubmit={runSearch}>
-    <label class="sr-only" for="wiki-query">搜尋 Wiki 歌曲名稱或紀錄名稱</label>
+    <label class="sr-only" for="wiki-query">搜尋歌曲名稱、曲師、別名或紀錄名稱</label>
     <input
       id="wiki-query"
       class="input"
@@ -497,7 +660,7 @@
       autocomplete="off"
       spellcheck="false"
       maxlength={MAX_QUERY}
-      placeholder="歌曲名稱或紀錄名稱"
+      placeholder="歌曲名稱、曲師、別名或紀錄名稱"
       bind:this={input}
       bind:value={query}
     />
@@ -521,7 +684,7 @@
   </div>
 
   {#if !session.desktop}
-    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本機紀錄，無法搜尋 simai Wiki 或匯入。</p>
+    <p class="notice field-error">瀏覽器預覽沒有 Rust 核心，只能搜尋本機紀錄，無法搜尋譜面網站或匯入。</p>
   {:else if session.configIssues.length > 0}
     <p class="notice field-error">「參數」分頁有超出範圍的數值，修正後才能匯入。</p>
   {/if}
@@ -537,7 +700,7 @@
           </span>
         {/if}
         <span id="wiki-failure" class="small feedback-title">
-          「{failure.song.title}」{typeLabel(failure.song.chartType)}
+          {SOURCE_LABEL[failure.source]}「{failure.hit.title}」{typeLabel(failure.hit.chartType)}
           {failure.difficulty.label} 沒有匯入
         </span>
         <span class="spacer"></span>
@@ -547,7 +710,7 @@
       </div>
       {#if failure.kind === 'rejected'}
         <p class="xsmall muted">
-          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}盤面與譜面紀錄維持原狀，可以改選別的難度。
+          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}盤面與譜面紀錄維持原狀，可以改選別的難度或另一個來源。
         </p>
         {#if failure.response.diagnostics.length > 0}
           <div class="feedback-list scroll">
@@ -556,14 +719,12 @@
         {/if}
       {:else}
         <p class="small">{failure.message}</p>
-        <p class="xsmall muted">盤面與譜面紀錄維持原狀，可以重試或改選別的難度。</p>
+        <p class="xsmall muted">盤面與譜面紀錄維持原狀，可以重試、改選別的難度或另一個來源。</p>
       {/if}
       {#if failure.kind !== 'download'}
         {@const current = failure}
         <div class="row row-wrap">
-          <CopyDebugButton
-            input={() => debugInputOf(current)}
-          />
+          <CopyDebugButton input={() => debugInputOf(current)} />
         </div>
       {/if}
     </section>
@@ -573,7 +734,7 @@
     <div class="results scroll" aria-live="polite">
       {#if submitted.length === 0}
         <p class="state small muted">
-          輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄與 simai Wiki 索引。選一首歌後在右側選難度載入：文字譜交給核心分析成功後才加入譜面紀錄。Standard 與 DX 是不同的譜面，分開列出。
+          輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄、simai Wiki 與 adxdls。兩邊都有的歌合成一筆，選一首後在右側選來源與難度載入：譜面交給核心分析成功後才加入譜面紀錄。Standard 與 DX 是不同的譜面，分開列出。
         </p>
       {:else}
         <section class="group" aria-labelledby="wiki-local-title">
@@ -583,7 +744,7 @@
           </h3>
           {#if localMatches.length === 0}
             <p class="group-empty small muted">
-              沒有符合「{submitted}」{typeFilter !== 'all' ? `的 ${typeLabel(typeFilter)} Wiki` : '的本機'}紀錄。
+              沒有符合「{submitted}」{typeFilter !== 'all' ? `的 ${typeLabel(typeFilter)} 網站匯入` : '的本機'}紀錄。
             </p>
           {:else}
             <ul class="list">
@@ -594,7 +755,16 @@
                     <dl class="meta xsmall">
                       {#if record.wiki}
                         <dt>來源</dt>
-                        <dd>simai Wiki・Level {record.wiki.level ?? '—'}</dd>
+                        <dd>
+                          <span class="badge source-badge source-badge--wiki">simai Wiki</span>
+                          Level {record.wiki.level ?? '—'}
+                        </dd>
+                      {:else if record.adx}
+                        <dt>來源</dt>
+                        <dd>
+                          <span class="badge source-badge source-badge--adx">adxdls</span>
+                          定數 {record.adx.level ?? '—'}
+                        </dd>
                       {/if}
                       <dt>新增</dt>
                       <dd class="mono">{recordDate(record)}</dd>
@@ -617,14 +787,14 @@
         {#if session.desktop}
           <section class="group" aria-labelledby="wiki-online-title">
             <h3 id="wiki-online-title" class="group-title">
-              <span>simai Wiki</span>
+              <span>譜面網站</span>
               {#if search.kind === 'done'}
                 <span class="mono">{search.items.length}</span>
               {/if}
             </h3>
             {#if search.kind === 'waiting'}
               <p class="group-empty small muted row">
-                {#if indexLoading}
+                {#if anyLoading}
                   <Icon name="loader" spin />索引載入完成後會搜尋「{search.query}」
                 {:else}
                   <Icon name="circle-alert" />索引沒有載入，無法搜尋。請按上方的重試。
@@ -642,50 +812,71 @@
                   <button
                     class="btn"
                     onclick={() => runOnline(submitted, typeFilter)}
-                    disabled={busy || index === null}
+                    disabled={busy || !anyIndex}
                   >
                     <Icon name="refresh-cw" />重試
                   </button>
                 </div>
               </div>
-            {:else if search.kind === 'done' && search.items.length === 0}
-              <p class="group-empty small muted">
-                simai Wiki 索引裡找不到符合「{search.query}」{search.chartType !== 'all'
-                  ? `的 ${typeLabel(search.chartType)}`
-                  : '的'}歌曲，換個關鍵字試試。
-              </p>
             {:else if search.kind === 'done'}
-              <ul class="list">
-                {#each shownItems as song (songKey(song))}
-                  {@const key = songKey(song)}
-                  <li>
-                    <button
-                      class="item song"
-                      class:is-current={selectedKey === key}
-                      aria-pressed={selectedKey === key}
-                      onclick={() => (selectedKey = key)}
-                    >
-                      <span class="info">
-                        <span class="title">
-                          {song.title}
-                          <span class="badge badge--quiet type-badge">{typeLabel(song.chartType)}</span>
-                          {#if importing?.key === key}
-                            <Icon name="loader" size={13} spin />
-                          {/if}
-                        </span>
-                        {#if song.section}
-                          <span class="xsmall muted">{song.section}</span>
-                        {/if}
-                        {@render levelList(song)}
-                      </span>
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-              {#if search.items.length > MAX_SHOWN}
-                <p class="group-empty xsmall muted">
-                  只列出前 {MAX_SHOWN} 筆（共 {search.items.length} 筆），請用更完整的關鍵字縮小範圍。
+              {#if !search.ready.wiki || !search.ready.adx}
+                <p class="group-empty xsmall muted row partial">
+                  <Icon name="info" size={14} />{SOURCE_LABEL[search.ready.wiki ? 'adx' : 'wiki']} 的索引還沒有載入，這次只搜尋了
+                  {SOURCE_LABEL[search.ready.wiki ? 'wiki' : 'adx']}。
                 </p>
+              {/if}
+              {#if search.items.length === 0}
+                <p class="group-empty small muted">
+                  譜面網站的索引裡找不到符合「{search.query}」{search.chartType !== 'all'
+                    ? `的 ${typeLabel(search.chartType)}`
+                    : '的'}歌曲，換個關鍵字試試。
+                </p>
+              {:else}
+                <ul class="list">
+                  {#each shownItems as hit (hitKey(hit))}
+                    {@const key = hitKey(hit)}
+                    <li>
+                      <button
+                        class="item song"
+                        class:is-current={selectedKey === key}
+                        aria-pressed={selectedKey === key}
+                        onclick={() => (selectedKey = key)}
+                      >
+                        <span class="info">
+                          <span class="title">
+                            {hit.title}
+                            <span class="badge badge--quiet type-badge">{typeLabel(hit.chartType)}</span>
+                            {#if importing?.key === key}
+                              <Icon name="loader" size={13} spin />
+                            {/if}
+                          </span>
+                          {#if hit.adx?.artist || hit.wiki?.section}
+                            <span class="xsmall muted">{hit.adx?.artist || hit.wiki?.section}</span>
+                          {/if}
+                          <span class="sources">
+                            {#each SOURCES as source (source.id)}
+                              {#if hit[source.id]}
+                                <span
+                                  class={`badge source-badge source-badge--${source.id}`}
+                                  class:is-used={sourceOf(hit) === source.id}
+                                  title={sourceOf(hit) === source.id ? '目前從這裡載入' : undefined}
+                                >
+                                  {source.label}
+                                </span>
+                              {/if}
+                            {/each}
+                          </span>
+                          {@render levelList(hit)}
+                        </span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+                {#if search.items.length > MAX_SHOWN}
+                  <p class="group-empty xsmall muted">
+                    只列出前 {MAX_SHOWN} 筆（共 {search.items.length} 筆），請用更完整的關鍵字縮小範圍。
+                  </p>
+                {/if}
               {/if}
             {/if}
           </section>
@@ -697,27 +888,52 @@
       <section class="preview scroll" aria-labelledby="wiki-preview-title">
         <h3 id="wiki-preview-title" class="group-title"><span>預覽</span></h3>
         {#if selected}
-          {@const song = selected}
-          {@const key = songKey(song)}
+          {@const hit = selected}
+          {@const key = hitKey(hit)}
+          {@const source = sourceOf(hit)}
+          {@const pageUrl = pageUrlOf(hit, source)}
           <dl class="meta preview-meta small">
             <dt>Song</dt>
-            <dd class="preview-song">{song.title}</dd>
-            <dt>Type</dt>
-            <dd>{typeLabel(song.chartType)}</dd>
-            {#if song.section}
-              <dt>Section</dt>
-              <dd>{song.section}</dd>
+            <dd class="preview-song">{hit.title}</dd>
+            {#if hit.adx?.artist}
+              <dt>Artist</dt>
+              <dd>{hit.adx.artist}</dd>
             {/if}
+            <dt>Type</dt>
+            <dd>{typeLabel(hit.chartType)}</dd>
+            {#if hit.adx?.genre || hit.wiki?.section}
+              <dt>Genre</dt>
+              <dd>{hit.adx?.genre || hit.wiki?.section}</dd>
+            {/if}
+          </dl>
+          <div class="source-pick">
+            <span id="wiki-source-label" class="xsmall muted">載入來源</span>
+            <div class="seg" role="radiogroup" aria-labelledby="wiki-source-label" use:segmented>
+              {#each SOURCES as item (item.id)}
+                <button
+                  class="seg-btn"
+                  role="radio"
+                  aria-checked={source === item.id}
+                  disabled={!hit[item.id] || importing !== null}
+                  title={hit[item.id] ? undefined : `${item.label} 沒有這首歌`}
+                  onclick={() => choose(item.id)}
+                >
+                  <span class={`source-dot source-dot--${item.id}`} aria-hidden="true"></span>
+                  {item.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+          <dl class="meta preview-meta small">
             <dt>Page URL</dt>
             <dd class="mono xsmall url">
               <a
                 class="url-link"
-                href={song.pageUrl}
+                href={pageUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="在瀏覽器開啟 Wiki 歌曲頁"
-                onclick={(event) => void openPageUrl(event, song.pageUrl)}
-                >{song.pageUrl}</a
+                title={`在瀏覽器開啟 ${SOURCE_LABEL[source]} 歌曲頁`}
+                onclick={(event) => void openPageUrl(event, pageUrl)}>{pageUrl}</a
               >
             </dd>
           </dl>
@@ -725,51 +941,54 @@
             <thead>
               <tr>
                 <th scope="col">Difficulty</th>
-                <th scope="col">Level</th>
+                <th scope="col">{source === 'adx' ? '定數' : 'Level'}</th>
                 <th scope="col"><span class="sr-only">操作</span></th>
               </tr>
             </thead>
             <tbody>
-              {#each difficultiesOf(song) as item (item.key)}
-                {@const current = importing?.key === key && importing.difficulty.key === item.key}
-                {@const local = records.findByWiki(song.pageId, song.chartType, item.key)}
+              {#each rowsOf(hit, source) as item (item.key)}
+                {@const current =
+                  importing?.key === key && importing.source === source && importing.difficulty.key === item.key}
+                {@const local = localOf(hit, source, item.key)}
                 {@const failed =
                   failure !== null &&
-                  songKey(failure.song) === key &&
+                  hitKey(failure.hit) === key &&
+                  failure.source === source &&
                   failure.difficulty.key === item.key}
                 <tr class:is-current={current || failed}>
-                  <th scope="row" class="mono">{item.label}</th>
-                  <td class="mono">{item.info.level ?? '—'}</td>
+                  <th scope="row" class="mono">
+                    {item.label}
+                    {#if item.designer}<span class="designer xsmall muted">{item.designer}</span>{/if}
+                  </th>
+                  <td class="mono">{item.level ?? '—'}</td>
                   <td class="action">
                     {#if local}
                       <button
                         class="btn"
-                        onclick={() => importChart(song, item)}
+                        onclick={() => importChart(hit, source, item)}
                         disabled={!canImport}
-                        aria-label={`開啟已匯入的 ${song.title} ${typeLabel(song.chartType)} ${item.label}`}
+                        aria-label={`開啟已匯入的 ${hit.title} ${typeLabel(hit.chartType)} ${item.label}`}
                       >
                         <Icon name="external-link" />開啟
                       </button>
-                    {:else if !item.info.availabilityHint}
+                    {:else if !item.available}
                       <button
                         class="btn"
                         disabled
                         title="Wiki 索引沒有這個難度的譜面連結"
-                        aria-label={`${song.title} ${item.label} unavailable`}
+                        aria-label={`${hit.title} ${item.label} unavailable`}
                       >
                         unavailable
                       </button>
                     {:else}
                       <button
                         class="btn"
-                        onclick={() => importChart(song, item)}
+                        onclick={() => importChart(hit, source, item)}
                         disabled={!canImport}
-                        aria-label={`載入 ${song.title} ${typeLabel(song.chartType)} ${item.label}`}
+                        aria-label={`從 ${SOURCE_LABEL[source]} 載入 ${hit.title} ${typeLabel(hit.chartType)} ${item.label}`}
                       >
                         {#if current}
-                          <Icon name="loader" spin />{importing?.step === 'download'
-                            ? `Loading ${item.label}...`
-                            : '分析中'}
+                          <Icon name="loader" spin />{importing?.step === 'download' ? '下載中' : '分析中'}
                         {:else}
                           <Icon name="download" />載入
                         {/if}
@@ -781,11 +1000,15 @@
             </tbody>
           </table>
           <p class="xsmall muted preview-note">
-            unavailable 表示 Wiki 索引沒有該難度的連結；實際能否取得以 Rust 回傳為準。
+            {#if source === 'wiki'}
+              unavailable 表示 Wiki 索引沒有該難度的連結；實際能否取得以 Rust 回傳為準。
+            {:else}
+              定數與譜師取自 adxdls 目錄。每個難度各自成為一筆譜面紀錄。
+            {/if}
           </p>
         {:else}
           <p class="group-empty small muted">
-            {search.kind === 'done' && search.items.length > 0 ? '在左側選一首歌。' : '搜尋後在左側選一首歌，這裡會列出難度。'}
+            {search.kind === 'done' && search.items.length > 0 ? '在左側選一首歌。' : '搜尋後在左側選一首歌，這裡會列出來源與難度。'}
           </p>
         {/if}
       </section>
@@ -804,11 +1027,6 @@
   .source-note {
     padding: var(--space-3) var(--space-4) 0;
     line-height: var(--lh-normal);
-  }
-
-  .source {
-    margin-right: var(--space-1);
-    font-weight: 400;
   }
 
   .index-bar {
@@ -1109,6 +1327,87 @@
   .difficulties .action {
     text-align: right;
     white-space: nowrap;
+  }
+
+  /*
+   * 譜源用底色區分：adxdls 混琥珀、simai Wiki 混主色（不新增色相，比例同 .alert）。
+   * 目前會從哪邊載入另用字重與框線標示，不只靠顏色。
+   */
+  .sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+  }
+
+  .source-badge {
+    min-height: 18px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    color: var(--c-text);
+    font-size: var(--fs-xs);
+    font-weight: 400;
+  }
+
+  .source-badge--adx {
+    background: color-mix(in srgb, var(--c-accent) 14%, var(--c-panel));
+  }
+
+  .source-badge--wiki {
+    background: color-mix(in srgb, var(--c-primary) 14%, var(--c-panel));
+  }
+
+  .source-badge.is-used {
+    font-weight: 600;
+    color: var(--c-text-strong);
+  }
+
+  .source-badge--adx.is-used {
+    border-color: color-mix(in srgb, var(--c-accent) 50%, var(--c-panel));
+  }
+
+  .source-badge--wiki.is-used {
+    border-color: color-mix(in srgb, var(--c-primary) 50%, var(--c-panel));
+  }
+
+  .meta .source-badge {
+    margin-right: var(--space-1);
+  }
+
+  .source-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .source-dot--adx {
+    background: var(--c-accent);
+  }
+
+  .source-dot--wiki {
+    background: var(--c-primary);
+  }
+
+  .partial {
+    padding-bottom: 0;
+  }
+
+  .source-pick {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-4) var(--space-2);
+  }
+
+  .source-pick .seg {
+    flex: 1 1 auto;
+  }
+
+  .designer {
+    display: block;
+    font-family: var(--font-sans);
+    font-weight: 400;
   }
 
   .preview-note {

@@ -21,6 +21,7 @@ mod song_parser;
 pub use client::build_client;
 pub use model::{ChartType, Difficulty, WikiSong};
 pub use provider::{
-    cache_info, clear_cache, fetch_chart, refresh_index, search_cached, WikiCacheInfo,
-    WikiChartPayload, WikiIndexPayload, WikiState,
+    cache_base, cache_info, clear_cache, fetch_chart, refresh_index, search_cached, with_index,
+    WikiCacheInfo, WikiChartPayload, WikiIndexPayload, WikiState,
 };
+pub use search::normalize_search_text;

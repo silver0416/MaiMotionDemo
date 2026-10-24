@@ -128,6 +128,11 @@ export interface BaseSolverConfig {
    */
   palmRadius: number;
   /**
+   * 備用手掌半徑 0–1，預設 0.7。用 palmRadius 整首找不到方案時才改用這個半徑重試，
+   * 結果的 warnings 會註明；不大於 palmRadius 或關閉手掌覆蓋（palmRadius 0）時不重試。舊快照沒有這個欄位。
+   */
+  palmFallbackRadius: number;
+  /**
    * Hold／Touch Hold 可以提早放手（結尾 12 幀不檢查、短 Hold 只看頭判）。
    * 預設 false：一律按到結尾。舊快照沒有這個欄位，當時是可以提早放手。
    */
@@ -363,6 +368,67 @@ export interface WikiChartPayload {
   pageUrl: string;
   difficulty: string;
   chartType: string;
+}
+
+/** adxdls 目錄裡單一難度的定數（`12.8` 等字串）與譜師。 */
+export interface AdxDifficultyInfo {
+  level: string | null;
+  designer: string | null;
+}
+
+/** adxdls（AstroDX 譜面目錄）的一首歌（Rust chart_search，camelCase）。Standard 與 DX 是兩筆。 */
+export interface AdxSong {
+  slug: string;
+  title: string;
+  titleRomaji: string | null;
+  artist: string;
+  artistRomaji: string | null;
+  aliases: string[];
+  chartType: WikiChartType;
+  bpm: number | null;
+  version: string | null;
+  genre: string | null;
+  /** key 與 WikiSong 相同（basic…reMaster）。 */
+  difficulties: Record<string, AdxDifficultyInfo>;
+  pageUrl: string;
+}
+
+/** adx_refresh_index 的結果：目錄留在 Rust，前端只拿筆數與時間。 */
+export interface AdxIndexPayload {
+  count: number;
+  /** unix 秒 */
+  fetchedAt: number;
+  fromCache: boolean;
+  /** adxdls 抓取失敗，回傳的是舊快取。 */
+  stale: boolean;
+}
+
+/** adx_fetch_chart 的結果；chartText 只含選定難度，已通過核心 parser。 */
+export interface AdxChartPayload {
+  chartText: string;
+  title: string;
+  artist: string | null;
+  bpm: number | null;
+  level: string | null;
+  designer: string | null;
+  pageUrl: string;
+  slug: string;
+  difficulty: string;
+  chartType: WikiChartType;
+}
+
+/** 合併搜尋的一首歌：同種類、同歌名的 Wiki 與 adxdls 合成一筆，至少一邊有值。 */
+export interface ChartSearchHit {
+  title: string;
+  chartType: WikiChartType;
+  wiki: WikiSong | null;
+  adx: AdxSong | null;
+}
+
+export interface ChartSearchPayload {
+  items: ChartSearchHit[];
+  wikiReady: boolean;
+  adxReady: boolean;
 }
 
 /**
