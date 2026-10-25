@@ -15,6 +15,7 @@
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
   import ImportDialog from './components/ImportDialog.svelte';
+  import DropOverlay from './components/DropOverlay.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
   import SkeletonList from './components/SkeletonList.svelte';
   import { afterPaint } from './lib/frame';
@@ -24,6 +25,7 @@
   import { errorLog } from './state/errorLog.svelte';
   import { markers } from './state/markers.svelte';
   import { annotation } from './state/annotation.svelte';
+  import { chartDraftRequest } from './state/dropImport.svelte';
   import { cancelGroup, markGroupAt } from './state/groups';
   import { records } from './state/records.svelte';
   import type { ChartRecord } from './state/records.svelte';
@@ -103,6 +105,9 @@
     editingRecord = null;
     dialogOpen = true;
   }
+
+  // 拖進來的譜面被核心退回時，通知上的按鈕用新增視窗打開它看診斷。
+  chartDraftRequest.open = createRecord;
   let innerWidth = $state(1280);
   let leftWidth = $state(savedPanes.left);
   let rightWidth = $state(savedPanes.right);
@@ -480,6 +485,7 @@
   <SettingsDialog bind:open={settingsOpen} />
   <ImportDialog />
   <Toaster />
+  <DropOverlay />
 </div>
 
 <style>

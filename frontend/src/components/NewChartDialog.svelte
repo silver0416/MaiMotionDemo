@@ -17,6 +17,7 @@
   import { annotation, checkSource } from '../state/annotation.svelte';
   import { parseImport } from '../lib/bundle';
   import { importRequest, parseImportTexts } from '../state/recordsIO.svelte';
+  import { chartDraftRequest } from '../state/dropImport.svelte';
   import { errorLog } from '../state/errorLog.svelte';
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
@@ -106,9 +107,10 @@
       clearTimeout(closeTimer);
       closing = false;
       if (!dialog.open) {
-        enterMode();
+        const seeded = enterMode();
         dialog.showModal();
         textarea?.focus();
+        if (seeded) void generate();
         if (mode === 'edit' && textarea) {
           textarea.setSelectionRange(0, 0);
           textarea.scrollTop = 0;
@@ -125,9 +127,11 @@
     }
   });
 
-  function enterMode() {
+  /** 回傳 true 表示放進了拖曳匯入失敗的譜面，打開後要立即生成以顯示診斷。 */
+  function enterMode(): boolean {
     rejected = null;
     failed = null;
+    const seeded = editing ? null : chartDraftRequest.take();
     if (editing) {
       if (mode === 'new') {
         stashedDraft = draft;
@@ -140,6 +144,10 @@
     } else if (mode === 'edit') {
       leaveEdit();
     }
+    if (seeded === null) return false;
+    draft = seeded;
+    name = '';
+    return true;
   }
 
   /** 對話框真正關上後：編輯模式放棄未儲存的修改，放回新增草稿。 */
