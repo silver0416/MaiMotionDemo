@@ -110,6 +110,7 @@ fn main() {
                         first_seconds: first,
                         solver_config: config.clone(),
                         annotation: annotation.clone(),
+                        model_solution: None,
                     });
                     let notes: Vec<Value> = model
                         .chart

@@ -576,6 +576,8 @@ export interface EvaluateRequest {
   firstSeconds: number;
   solverConfig: SolverConfig;
   annotation: HandAnnotation;
+  /** 同一份原文、同一組設定的現有分析第一名；有的話 Rust 直接拿來比，不再重算模型。 */
+  modelSolution?: Solution;
 }
 
 export interface EvaluatedSolution {

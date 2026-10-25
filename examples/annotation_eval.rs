@@ -22,6 +22,7 @@ fn main() {
         first_seconds: annotation.chart.first_seconds,
         solver_config,
         annotation,
+        model_solution: None,
     };
     let start = std::time::Instant::now();
     let r = evaluate_annotation(request);

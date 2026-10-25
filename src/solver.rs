@@ -21,6 +21,11 @@ thread_local! {
     static CANCEL: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
 }
 
+/// 這個執行緒目前的取消旗標；在別的執行緒上接著跑同一份工作時用 [`with_cancel`] 帶過去。
+pub(crate) fn current_cancel() -> Option<Arc<AtomicBool>> {
+    CANCEL.with(|slot| slot.borrow().clone())
+}
+
 /// 在 `flag` 被設為 true 時中止這次求解（求解回傳 code 為 `cancelled` 的診斷）。
 /// 只影響目前執行緒，結束後恢復原狀。
 pub fn with_cancel<T>(flag: Arc<AtomicBool>, run: impl FnOnce() -> T) -> T {

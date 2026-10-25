@@ -159,6 +159,10 @@ pub struct EvaluateRequest {
     #[serde(default)]
     pub solver_config: SolverConfig,
     pub annotation: HandAnnotation,
+    /// 前端已有的模型最佳解（同一份原文、同一組設定分析出來的第一名）。有的話直接拿來比，
+    /// 不再重算；呼叫端要確保它對應這份原文與設定。只用到指派、換手與分數。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_solution: Option<Solution>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -299,8 +303,21 @@ fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
 }
 
 /// 比對真人標註與模型：分別求出模型最佳解與「照標註打」的最佳解，列出不同的音符與成本差距。
+/// 沒有現成的模型解時，模型與照標註兩個求解同時跑。
 pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
-    evaluate_annotation_probed(request, &[]).0
+    evaluate_inner(request, true, solve_model, solver::solve_constrained)
+}
+
+fn solve_model(chart: &Chart, config: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
+    match config
+        .ml_model
+        .as_deref()
+        .and_then(crate::temoto::TemotoModel::builtin)
+    {
+        // 比對對象跟著介面選的模型：選了 Temoto 就和 Temoto 修正後的結果比
+        Some(model) => crate::temoto::solve(chart, config, model),
+        None => solver::solve(chart, config),
+    }
 }
 
 /// 學權重用：同 [`evaluate_annotation`]，另外回傳模型解與照標註解在每組探測權重下的
@@ -311,39 +328,38 @@ pub fn evaluate_annotation_probed(
     probes: &[&'static crate::scoring_v3::TuningV3],
 ) -> (EvaluateResponse, Vec<f64>, Vec<f64>) {
     let (mut model_totals, mut human_totals) = (vec![], vec![]);
-    let response = evaluate_inner(request, |chart, config, rules| {
-        let (result, totals) = solver::with_probes(probes, || match rules {
-            Some(rules) => solver::solve_constrained(chart, config, rules),
-            None => match config
-                .ml_model
-                .as_deref()
-                .and_then(crate::temoto::TemotoModel::builtin)
-            {
-                // 比對對象跟著介面選的模型：選了 Temoto 就和 Temoto 修正後的結果比
-                Some(model) => crate::temoto::solve(chart, config, model),
-                None => solver::solve(chart, config),
-            },
-        });
-        if result.is_ok() {
-            *if rules.is_some() {
-                &mut human_totals
-            } else {
-                &mut model_totals
-            } = totals;
-        }
-        result
-    });
+    // 探測權重放在執行緒區域變數，所以兩個求解依序在這個執行緒上跑。
+    let response = evaluate_inner(
+        request,
+        false,
+        |chart, config| {
+            let (result, totals) = solver::with_probes(probes, || solve_model(chart, config));
+            if result.is_ok() {
+                model_totals = totals;
+            }
+            result
+        },
+        |chart, config, rules| {
+            let (result, totals) =
+                solver::with_probes(probes, || solver::solve_constrained(chart, config, rules));
+            if result.is_ok() {
+                human_totals = totals;
+            }
+            result
+        },
+    );
     (response, model_totals, human_totals)
 }
 
+type Solved = Result<Vec<Solution>, Diagnostic>;
+
 fn evaluate_inner(
-    request: EvaluateRequest,
-    mut solve: impl FnMut(
-        &Chart,
-        &SolverConfig,
-        Option<&HandRules>,
-    ) -> Result<Vec<Solution>, Diagnostic>,
+    mut request: EvaluateRequest,
+    parallel: bool,
+    solve_model: impl FnOnce(&Chart, &SolverConfig) -> Solved + Send,
+    solve_human: impl FnOnce(&Chart, &SolverConfig, &HandRules) -> Solved,
 ) -> EvaluateResponse {
+    let supplied = request.model_solution.take();
     let mut response = EvaluateResponse {
         request_id: request.request_id.clone(),
         status: "invalid".into(),
@@ -399,7 +415,42 @@ fn evaluate_inner(
     }
     response.matched = marks.len();
 
-    let model = match solve(&chart, &request.solver_config, None) {
+    let config = &request.solver_config;
+    let rules = rules(&chart, &marks);
+    let (model, human) = match supplied {
+        Some(solution) => (Ok(vec![solution]), solve_human(&chart, config, &rules)),
+        None if parallel => {
+            // 另一個執行緒要帶上這次工作的取消旗標與評分權重（兩者都放在執行緒區域變數）。
+            let cancel = solver::current_cancel();
+            let tuning = crate::scoring_v3::current_override();
+            std::thread::scope(|scope| {
+                let chart = &chart;
+                let model = scope.spawn(move || {
+                    let run = || match tuning {
+                        Some(tuning) => {
+                            crate::scoring_v3::with_tuning(tuning, || solve_model(chart, config))
+                        }
+                        None => solve_model(chart, config),
+                    };
+                    match cancel {
+                        Some(flag) => solver::with_cancel(flag, run),
+                        None => run(),
+                    }
+                });
+                let human = solve_human(chart, config, &rules);
+                let model = model
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+                (model, human)
+            })
+        }
+        None => {
+            let model = solve_model(&chart, config);
+            (model, solve_human(&chart, config, &rules))
+        }
+    };
+
+    let model = match model {
         Ok(solutions) => solutions.into_iter().next(),
         Err(diagnostic) => {
             response.diagnostics.push(diagnostic);
@@ -442,7 +493,7 @@ fn evaluate_inner(
         }
     }
 
-    match solve(&chart, &request.solver_config, Some(&rules(&chart, &marks))) {
+    match human {
         Ok(solutions) => {
             if let Some(best) = solutions.into_iter().next() {
                 response.human = Some(evaluated(&best));

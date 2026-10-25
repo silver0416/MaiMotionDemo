@@ -209,6 +209,7 @@ fn run(
                         first_seconds: annotation.chart.first_seconds,
                         solver_config: config.clone(),
                         annotation: annotation.clone(),
+                        model_solution: None,
                     };
                     let (response, model, human) =
                         with_tuning(tuning, || evaluate_annotation_probed(request, probes));

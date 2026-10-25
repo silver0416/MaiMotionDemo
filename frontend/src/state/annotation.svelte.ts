@@ -37,7 +37,7 @@ import {
   type StepPart,
   type MergeResult,
 } from '../lib/annotation';
-import { projectConfig } from '../lib/contract';
+import { configEquals, projectConfig } from '../lib/contract';
 import { hashText } from '../lib/db';
 import { recallAlignment, rememberAlignment, type HandcamMark, type VideoLink } from '../lib/video';
 import type {
@@ -1556,6 +1556,19 @@ export class AnnotationStore {
       .map((mark) => ({ ...mark }));
     delete file.branches;
     delete file.groups;
+    const solverConfig = projectConfig(session.config);
+    // 目前的分析就是同一份原文、同一組設定時，直接用它的第一名當模型解，省掉重算
+    // （Temoto 重算一次要十秒以上）。動作軌跡比對用不到，不送。
+    const result = session.result;
+    const top = result?.response.status === 'ok' ? result.response.solutions[0] : undefined;
+    const modelSolution =
+      top &&
+      result &&
+      result.source === file.chart.source &&
+      result.firstSeconds === file.chart.firstSeconds &&
+      configEquals(result.config, solverConfig)
+        ? { ...$state.snapshot(top), leftSegments: [], rightSegments: [], palmPlacements: [] }
+        : undefined;
     // 比對期間換了譜面：結果屬於舊譜面，丟掉。
     const recordId = this.recordId;
     this.evaluating = true;
@@ -1565,8 +1578,9 @@ export class AnnotationStore {
         requestId: nextRequestId(),
         source: file.chart.source,
         firstSeconds: file.chart.firstSeconds,
-        solverConfig: projectConfig(session.config),
+        solverConfig,
         annotation: file,
+        modelSolution,
       });
       if (this.recordId === recordId) this.evaluation = evaluation;
     } catch (error) {

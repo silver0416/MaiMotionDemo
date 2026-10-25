@@ -155,6 +155,10 @@ pub fn tuning() -> &'static TuningV3 {
         .with(std::cell::Cell::get)
         .unwrap_or_else(|| TUNING.get_or_init(TuningV3::default))
 }
+/// 這個執行緒上 [`with_tuning`] 暫時套用的權重；在別的執行緒上接著跑時帶過去。
+pub(crate) fn current_override() -> Option<&'static TuningV3> {
+    OVERRIDE.with(std::cell::Cell::get)
+}
 /// 學權重用：在這個執行緒上暫時改用另一組權重執行 `f`（結束後還原）。
 #[doc(hidden)]
 pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {

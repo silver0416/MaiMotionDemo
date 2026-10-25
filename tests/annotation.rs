@@ -29,6 +29,7 @@ fn evaluate_with(source: &str, notes: serde_json::Value, c: SolverConfig) -> Eva
         first_seconds: 0.0,
         solver_config: c,
         annotation: annotation(source, notes),
+        model_solution: None,
     })
 }
 
@@ -289,6 +290,7 @@ fn wrong_format_is_rejected_with_a_message() {
         first_seconds: 0.0,
         solver_config: SolverConfig::v3(),
         annotation: a,
+        model_solution: None,
     });
     assert_eq!(r.status, "invalid");
     assert!(r.diagnostics[0]
@@ -365,4 +367,47 @@ fn short_slides_are_not_paused() {
         let gaps = slide_gaps(&r.solutions[0], &note.id);
         assert!(gaps.is_empty(), "{} {gaps:?}", note.key);
     }
+}
+
+/// 前端送來現有分析的第一名（去掉動作軌跡、經過 JSON）時，比對結果與在核心重算一樣。
+#[test]
+fn supplied_model_solution_gives_the_same_evaluation() {
+    let source = "(150){8}1,2,3/6,4-8[8:1],5,7,B3/C,2h[4:1],1,8,E";
+    let notes = json!([
+        {"key": key(source, 0), "hand": "L"},
+        {"key": key(source, 1), "hand": "R"},
+        {"key": key(source, 5), "hand": "L", "track": "R"},
+    ]);
+    let analyzed = analyze_chart(AnalyzeRequest {
+        request_id: "a".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+    });
+    let mut top = serde_json::to_value(&analyzed.solutions[0]).unwrap();
+    top["leftSegments"] = json!([]);
+    top["rightSegments"] = json!([]);
+    top["palmPlacements"] = json!([]);
+    let supplied = evaluate_annotation(EvaluateRequest {
+        request_id: "eval".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+        annotation: annotation(source, notes.clone()),
+        model_solution: Some(serde_json::from_value(top).unwrap()),
+    });
+    let solved = evaluate(source, notes);
+    let summary = |r: &EvaluateResponse| {
+        json!({
+            "status": r.status,
+            "compared": r.compared,
+            "agreed": r.agreed,
+            "divergences": r.divergences,
+            "model": r.model,
+            "human": r.human,
+        })
+    };
+    assert_eq!(solved.status, "ok", "{:?}", solved.diagnostics);
+    assert!(solved.compared > 0);
+    assert_eq!(summary(&supplied), summary(&solved));
 }
