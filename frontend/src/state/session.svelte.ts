@@ -102,8 +102,10 @@ export const SOLVER_REVISION = 'wifi-pair-9';
  *   快速移動容忍預設 6.5 → 5.2。
  * v3-5：階梯（連續相鄰鍵）與 Touch 一筆畫中途換手加成本，權重重新擬合。
  * v3-6：分組認知——依節奏切成樂句，手法偏離由標註學出的樣板時加成本。
+ * v3-7：自動分組預設開啟（groupAuto 0.5）——同鍵反覆、階梯、兩顆交替、一側一手的組內手型不合時加成本；
+ *   快速同鍵連打嚴格交替並接續前一手。
  */
-export const SCORING_REVISION = 'v3-6';
+export const SCORING_REVISION = 'v3-7';
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(

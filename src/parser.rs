@@ -37,6 +37,8 @@ struct Parser<'a> {
     fixed_step: Option<f64>,
     /// 目前逗號位置的時間。
     time: f64,
+    /// 目前逗號位置是第幾拍（依當時的 BPM 累計；還沒指定 BPM 時以 120 計）。
+    beats: f64,
     /// 疑似 EACH 在本組內累積的位移數。
     pseudo: u32,
     pseudo_each_beats: f64,
@@ -282,6 +284,7 @@ impl<'a> Parser<'a> {
             motion_start: None,
             motion_end: None,
             has_head: true,
+            beat: self.beats + (time - self.time) * self.bpm.unwrap_or(120.0) / 60.0,
             modifiers: Modifiers::default(),
             source_span: self.span(self.at),
         }
@@ -587,6 +590,7 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
         division: None,
         fixed_step: None,
         time: first_seconds,
+        beats: 0.0,
         pseudo: 0,
         pseudo_each_beats: if majdata_mode {
             MAJDATA_PSEUDO_EACH_BEATS
@@ -668,6 +672,7 @@ pub fn parse_chart(source: &str, first_seconds: f64) -> Result<ParseOutput, Diag
                     }
                 };
                 p.time += step;
+                p.beats += step * p.bpm.unwrap_or(120.0) / 60.0;
                 p.chart.duration_seconds = p.chart.duration_seconds.max(p.time);
                 p.at += 1;
                 if p.time > MAX_SECONDS {

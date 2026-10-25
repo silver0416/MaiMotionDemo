@@ -83,6 +83,17 @@ pub struct TuningV3 {
     /// A phrase of three or more onsets with no learned template played
     /// entirely by one hand (players tend to share a group between the hands).
     pub phrase_one_hand: f64,
+    /// Per note of a given group (research input, see `with_groups`) that breaks
+    /// the group's hand rule: one key repeated → one hand or strictly
+    /// alternating, a stair of three or more → one hand, anything else →
+    /// strictly alternating.
+    pub group_pattern: f64,
+    /// The same per note, for groups found automatically in every chart
+    /// (repeated keys, stairs, rhythm, star heads, beat slots); 0 = off.
+    /// Kept at 0.5: larger weights tip near-tied passages into their mirror
+    /// image to satisfy a group, flipping notes the annotators had accepted.
+    /// Temoto models whose bundled tuning predates this field use it as well.
+    pub group_auto: f64,
     /// Share of burst speed charged while gliding along the ring.
     pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
@@ -131,6 +142,8 @@ impl Default for TuningV3 {
             shape_mix: 0.0,
             phrase_template: 0.5,
             phrase_one_hand: 0.0,
+            group_pattern: 4.0,
+            group_auto: 0.5,
             glide_speed: 1.0,
             future_role: 0.15,
             arc_side: 0.0,

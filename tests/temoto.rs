@@ -1,4 +1,5 @@
 //! Temoto 模型：Rust 推論必須與 PyTorch 一致，整條流程的結果動作上做得到。
+use mai_motion_core::scoring_v3::{with_tuning, TuningV3};
 use mai_motion_core::temoto::{features, TemotoModel, MODEL_IDS};
 use mai_motion_core::*;
 
@@ -34,12 +35,17 @@ fn builtin_models_load() {
 }
 
 /// 參考機率由訓練程式以同一組 f16 權重算出（J:\MaiMotionML\export_model.py --ref）。
+/// 參考的輸入是當時的 V3 手順（還沒有自動分組），所以這裡關掉 groupAuto 重現同一份輸入。
 #[test]
 fn inference_matches_pytorch() {
     let reference: serde_json::Value =
         serde_json::from_str(include_str!("charts/temoto_tokiwa_speed_first_ref.json")).unwrap();
     let chart = parse_chart(CHART, 0.0).unwrap().chart;
-    let v3 = analyze_chart(request(None));
+    let then: &'static TuningV3 = Box::leak(Box::new(TuningV3 {
+        group_auto: 0.0,
+        ..TuningV3::default()
+    }));
+    let v3 = with_tuning(then, || analyze_chart(request(None)));
     let input = features(&chart, v3.solutions.first());
     let keys: Vec<&str> = input
         .order

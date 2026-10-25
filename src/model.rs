@@ -149,6 +149,9 @@ pub struct Note {
     pub motion_end: Option<f64>,
     /// Slide 是否有起點觸碰；`?` `!` 與 `*` 的第二條之後為 false。
     pub has_head: bool,
+    /// 從譜面開頭數第幾拍（依當時的 BPM 累計）。給分組對齊拍點用，不輸出。
+    #[serde(skip)]
+    pub beat: f64,
     pub modifiers: Modifiers,
     pub source_span: SourceSpan,
 }

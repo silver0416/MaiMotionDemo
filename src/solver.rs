@@ -2,7 +2,7 @@ mod tracking;
 mod v2;
 mod v3;
 #[doc(hidden)]
-pub use v3::phrases::{phrase_shapes, set_templates};
+pub use v3::phrases::{auto_group_keys, phrase_shapes, set_templates, with_groups};
 #[cfg(test)]
 mod v3_tests;
 use crate::geometry::button;

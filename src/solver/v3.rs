@@ -59,6 +59,13 @@ pub(super) struct Context<'a> {
     phrase_end: BTreeMap<&'a str, usize>,
     /// 樂句的音符與手法樣板；沒有樣板的樂句只看是不是整句單手（phraseOneHand）。
     phrase_templates: Vec<(Vec<&'a str>, Option<&'static str>)>,
+    /// 分組（研究用的給定分組 phrases::with_groups，或 groupAuto 開啟時的自動分組）的音符
+    /// → (組號, 組內位置)。
+    group_at: BTreeMap<&'a str, (usize, usize)>,
+    /// 分組的音符（依時間，交替要接續的前一顆排在最前面）與分手規則。
+    groups: Vec<(Vec<&'a str>, phrases::GroupRule)>,
+    /// 組內手型每顆不合的成本：給定分組用 groupPattern，自動分組用 groupAuto。
+    group_weight: f64,
     /// End of the last note; swapped posture is not charged after it.
     posture_end: f64,
 }
@@ -96,6 +103,25 @@ impl<'a> Context<'a> {
                 phrase.notes.iter().map(|n| n.id.as_str()).collect(),
                 template,
             ));
+        }
+        let tuning = crate::scoring_v3::tuning();
+        let (found, group_weight) = match phrases::given_groups(chart) {
+            Some(given) => (
+                given.into_iter().map(|(n, r)| (n, r, None)).collect(),
+                tuning.group_pattern,
+            ),
+            None if tuning.group_auto > 0.0 => (phrases::auto_rules(chart), tuning.group_auto),
+            None => (vec![], 0.0),
+        };
+        let mut group_at = BTreeMap::new();
+        let mut groups = vec![];
+        for (notes, rule, lead) in found {
+            // 要接續的前一顆排在第 0 位：只用來比對手，不屬於這組，接觸它時不結算這組。
+            let ids: Vec<&str> = lead.iter().chain(&notes).map(|n| n.id.as_str()).collect();
+            for (position, id) in ids.iter().enumerate().skip(usize::from(lead.is_some())) {
+                group_at.entry(*id).or_insert((groups.len(), position));
+            }
+            groups.push((ids, rule));
         }
         let mut nominal = BTreeMap::new();
         for note in &chart.notes {
@@ -137,6 +163,9 @@ impl<'a> Context<'a> {
             shape_prev: shape_repeats(chart),
             phrase_end,
             phrase_templates,
+            group_at,
+            groups,
+            group_weight,
             posture_end: chart
                 .notes
                 .iter()
@@ -209,6 +238,7 @@ impl<'a> Context<'a> {
                     + self.stair_break(link)
                     + self.shape_mix(link)
                     + self.phrase_template(link)
+                    + self.group_pattern(link)
             })
             .sum();
         next.v3.parts.ownership_switch += star;
@@ -339,6 +369,55 @@ impl<'a> Context<'a> {
             None if !actual.contains('B') => tuning.phrase_one_hand,
             None => 0.0,
         }
+    }
+
+    /// 分組的手型不合規則（phrases::GroupRule）：組內每顆第一次接觸時，收這顆讓
+    /// 不合的顆數增加的部分，整組結算等於不合的顆數，搜尋途中就看得到。
+    fn group_pattern(&self, link: &Link<Assignment>) -> f64 {
+        let weight = self.group_weight;
+        let current = &link.value;
+        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&(index, position)) = self.group_at.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let (notes, rule) = &self.groups[index];
+        let mut hands: Vec<Option<Hand>> = vec![None; position + 1];
+        hands[position] = Some(current.hand);
+        let since = self.notes[notes[0]].time_seconds - 1.0;
+        let mut cursor = &link.prev;
+        for _ in 0..4096 {
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.end_seconds < since {
+                break;
+            }
+            if matches!(a.part.as_str(), "contact" | "head") {
+                if a.note_id == current.note_id {
+                    // 這顆之前已經接觸過：不是第一筆，不重複結算。
+                    return 0.0;
+                }
+                if let Some(i) = notes[..position].iter().position(|id| *id == a.note_id) {
+                    hands[i].get_or_insert(a.hand);
+                }
+            }
+            if hands.iter().all(Option::is_some) {
+                break;
+            }
+            cursor = &prev.prev;
+        }
+        if position == 0 {
+            return 0.0;
+        }
+        let Some(hands) = hands.into_iter().collect::<Option<Vec<Hand>>>() else {
+            return 0.0;
+        };
+        let added = phrases::group_deviation(*rule, &hands)
+            - phrases::group_deviation(*rule, &hands[..position]);
+        weight * added as f64
     }
 
     /// 重複的形狀用了混合的手法：與前一次相比，既不是每顆同手，也不是每顆換手。
@@ -741,7 +820,8 @@ impl<'a> Context<'a> {
             expected.ownership_switch += self.star_switch(link)
                 + self.stair_break(link)
                 + self.shape_mix(link)
-                + self.phrase_template(link);
+                + self.phrase_template(link)
+                + self.group_pattern(link);
             cursor = &link.prev;
         }
         let mut histories = [HandHistory::default(), HandHistory::default()];

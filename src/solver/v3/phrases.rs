@@ -129,3 +129,378 @@ pub fn phrase_shapes(chart: &Chart) -> Vec<(String, Vec<String>)> {
         .map(|p| (p.signature, p.notes.iter().map(|n| n.id.clone()).collect()))
         .collect()
 }
+
+thread_local! {
+    /// 研究用：這個執行緒上的求解當成已知的分組（每組是音符 key）。
+    static GIVEN: std::cell::RefCell<Option<Vec<Vec<String>>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// 研究用：在 `f` 裡的求解把 `groups`（每組是音符 key，例如真人標的分組）當成已知分組，
+/// 收組內手型成本（groupPattern）。只影響目前執行緒，結束後恢復原狀。
+pub fn with_groups<R>(groups: Vec<Vec<String>>, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Vec<Vec<String>>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            GIVEN.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(GIVEN.with(|slot| slot.replace(Some(groups))));
+    f()
+}
+
+/// 一組音符該怎麼分手。規則來自真人分組標註（records.20261016 的 86 個整組標了手的組，
+/// 83 組符合）：同一顆鍵反覆時整組同手或嚴格交替；三顆以上往同方向走相鄰鍵（階梯）時
+/// 單手掃過；其他（相鄰兩顆、跳鍵、三角、來回）嚴格左右交替。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GroupRule {
+    SameOrAlternate,
+    Same,
+    Alternate,
+}
+
+/// 給定的分組（沒呼叫 with_groups 時為 None），每組依 [`classify`] 整理。
+pub(crate) fn given_groups(chart: &Chart) -> Option<Vec<(Vec<&Note>, GroupRule)>> {
+    let groups = GIVEN.with(|slot| slot.borrow().clone())?;
+    let by_key: BTreeMap<&str, &Note> = chart.notes.iter().map(|n| (n.key.as_str(), n)).collect();
+    Some(
+        groups
+            .iter()
+            .filter_map(|keys| {
+                classify(
+                    keys.iter()
+                        .filter_map(|k| by_key.get(k.as_str()).copied())
+                        .collect(),
+                )
+            })
+            .collect(),
+    )
+}
+
+/// 一組音符的分手規則：只看單獨落下的接觸（和弦、沒有星星頭的 Slide 不算），依時間排序；
+/// 少於兩顆時為 None。
+pub(crate) fn classify(notes: Vec<&Note>) -> Option<(Vec<&Note>, GroupRule)> {
+    let mut notes: Vec<&Note> = notes
+        .into_iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    notes.sort_by(|a, b| {
+        a.time_seconds
+            .total_cmp(&b.time_seconds)
+            .then(a.button.cmp(&b.button))
+    });
+    let alone = |i: usize| {
+        let t = notes[i].time_seconds;
+        notes
+            .iter()
+            .enumerate()
+            .all(|(j, n)| j == i || (n.time_seconds - t).abs() >= 0.002)
+    };
+    let notes: Vec<&Note> = (0..notes.len())
+        .filter(|&i| alone(i))
+        .map(|i| notes[i])
+        .collect();
+    if notes.len() < 2 {
+        return None;
+    }
+    let buttons: Vec<u8> = notes.iter().map(|n| n.button).collect();
+    let steps: Vec<u8> = buttons.windows(2).map(|w| (w[1] + 8 - w[0]) % 8).collect();
+    let rule = if notes.iter().any(|n| n.touch_area.is_some()) {
+        GroupRule::Alternate
+    } else if buttons.iter().all(|b| *b == buttons[0]) {
+        GroupRule::SameOrAlternate
+    } else if notes.len() >= 3 && (steps.iter().all(|s| *s == 1) || steps.iter().all(|s| *s == 7)) {
+        GroupRule::Same
+    } else {
+        GroupRule::Alternate
+    };
+    Some((notes, rule))
+}
+
+/// 自動分組最少幾顆才算同鍵反覆或階梯。
+const RUN_MIN: usize = 3;
+/// 節奏段超過這麼多個落點時再往下切。
+const GROUP_MAX_ONSETS: usize = 4;
+
+type Onset<'a> = Vec<&'a Note>;
+
+/// 自動分組（對照 records.20261016 的真人分組調出來）：
+/// 1. 同鍵反覆與階梯（連續三顆以上單獨落下的按鍵、節奏均勻、不接 Hold）自成一組；
+/// 2. 其餘依節奏切段：間隔超過 PHRASE_MAX_GAP，或比前一個或後一個間隔長 PHRASE_BREAK_RATIO 倍；
+/// 3. 超過 GROUP_MAX_ONSETS 個落點的段：有兩顆以上星星頭就在每顆星星頭前切，
+///    否則從段首起依拍點切（16 分兩顆一組、三連音與 24 分三顆一組）。
+///
+/// 回傳每組的音符（含和弦）；少於兩個落點的不算一組。
+pub(crate) fn auto_groups(chart: &Chart) -> Vec<Vec<&Note>> {
+    let onsets = onsets(chart);
+    let single = |o: &Onset| o.len() == 1 && o[0].touch_area.is_none();
+    let time = |i: usize| onsets[i][0].time_seconds;
+    let mut groups: Vec<Vec<Onset>> = vec![];
+    let mut free = 0;
+    let mut i = 0;
+    while i < onsets.len() {
+        let mut best = i;
+        if single(&onsets[i]) {
+            for step in [0, 1, 7] {
+                let mut j = i;
+                while j + 1 < onsets.len()
+                    && single(&onsets[j + 1])
+                    && onsets[j + 1][0].kind != "hold"
+                {
+                    let gap = time(j + 1) - time(j);
+                    let first = time(i + 1) - time(i);
+                    if gap > PHRASE_MAX_GAP
+                        || gap > PHRASE_BREAK_RATIO * first
+                        || first > PHRASE_BREAK_RATIO * gap
+                        || (onsets[j + 1][0].button + 8 - onsets[j][0].button) % 8 != step
+                    {
+                        break;
+                    }
+                    j += 1;
+                }
+                if j + 1 - i >= RUN_MIN && j > best {
+                    best = j;
+                }
+            }
+        }
+        if best > i {
+            rhythm_segments(&onsets[free..i], &mut groups);
+            groups.push(onsets[i..=best].to_vec());
+            i = best + 1;
+            free = i;
+        } else {
+            i += 1;
+        }
+    }
+    rhythm_segments(&onsets[free..], &mut groups);
+    groups
+        .into_iter()
+        .filter(|g| g.len() >= 2)
+        .map(|g| g.into_iter().flatten().collect())
+        .collect()
+}
+
+/// 所有接觸（含星星頭，不含沒有星星頭的 Slide）依時間排序，同時落下的併成一個落點。
+fn onsets(chart: &Chart) -> Vec<Onset<'_>> {
+    let mut contacts: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    contacts.sort_by(|a, b| {
+        a.time_seconds
+            .total_cmp(&b.time_seconds)
+            .then(a.button.cmp(&b.button))
+    });
+    let mut onsets: Vec<Onset> = vec![];
+    for note in contacts {
+        match onsets.last_mut() {
+            Some(o) if (note.time_seconds - o[0].time_seconds).abs() < 0.002 => o.push(note),
+            _ => onsets.push(vec![note]),
+        }
+    }
+    onsets
+}
+
+fn rhythm_segments<'a>(onsets: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+    if onsets.is_empty() {
+        return;
+    }
+    let gaps: Vec<f64> = onsets
+        .windows(2)
+        .map(|w| w[1][0].time_seconds - w[0][0].time_seconds)
+        .collect();
+    let mut start = 0;
+    for (i, &gap) in gaps.iter().enumerate() {
+        let longer = |other: Option<&f64>| other.is_some_and(|o| gap > PHRASE_BREAK_RATIO * o);
+        if gap > PHRASE_MAX_GAP
+            || longer(i.checked_sub(1).map(|k| &gaps[k]))
+            || longer(gaps.get(i + 1))
+        {
+            split_segment(&onsets[start..=i], groups);
+            start = i + 1;
+        }
+    }
+    split_segment(&onsets[start..], groups);
+}
+
+fn split_segment<'a>(segment: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+    if segment.len() <= GROUP_MAX_ONSETS {
+        groups.push(segment.to_vec());
+        return;
+    }
+    let heads: Vec<usize> = (0..segment.len())
+        .filter(|&i| segment[i].len() == 1 && segment[i][0].kind == "slide")
+        .collect();
+    if heads.len() < 2 {
+        beat_slots(segment, groups);
+        return;
+    }
+    let mut start = 0;
+    for end in heads.into_iter().chain([segment.len()]) {
+        if end == start {
+            continue;
+        }
+        let part = &segment[start..end];
+        if part.len() > GROUP_MAX_ONSETS {
+            beat_slots(part, groups);
+        } else {
+            groups.push(part.to_vec());
+        }
+        start = end;
+    }
+}
+
+/// 從段首起依拍點切：一格是 1/2、1 或 2 拍中第一個剛好容納兩個以上間隔的，都不合時是兩個間隔。
+fn beat_slots<'a>(segment: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+    let mut gaps: Vec<f64> = segment
+        .windows(2)
+        .map(|w| w[1][0].beat - w[0][0].beat)
+        .collect();
+    gaps.sort_by(f64::total_cmp);
+    let gap = gaps[gaps.len() / 2].max(1e-6);
+    let slot = [0.5, 1.0, 2.0]
+        .into_iter()
+        .find(|s| {
+            let n = s / gap;
+            n >= 1.999 && (n - n.round()).abs() < 0.05
+        })
+        .unwrap_or(2.0 * gap);
+    let origin = segment[0][0].beat;
+    let mut current: Vec<Onset> = vec![];
+    let mut index = None;
+    for onset in segment {
+        let k = ((onset[0].beat - origin + 1e-6) / slot).floor() as i64;
+        if index != Some(k) && !current.is_empty() {
+            groups.push(std::mem::take(&mut current));
+        }
+        index = Some(k);
+        current.push(onset.clone());
+    }
+    groups.push(current);
+}
+
+/// 自動分組只在這些速度收手型成本（組內最長間隔，秒）：階梯不超過 AUTO_STAIR_GAP；
+/// 相鄰兩顆的交替在 AUTO_PAIR_GAP 範圍內。更快的兩顆真人多半一手連打兩顆，
+/// 更慢的、三顆以上的交替真人做法分散（eval18 與 records.20261016 的統計）。
+const AUTO_STAIR_GAP: f64 = 0.12;
+const AUTO_PAIR_GAP: (f64, f64) = (0.075, 0.12);
+/// 超過這麼多顆的階梯（繞過半圈以上）真人多半一側一手，不要求單手。
+const AUTO_STAIR_MAX: usize = 5;
+/// 同鍵連打最長間隔不超過 AUTO_JACK_GAP 秒、至少 AUTO_JACK_MIN 顆時嚴格交替：四個標註集
+/// （eval18、records.20261016、records.20261016.2份、records.20261024.8份）這樣的 25 串
+/// 全都交替；間隔 0.11–0.25 秒的 47 串沒有一串交替。
+const AUTO_JACK_GAP: f64 = 0.10;
+const AUTO_JACK_MIN: usize = 5;
+
+/// 自動分組與各組的分手規則，第三項是交替要接續的前一顆（不屬於這組，只用來比對手）。
+/// 規則比給定分組保守：
+/// - 快速同鍵連打（AUTO_JACK_GAP、AUTO_JACK_MIN）：嚴格交替；前一個落點是單獨一顆、
+///   和連打第一顆的間隔也一樣快時，接續它的手（一路交替下來的連打）；
+/// - 整組落在同一半（1–4 或 5–8），前後相鄰組（間隔不超過 PHRASE_MAX_GAP）都整組在另一半：
+///   一側一手，整組同手；
+/// - 其他同鍵反覆：整組同手或嚴格交替；
+/// - 階梯：只在快、而且不超過 AUTO_STAIR_MAX 顆時要求單手；
+/// - 兩顆不同鍵：只在 AUTO_PAIR_GAP 的速度要求一左一右；
+/// - 其餘不收成本。
+pub(crate) fn auto_rules(chart: &Chart) -> Vec<(Vec<&Note>, GroupRule, Option<&Note>)> {
+    let onsets = onsets(chart);
+    let groups = auto_groups(chart);
+    let half = |g: &Vec<&Note>| -> Option<bool> {
+        if g.iter().any(|n| n.touch_area.is_some()) {
+            return None;
+        }
+        let right = g[0].button <= 4;
+        g.iter().all(|n| (n.button <= 4) == right).then_some(right)
+    };
+    let start = |g: &Vec<&Note>| {
+        g.iter()
+            .map(|n| n.time_seconds)
+            .fold(f64::INFINITY, f64::min)
+    };
+    let end = |g: &Vec<&Note>| {
+        g.iter()
+            .map(|n| n.time_seconds)
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    let mut result = vec![];
+    for (i, group) in groups.iter().enumerate() {
+        let Some((notes, rule)) = classify(group.clone()) else {
+            continue;
+        };
+        let longest = notes
+            .windows(2)
+            .map(|w| w[1].time_seconds - w[0].time_seconds)
+            .fold(0.0, f64::max);
+        let opposite = |j: Option<usize>, near: bool| {
+            near && half(group).is_some()
+                && j.and_then(|j| groups.get(j)).and_then(half) == half(group).map(|r| !r)
+        };
+        let before = i.checked_sub(1);
+        let after = Some(i + 1);
+        let split = opposite(
+            before,
+            before.is_some_and(|j| start(group) - end(&groups[j]) <= PHRASE_MAX_GAP),
+        ) && opposite(
+            after,
+            groups
+                .get(i + 1)
+                .is_some_and(|next| start(next) - end(group) <= PHRASE_MAX_GAP),
+        );
+        if rule == GroupRule::SameOrAlternate
+            && longest <= AUTO_JACK_GAP
+            && notes.len() >= AUTO_JACK_MIN
+        {
+            let first = notes[0].time_seconds;
+            let lead = onsets
+                .iter()
+                .rev()
+                .find(|o| o[0].time_seconds < first - 0.002)
+                .filter(|o| o.len() == 1 && first - o[0].time_seconds <= AUTO_JACK_GAP)
+                .map(|o| o[0]);
+            result.push((notes, GroupRule::Alternate, lead));
+            continue;
+        }
+        let rule = if split {
+            Some(GroupRule::Same)
+        } else {
+            match rule {
+                GroupRule::SameOrAlternate => Some(rule),
+                GroupRule::Same => {
+                    (longest <= AUTO_STAIR_GAP && notes.len() <= AUTO_STAIR_MAX).then_some(rule)
+                }
+                GroupRule::Alternate => {
+                    (notes.len() == 2 && longest > AUTO_PAIR_GAP.0 && longest <= AUTO_PAIR_GAP.1)
+                        .then_some(rule)
+                }
+            }
+        };
+        if let Some(rule) = rule {
+            result.push((notes, rule, None));
+        }
+    }
+    result
+}
+
+/// 自動分組的音符 key（評估用）。
+pub fn auto_group_keys(chart: &Chart) -> Vec<Vec<String>> {
+    auto_groups(chart)
+        .into_iter()
+        .map(|g| g.into_iter().map(|n| n.key.clone()).collect())
+        .collect()
+}
+
+/// 依規則數有幾顆的手不合：全同手看和第一顆不同的，嚴格交替看沒有輪流的。
+pub(crate) fn group_deviation(rule: GroupRule, hands: &[Hand]) -> usize {
+    let same = hands.iter().filter(|h| **h != hands[0]).count();
+    let alternate = hands
+        .iter()
+        .enumerate()
+        .filter(|(i, h)| (**h == hands[0]) != (i % 2 == 0))
+        .count();
+    match rule {
+        GroupRule::Same => same,
+        GroupRule::Alternate => alternate,
+        GroupRule::SameOrAlternate => same.min(alternate),
+    }
+}
