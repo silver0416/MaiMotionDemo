@@ -45,6 +45,7 @@ fn initial() -> State {
         used_bundle: false,
         assign_mark: 0,
         forced_handovers: Default::default(),
+        single_track: Default::default(),
     }
 }
 #[test]

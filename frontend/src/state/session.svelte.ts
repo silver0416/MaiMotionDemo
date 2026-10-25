@@ -86,8 +86,9 @@ function stableJson(value: unknown): string {
  *   追 Slide 的手可用 A 區順手點 Tap；Beam 合併未來等價的狀態。
  * note-key-7：音符輸出穩定鍵 key（真人標註對應用）；舊快取沒有這個欄位。
  * hold-full-8：Hold 預設按到結尾，提早放手改為 holdEarlyRelease 選項。
+ * wifi-pair-9：V3 WiFi 預設雙手 2+1，單手張開只在 2+1 做不到或另一手在滑行期間要接別的音符時使用。
  */
-export const SOLVER_REVISION = 'hold-full-8';
+export const SOLVER_REVISION = 'wifi-pair-9';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。

@@ -221,6 +221,9 @@ struct State {
     /// 真人標註指定要換手的 Slide（音符 id）。V3 平常只在另一手有需求時才考慮交接，
     /// 這是縮小搜尋的近似，不是判定規則；標註明確要求換手時不套用。
     forced_handovers: Arc<std::collections::HashSet<String>>,
+    /// 真人標註指定由單手滑的 Slide（音符 id）。WiFi 平常只在另一手抽不開時才單手張開，
+    /// 標註明確指定單手時不套用。
+    single_track: Arc<std::collections::HashSet<String>>,
     used_early_slide: bool,
     used_touch_group: bool,
 }
@@ -1203,6 +1206,8 @@ fn assign_wifi_once(
 
 /// V3 WiFi：依三條判定佇列的抄近路線分工。side 0／1 為中央＋該側由 paired 覆蓋、
 /// 另一側由另一隻手；side 2 為 paired 單手張開覆蓋三條，另一隻手空出來。
+/// 真人基本上用雙手 2+1，單手張開只動一隻手、成本總是比較低，所以只當備用：
+/// 2+1 做不到（另一隻手抽不開）、另一隻手在 WiFi 期間要接別的音符，或真人標註指定單手時才展開。
 fn assign_wifi_routes(
     state: &State,
     task: &Task,
@@ -1217,6 +1222,13 @@ fn assign_wifi_routes(
     let mut out = vec![];
     for side in 0..3 {
         if state.wifi_pairs.get(&task.note).is_some_and(|s| *s != side) {
+            continue;
+        }
+        if side == 2
+            && !out.is_empty()
+            && !other_hand_needed(chart, task.note, task.start)
+            && !state.single_track.contains(&note.id)
+        {
             continue;
         }
         let tracks: Vec<(Hand, &Vec<PathSample>)> = if side < 2 {
@@ -1266,6 +1278,22 @@ fn assign_wifi_routes(
         }
     }
     out
+}
+
+/// WiFi 滑行期間（含開始的同一刻）有沒有別的音符要接觸；有的話單手張開才有意義。
+/// 開始那一刻落在起點鍵上的 Tap 由起手那隻手順手按掉，不算。
+fn other_hand_needed(chart: &Chart, note: usize, start: f64) -> bool {
+    let wifi = &chart.notes[note];
+    let end = wifi.motion_end.unwrap();
+    let during = |t: f64| t > start - EPS && t < end - EPS;
+    chart.notes.iter().enumerate().any(|(i, other)| {
+        let at_start_button = other.touch_area.is_none()
+            && other.button == wifi.button
+            && (other.time_seconds - start).abs() < EPS;
+        i != note
+            && ((other.has_head && during(other.time_seconds) && !at_start_button)
+                || other.motion_start.is_some_and(during))
+    })
 }
 
 fn has_upcoming_contact(chart: &Chart, note: usize, time: f64) -> bool {
@@ -2692,6 +2720,17 @@ fn solve_with(
                     r.track
                         .iter()
                         .filter(|(_, schedule)| schedule.len() > 1)
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ),
+        single_track: Arc::new(
+            rules
+                .map(|r| {
+                    r.track
+                        .iter()
+                        .filter(|(_, schedule)| !schedule.is_empty())
                         .map(|(id, _)| id.clone())
                         .collect()
                 })

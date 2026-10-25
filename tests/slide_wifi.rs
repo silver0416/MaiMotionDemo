@@ -352,3 +352,33 @@ fn v3_default_wifi_is_drawn_to_the_end_by_palms() {
         "no_solution"
     );
 }
+
+#[test]
+fn v3_wifi_prefers_two_hands_and_spreads_one_only_when_needed() {
+    // 另一隻手空著時一律雙手 2+1：單手張開成本較低，但真人基本上用兩隻手。
+    // 第三首：滑行開始那一刻起點鍵上有 Tap，起手那隻手順手按掉，不算另一手要忙。
+    for source in [
+        "(120){4}1w5[4:2],E",
+        "(160){4}3,1w5[4:1],,,,7,E",
+        "(160){4}1w5[16:1],1,E",
+    ] {
+        let r = run(source, SolverConfig::v3());
+        assert_eq!(r.status, "ok", "{source}: {:?}", r.diagnostics);
+        for s in &r.solutions {
+            let hands: Vec<Hand> = s
+                .assignments
+                .iter()
+                .filter(|a| a.part == "slide")
+                .map(|a| a.hand)
+                .collect();
+            assert!(
+                hands.contains(&Hand::L) && hands.contains(&Hand::R),
+                "{source} {}: {hands:?}",
+                s.id
+            );
+        }
+    }
+    // 另一隻手按著 Hold 時 2+1 做不到，單手張開仍可完成。
+    let r = run("(120){4}1w5[4:2]/8h[4:8],E", SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+}
