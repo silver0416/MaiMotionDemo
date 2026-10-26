@@ -3,6 +3,42 @@ mod v2;
 mod v3;
 #[doc(hidden)]
 pub use v3::phrases::{auto_group_keys, phrase_shapes, set_templates, with_groups};
+
+/// 規則代碼（Temoto 分組模型的特徵與整組套用共用）：0 全同手、1 交替、2 同手或交替。
+fn rule_code(rule: v3::phrases::GroupRule) -> u8 {
+    use v3::phrases::GroupRule;
+    match rule {
+        GroupRule::Same => 0,
+        GroupRule::Alternate => 1,
+        GroupRule::SameOrAlternate => 2,
+    }
+}
+
+/// Temoto 分組模型的特徵：每個自動分組（classify 後、依時間排序）、classify 的規則，
+/// 以及 auto_rules 的規則（沒有成本的組為 None）。
+pub(crate) fn auto_group_info(chart: &Chart) -> Vec<(Vec<&Note>, u8, Option<u8>)> {
+    use v3::phrases::{auto_groups, auto_rules, classify};
+    let auto: BTreeMap<&str, u8> = auto_rules(chart)
+        .into_iter()
+        .map(|(notes, rule, _)| (notes[0].key.as_str(), rule_code(rule)))
+        .collect();
+    auto_groups(chart)
+        .into_iter()
+        .filter_map(classify)
+        .map(|(notes, rule)| {
+            let first = auto.get(notes[0].key.as_str()).copied();
+            (notes, rule_code(rule), first)
+        })
+        .collect()
+}
+
+/// Temoto 整組套用：有規則（auto_rules）的自動分組與規則代碼。
+pub(crate) fn rule_groups(chart: &Chart) -> Vec<(Vec<&Note>, u8)> {
+    v3::phrases::auto_rules(chart)
+        .into_iter()
+        .map(|(notes, rule, _)| (notes, rule_code(rule)))
+        .collect()
+}
 #[cfg(test)]
 mod v3_tests;
 use crate::geometry::button;

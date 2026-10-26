@@ -238,7 +238,7 @@ fn prefilled_unsure_and_unknown_keys_do_not_constrain() {
     assert_eq!(r.compared, 0);
 }
 
-/// 有起點的 Slide：起點與滑行各有自己的信心，只有「確定」的那一步拿來比對與限制求解。
+/// 有起點的 Slide：起點與滑行各有自己的信心。只有「確定」的那一步限制求解；比對時「皆可」不論模型用哪隻手都算吻合。
 #[test]
 fn slide_start_and_track_have_their_own_confidence() {
     let source = "(120){4}1-5[4:1],,,,E";
@@ -253,30 +253,31 @@ fn slide_start_and_track_have_their_own_confidence() {
             .map(|a| a.hand)
             .collect()
     };
-    // 起點確定、滑行皆可：只比對起點。
+    // 起點確定、滑行皆可：兩步都比對，滑行一定算吻合。
     let r = evaluate(
         source,
         json!([{"key": k, "hand": "L", "track": "R", "trackConfidence": "either"}]),
     );
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
-    assert_eq!(r.compared, 1);
+    assert_eq!(r.compared, 2);
     assert!(r.divergences.iter().all(|d| d.part == "hand"));
-    // 起點皆可、滑行確定：只比對滑行，而且照標註用右手滑。
+    // 起點皆可、滑行確定：起點一定算吻合，只有滑行可能不同，而且照標註用右手滑。
     let r = evaluate(
         source,
         json!([{"key": k, "hand": "L", "track": "R", "confidence": "either", "trackConfidence": "sure"}]),
     );
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
-    assert_eq!(r.compared, 1);
+    assert_eq!(r.compared, 2);
     assert!(r.divergences.iter().all(|d| d.part == "track"));
     assert!(slide_hands(&r).iter().all(|&h| h == Hand::R));
-    // 舊標註檔沒有 trackConfidence：整顆共用 confidence。
+    // 舊標註檔沒有 trackConfidence：整顆共用 confidence，兩步都皆可時全部吻合。
     let r = evaluate(
         source,
         json!([{"key": k, "hand": "L", "track": "R", "confidence": "either"}]),
     );
     assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
-    assert_eq!(r.compared, 0);
+    assert_eq!((r.compared, r.agreed), (2, 2));
+    assert!(r.divergences.is_empty());
 }
 
 #[test]

@@ -162,15 +162,20 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
 }
 
 /**
- * Temoto 模型（從玩家手元影片學到的打法修正 V3）。介面上統一顯示「Temoto-1」，
- * 兩個變體只用顏色區分（常磐色、茜色），不顯示 id。
+ * Temoto 模型（從玩家手元影片學到的打法修正 V3）。介面上統一顯示「TemotoAI-1」，
+ * 三個變體只用顏色區分（瑠璃色、茜色、常磐色），不顯示 id。
  */
-export type MlModelId = 'temoto-1-tokiwa' | 'temoto-1-akane';
+export type MlModelId = 'temoto-1-tokiwa' | 'temoto-1-akane' | 'temoto-1-ruri';
+
+/** V3 變體（與 src/scoring_v3.rs 的 V3_VARIANTS 一致）：同一套規則，只換打法權重。 */
+export type V3VariantId = 'v3.1' | 'v3.2';
 
 /** 實際送給 Rust、也是 configSnapshot 的形狀。 */
 export type SolverConfig = V3SolverConfig & {
   /** 省略為純 V3；舊快照沒有這個欄位。 */
   mlModel?: MlModelId;
+  /** 省略為出貨的 V3 權重；和 mlModel 不會同時出現。 */
+  v3Variant?: V3VariantId;
 };
 
 /**
@@ -182,6 +187,8 @@ export interface ConfigDraft extends BaseSolverConfig {
   slideShortcut: boolean;
   /** null 為純 V3。選了 Temoto 時「打法偏好」的四個控制不影響結果，介面應隱藏。 */
   mlModel: MlModelId | null;
+  /** null 為出貨的 V3 權重；選了 Temoto 模型時一律為 null（模型自帶基座）。 */
+  v3Variant: V3VariantId | null;
 }
 
 export interface AnalyzeRequest {

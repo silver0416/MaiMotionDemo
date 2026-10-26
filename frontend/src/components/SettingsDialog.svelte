@@ -187,11 +187,13 @@
 
   /** 目前參數頁選的評分方式；null 為純 V3。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
   const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
+  /** 純 V3 時選的變體（v3.1、v3.2）直接取代版本號；選了 Temoto 時變體一律為 null。 */
+  const scoringVersion = $derived((!temoto && session.config.v3Variant) || SCORING_VERSION);
 
   function versionText(): string {
     const scoring = temoto
       ? `評分方式：${TEMOTO_LABEL}（${temoto.id}，基於 ${SCORING_LABEL} ${SCORING_VERSION}／${SCORING_V3}，schema ${SCHEMA_VERSION}）`
-      : `評分方式：${SCORING_LABEL} ${SCORING_VERSION}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`;
+      : `評分方式：${SCORING_LABEL} ${scoringVersion}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`;
     return [
       `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
       `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
@@ -380,7 +382,7 @@
             <span class={`scoring-model scoring-model--${temoto.color}`}><span class="scoring-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
             <span class="muted">基於 {SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span></span>
           {:else}
-            {SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span>
+            {SCORING_LABEL} <span class="mono">{scoringVersion}</span>
           {/if}
           <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span>
         </dd>
@@ -1025,7 +1027,7 @@
     padding: var(--space-2) 0;
   }
 
-  /* 目前的評分方式：TemotoAI-1 以模型原色的圓點區分兩個變體，不顯示變體名稱。 */
+  /* 目前的評分方式：TemotoAI-1 以模型原色的圓點區分三個變體，不顯示變體名稱。 */
   .scoring-model {
     display: inline-flex;
     align-items: center;
@@ -1039,6 +1041,10 @@
     height: 9px;
     border-radius: var(--radius-pill);
     background: var(--dot);
+  }
+
+  .scoring-model--ruri {
+    --dot: var(--c-ruri-deep);
   }
 
   .scoring-model--tokiwa {

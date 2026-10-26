@@ -68,10 +68,13 @@
   --c-on-hand: #0b0d11;
   --c-focus: #8fd2ff;
 
-  /* Temoto-1 兩張選項卡：常磐色（ときわいろ）與茜色（あかねいろ）。深色底提高明度維持對比。 */
+  /* TemotoAI-1 三張選項卡：瑠璃色（るりいろ）、茜色（あかねいろ）與常磐色（ときわいろ）。
+     瑠璃色是 2026-10-26 使用者核准的例外色相。深色底提高明度維持對比。 */
+  --c-ruri: #5184d6;
   --c-tokiwa: #3fae76;
   --c-akane: #e0565c;
-  /* 選中時填滿整張卡的顏色：常磐色 #007b43、茜色 #b7282e 原值，配白字。 */
+  /* 選中時填滿整張卡的顏色：瑠璃色 #1e50a2、常磐色 #007b43、茜色 #b7282e 原值，配白字。 */
+  --c-ruri-deep: #1e50a2;
   --c-tokiwa-deep: #007b43;
   --c-akane-deep: #b7282e;
 
@@ -179,6 +182,7 @@
   --c-on-hand: #ffffff;
   --c-focus: #1f72c9;
 
+  --c-ruri: #1e50a2;
   --c-tokiwa: #007b43;
   --c-akane: #b7282e;
 
@@ -918,7 +922,7 @@ input[type='radio']:checked::before {
 
 /* 評分方式選項卡（參數頁）：只放大字名稱，顏色由右下角的扇形漸層呈現（使用者指定，例外於「不用漸層」）。
    點選時，模型色由右下角展開填滿整張卡（clip-path 圓形放大），底色全部不透明。
-   Temoto-1 兩張卡只用常磐色與茜色區分。用法：
+   TemotoAI-1 三張卡只用瑠璃色、茜色與常磐色區分。用法：
    <button class="model-card model-card--tokiwa" role="radio" aria-checked=…><span class="model-card-name">Temoto-1</span></button> */
 .model-card {
   --model: var(--c-primary);
@@ -941,7 +945,7 @@ input[type='radio']:checked::before {
   transition: transform 90ms ease-out;
 }
 
-/* 扇形：右下角一層原色（常磐色 #007b43、茜色 #b7282e 原值）的四分之一圓（使用者指定）。
+/* 扇形：右下角一層原色（瑠璃色 #1e50a2、常磐色 #007b43、茜色 #b7282e 原值）的四分之一圓（使用者指定）。
    用真正的圓（border-radius）畫、由卡片的 overflow 裁成四分之一：radial-gradient 的硬邊不會反鋸齒，
    邊緣看起來會有鋸齒。半徑約為卡片寬度的 31%（卡片是 inline-size 容器，用 cqi）。 */
 .model-card::before {
@@ -966,6 +970,12 @@ input[type='radio']:checked::before {
   background: var(--model-fill);
   clip-path: circle(0% at 100% 100%);
   transition: clip-path 460ms var(--ease-out);
+}
+
+.model-card--ruri {
+  --model: var(--c-ruri);
+  --model-fill: var(--c-ruri-deep);
+  --on-model: #ffffff;
 }
 
 .model-card--tokiwa {

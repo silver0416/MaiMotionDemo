@@ -55,7 +55,7 @@ pub enum Confidence {
     Sure,
     /// 不確定：只列出，不限制求解、不計入吻合率。
     Unsure,
-    /// 兩手皆可：不限制求解、不計入吻合率。
+    /// 兩手皆可：不限制求解；比對時不論模型用哪隻手都算吻合。
     Either,
 }
 
@@ -198,7 +198,7 @@ pub struct EvaluateResponse {
     /// 其中對得到音符的數量。
     pub matched: usize,
     pub unmatched_keys: Vec<String>,
-    /// 參與比對（確定）的項目數與相同數。
+    /// 參與比對（確定與皆可）的項目數與吻合數；皆可一律算吻合。
     pub compared: usize,
     pub agreed: usize,
     pub divergences: Vec<Divergence>,
@@ -305,7 +305,11 @@ fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
 /// 比對真人標註與模型：分別求出模型最佳解與「照標註打」的最佳解，列出不同的音符與成本差距。
 /// 沒有現成的模型解時，模型與照標註兩個求解同時跑。
 pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
-    evaluate_inner(request, true, solve_model, solver::solve_constrained)
+    // 選了 V3 變體時，模型解與照標註解都用它的權重，成本差距才在同一把尺上
+    let variant = request.solver_config.v3_variant.clone();
+    crate::scoring_v3::with_variant(variant.as_deref(), || {
+        evaluate_inner(request, true, solve_model, solver::solve_constrained)
+    })
 }
 
 fn solve_model(chart: &Chart, config: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
@@ -462,33 +466,34 @@ fn evaluate_inner(
         for (index, mark) in &marks {
             let note = &chart.notes[*index];
             let (contact, track) = model_hands(model, &note.id);
-            let mut compare = |part: &str, human: TrackHand, model: Option<TrackHand>| {
-                let Some(model) = model else {
-                    return;
+            let mut compare =
+                |part: &str, human: TrackHand, either: bool, model: Option<TrackHand>| {
+                    let Some(model) = model else {
+                        return;
+                    };
+                    response.compared += 1;
+                    if either || human == model {
+                        response.agreed += 1;
+                    } else {
+                        response.divergences.push(Divergence {
+                            note_id: note.id.clone(),
+                            key: note.key.clone(),
+                            time_seconds: note.time_seconds,
+                            part: part.into(),
+                            human,
+                            model,
+                        });
+                    }
                 };
-                response.compared += 1;
-                if human == model {
-                    response.agreed += 1;
-                } else {
-                    response.divergences.push(Divergence {
-                        note_id: note.id.clone(),
-                        key: note.key.clone(),
-                        time_seconds: note.time_seconds,
-                        part: part.into(),
-                        human,
-                        model,
-                    });
-                }
-            };
-            // 只比對信心為「確定」的那一步。
-            if let Some(hand) = mark.hand.filter(|_| mark.confidence == Confidence::Sure) {
-                compare("hand", as_track(hand), contact.map(as_track));
+            // 「確定」的那一步比手；「皆可」不論模型用哪隻手都算吻合；「不確定」不比。
+            let counted = |c: Confidence| c != Confidence::Unsure;
+            if let Some(hand) = mark.hand.filter(|_| counted(mark.confidence)) {
+                let either = mark.confidence == Confidence::Either;
+                compare("hand", as_track(hand), either, contact.map(as_track));
             }
-            if let Some(track_hand) = mark
-                .track
-                .filter(|_| mark.slide_confidence() == Confidence::Sure)
-            {
-                compare("track", track_hand, track);
+            if let Some(track_hand) = mark.track.filter(|_| counted(mark.slide_confidence())) {
+                let either = mark.slide_confidence() == Confidence::Either;
+                compare("track", track_hand, either, track);
             }
         }
     }

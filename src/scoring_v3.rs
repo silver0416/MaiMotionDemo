@@ -185,6 +185,31 @@ pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {
     f()
 }
 
+/// 評分方式裡的 V3 變體：架構和 V3 相同，只換權重。
+/// V3.1 以手元影片弱標註重新擬合；V3.2 是 V3.1 再把 `starSwitch` 降到 0.1
+/// （標記者一手拍星星、另一手滑的比例比 V3 預設高很多）。
+pub const V3_VARIANTS: [&str; 2] = ["v3.1", "v3.2"];
+
+/// V3 變體的權重（第一次使用時解析）。
+pub fn variant_tuning(id: &str) -> Option<&'static TuningV3> {
+    static V31: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+    static V32: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+    let (cell, text) = match id {
+        "v3.1" => (&V31, include_str!("../models/v3.1.tuning.json")),
+        "v3.2" => (&V32, include_str!("../models/v3.2.tuning.json")),
+        _ => return None,
+    };
+    Some(cell.get_or_init(|| serde_json::from_str(text).expect("內建 V3 變體權重")))
+}
+
+/// 設定指定了 V3 變體時，在這個執行緒上改用它的權重執行 `f`；沒指定就照常執行。
+pub(crate) fn with_variant<R>(variant: Option<&str>, f: impl FnOnce() -> R) -> R {
+    match variant.and_then(variant_tuning) {
+        Some(tuning) => with_tuning(tuning, f),
+        None => f(),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreferenceConfigV3 {

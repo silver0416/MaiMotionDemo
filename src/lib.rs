@@ -66,7 +66,11 @@ pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
                 .and_then(temoto::TemotoModel::builtin)
             {
                 Some(model) => temoto::solve(&chart, &request.solver_config, model),
-                None => solver::solve(&chart, &request.solver_config),
+                None => {
+                    scoring_v3::with_variant(request.solver_config.v3_variant.as_deref(), || {
+                        solver::solve(&chart, &request.solver_config)
+                    })
+                }
             };
             match solved {
                 Ok(solutions) => {

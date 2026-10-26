@@ -29,6 +29,7 @@ import type {
   Solution,
   SolverConfig,
   TouchSensor,
+  V3VariantId,
 } from '../lib/types';
 import { playback } from './playback.svelte';
 import { toasts } from './toasts.svelte';
@@ -104,8 +105,9 @@ export const SOLVER_REVISION = 'wifi-pair-9';
  * v3-6：分組認知——依節奏切成樂句，手法偏離由標註學出的樣板時加成本。
  * v3-7：自動分組預設開啟（groupAuto 0.5）——同鍵反覆、階梯、兩顆交替、一側一手的組內手型不合時加成本；
  *   快速同鍵連打嚴格交替並接續前一手。
+ * v3-8：TemotoAI-1 常磐只採用模型把握 0.6 以上的修改（茜維持 0.5）。
  */
-export const SCORING_REVISION = 'v3-7';
+export const SCORING_REVISION = 'v3-8';
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(
@@ -299,7 +301,12 @@ export class Session {
 
   /** 切換 Temoto 模型；null 為純 V3。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
   setMlModel(id: MlModelId | null): void {
-    this.config = { ...this.config, mlModel: id };
+    this.config = { ...this.config, mlModel: id, v3Variant: null };
+  }
+
+  /** 切換 V3 變體；null 為出貨的 V3 權重。選了變體就不用 Temoto 模型。 */
+  setV3Variant(id: V3VariantId | null): void {
+    this.config = { ...this.config, mlModel: null, v3Variant: id };
   }
 
   /** 還原預設數值。 */

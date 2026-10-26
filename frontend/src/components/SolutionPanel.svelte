@@ -8,6 +8,7 @@
     STATUS_LABEL,
     TEMOTO_LABEL,
     TEMOTO_MODELS,
+    v3Label,
     V3_BREAKDOWN_KEYS,
     V3_SCORE_GROUPS,
   } from '../lib/contract';
@@ -500,7 +501,7 @@
               {#if temoto}
                 <span class={`model-tag model-tag--${temoto.color}`}><span class="temoto-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
               {:else}
-                V3
+                {v3Label((solution.configSnapshot as SolverConfig).v3Variant)}
               {/if}
             </dd>
             <dt>評分方式</dt>
@@ -665,6 +666,12 @@
     height: 80px;
     border-radius: 50%;
     background: var(--model-fill);
+  }
+
+  .temoto-note--ruri,
+  .model-tag--ruri {
+    --model: var(--c-ruri);
+    --model-fill: var(--c-ruri-deep);
   }
 
   .temoto-note--tokiwa,

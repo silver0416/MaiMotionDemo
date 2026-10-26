@@ -8,6 +8,7 @@
     FIELD_LABEL,
     TEMOTO_LABEL,
     TEMOTO_MODELS,
+    V3_VARIANTS,
   } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
@@ -31,10 +32,17 @@
   const config = $derived(session.config);
   const R = CONFIG_RANGE;
 
-  /** Temoto-1 兩張卡畫面上只有名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
-  const COLOR_NAME = { tokiwa: '常磐色', akane: '茜色' } as const;
+  /** TemotoAI-1 的卡畫面上只有名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
+  const COLOR_NAME = { ruri: '瑠璃色', akane: '茜色', tokiwa: '常磐色' } as const;
   /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
   const usingTemoto = $derived(config.mlModel !== null);
+
+  // V3.1、V3.2 收在「顯示更多模型」裡；目前選的是其中之一時自動展開，選中的卡不會藏起來。
+  let moreOpen = $state(false);
+  const variantLabel = $derived(V3_VARIANTS.find((item) => item.id === config.v3Variant)?.label ?? null);
+  $effect(() => {
+    if (config.v3Variant) moreOpen = true;
+  });
 
   // 進階區預設收起；裡面有欄位超出範圍時自動展開，避免錯誤藏在看不到的地方。
   let advancedOpen = $state(false);
@@ -69,8 +77,8 @@
       <button
         class="model-card model-card--v3"
         role="radio"
-        aria-checked={config.mlModel === null}
-        onclick={() => session.setMlModel(null)}
+        aria-checked={config.mlModel === null && config.v3Variant === null}
+        onclick={() => session.setV3Variant(null)}
       >
         <span class="model-card-name">V3</span>
       </button>
@@ -86,8 +94,40 @@
         </button>
       {/each}
     </div>
+    <div class="more-row">
+      <button
+        class="btn btn--ghost more-toggle"
+        class:is-open={moreOpen}
+        aria-expanded={moreOpen}
+        aria-controls="more-models"
+        onclick={() => (moreOpen = !moreOpen)}
+      >
+        {moreOpen ? '收起更多模型' : '顯示更多模型'}
+        {#if !moreOpen && variantLabel}
+          <span class="more-current">（已選 {variantLabel}）</span>
+        {/if}
+        <span class="chevron"><Icon name="chevron-down" size={14} /></span>
+      </button>
+    </div>
+    {#if moreOpen}
+      <div id="more-models" class="more-models">
+        <div class="models" role="radiogroup" aria-label="更多模型">
+          {#each V3_VARIANTS as variant (variant.id)}
+            <button
+              class="model-card model-card--v3"
+              role="radio"
+              aria-checked={config.v3Variant === variant.id}
+              onclick={() => session.setV3Variant(variant.id)}
+            >
+              <span class="model-card-name">{variant.label}</span>
+            </button>
+          {/each}
+        </div>
+        <p class="field-hint">V3.1、V3.2 和 V3 是同一套規則，只換了打法權重。</p>
+      </div>
+    {/if}
     <p class="field-hint" style="margin-top: var(--space-2)">
-      {TEMOTO_LABEL} 要先跑一次 V3 再照模型修正重算，分析時間約為 V3 的 2–4 倍；結果仍由核心確認可行，不代表官方判定。
+      {TEMOTO_LABEL} 要先跑一次 V3 再照模型修正重算，分析時間是 V3 的數倍；結果仍由核心確認可行，不代表官方判定。
     </p>
   </section>
 
@@ -408,7 +448,8 @@
 </div>
 
 <style>
-  /* 評分方式：V3 卡佔一整列，兩張 Temoto-1 卡並排。 */
+  /* 評分方式：V3 卡佔一整列；TemotoAI-1 三張卡兩兩並排（瑠璃、茜一排，常磐第二排同尺寸）。
+     V3.1、V3.2 收在分隔列「顯示更多模型」下面，和 V3 卡同樣式、各佔一整列。 */
   .models {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -417,6 +458,68 @@
 
   .models .model-card--v3 {
     grid-column: 1 / -1;
+  }
+
+  /* 分隔列：兩側細線，中間是無填滿的膠囊按鈕。 */
+  .more-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .more-row::before,
+  .more-row::after {
+    content: '';
+    flex: 1;
+    min-width: var(--space-3);
+    height: 1px;
+    background: var(--c-border);
+  }
+
+  .more-toggle {
+    flex: none;
+    gap: var(--space-1);
+    min-height: 28px;
+    padding: 0 12px;
+    font-size: var(--fs-xs);
+  }
+
+  .more-current {
+    color: var(--c-text);
+  }
+
+  .more-toggle .chevron {
+    transition: transform 160ms var(--ease-out);
+  }
+
+  .more-toggle.is-open .chevron {
+    transform: rotate(180deg);
+  }
+
+  .more-models {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    animation: more-in 180ms var(--ease-out);
+  }
+
+  @keyframes more-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .more-models {
+      animation: none;
+    }
+
+    .more-toggle .chevron {
+      transition: none;
+    }
   }
 
   /* V3 卡：中性色的扇形，選中時填滿反白色。 */

@@ -1401,7 +1401,7 @@
   {#if view === 'compare'}
     <section class="section stack-sm">
       <div class="section-title">和模型比對</div>
-      <p class="small muted">用「參數」分頁目前的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認且信心為「確定」的步驟（Slide 的起點與滑行分開看）。</p>
+      <p class="small muted">用「參數」分頁目前的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認的步驟：「確定」比手是否相同，「皆可」兩隻手都算吻合，「不確定」不列入（Slide 的起點與滑行分開看）。</p>
       {#if hasBranches}
         <p class="small">比對的路線：<strong>{annotation.lineName(annotation.draft.active)}</strong>（到「打法」分頁切換）</p>
       {/if}

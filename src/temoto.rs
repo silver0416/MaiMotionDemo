@@ -3,8 +3,13 @@
 //! 流程：V3 先求解 → 依譜面與 V3 的手算出每顆音符的特徵 → 模型估每顆用右手的機率
 //! → 以模型的手當限制重新求解（照標註求解的同一套機制），保證動作做得到。
 //!
-//! 特徵與網路必須和訓練程式（J:\MaiMotionML\build_data.py、train.py）完全一致；
-//! `tests/temoto.rs` 用 PyTorch 算好的參考機率比對。
+//! 兩種架構：
+//! - 逐顆（tokiwa、akane）：整首一次跑完逐顆 GRU。
+//! - 分組（ruri）：逐顆 GRU → 每個自動分組取平均 → 組與組之間的 GRU → 組的打法
+//!   （全左、全右、左起交替、右起交替、自由）與逐顆的手；有規則的分組整組套用修正。
+//!
+//! 特徵與網路必須和訓練程式（J:\MaiMotionML\build_data.py、train.py；分組架構在
+//! J:\MaiMotionML\g1）完全一致；`tests/temoto.rs` 用 PyTorch 算好的參考機率比對。
 use crate::model::*;
 use crate::scoring_v3::TuningV3;
 use crate::solver::{self, HandRules};
@@ -21,7 +26,18 @@ const X_COLS: [usize; 6] = [7, 17, 18, 20, 22, 24];
 /// 群內由左到右的排名，鏡像時變成 1 − rank。
 const RANK_COL: usize = 15;
 
-pub const MODEL_IDS: [&str; 2] = ["temoto-1-tokiwa", "temoto-1-akane"];
+pub const MODEL_IDS: [&str; 3] = ["temoto-1-tokiwa", "temoto-1-akane", "temoto-1-ruri"];
+
+/// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
+pub const GROUP_FEATURE_VERSION: u32 = 1;
+/// 分組的種類：同鍵、階梯、兩顆、其他、含 Touch。
+const GROUP_TYPES: usize = 5;
+/// 每顆的分組特徵：在組內、種類、含星星、classify 規則、auto 規則、組內位置、是否第一顆、log(1+顆數)。
+const G_COLS: usize = 1 + GROUP_TYPES + 1 + 3 + 4 + 3;
+/// 每組的描述：種類、含星星、classify 規則、auto 規則、log(1+顆數)、組長、和前一組開頭的間隔。
+const GD_COLS: usize = GROUP_TYPES + 1 + 3 + 4 + 3;
+/// 打法固定時，單顆和打法不同的機率（和訓練相同）。
+const PATTERN_EPS: f32 = 0.05;
 
 struct Linear {
     w: Vec<f32>,
@@ -50,14 +66,31 @@ struct Net {
     inp: Linear,
     /// 每層 [順向, 逆向]。
     layers: Vec<[GruDir; 2]>,
+    /// 分組架構才有。
+    group: Option<GroupLayers>,
     hid: Linear,
     head: Linear,
     h: usize,
 }
 
+/// 分組架構多出來的層：組的輸入、組與組之間的雙向 GRU、組的打法頭。
+struct GroupLayers {
+    gin: Linear,
+    grnn: [GruDir; 2],
+    pat_hid: Linear,
+    pat_out: Linear,
+    gh: usize,
+}
+
 pub struct TemotoModel {
     pub name: String,
     tuning: Option<&'static TuningV3>,
+    /// 和 V3 的手不同時，模型的把握（較大那一邊的機率）要到這個值才改，不到就照 V3。
+    flip_at: f32,
+    /// 每顆的輸入維度：逐顆架構 `INPUTS`，分組架構另加 `G_COLS`。
+    inputs: usize,
+    /// 分組架構：推論視窗長度（訓練時的切段長度，視窗重疊一半）。逐顆架構為 None，整首一次跑完。
+    window: Option<usize>,
     mu: Vec<f32>,
     sd: Vec<f32>,
     nets: Vec<Net>,
@@ -161,6 +194,23 @@ impl TemotoModel {
         };
         let h = header["hidden"].as_u64().unwrap_or(128) as usize;
         let layers = header["layers"].as_u64().unwrap_or(2) as usize;
+        let grouped = match header["arch"].as_str().unwrap_or("note") {
+            "note" => false,
+            "group" => true,
+            other => return Err(format!("不支援的模型架構：{other}")),
+        };
+        if grouped && header["groupFeatures"].as_u64() != Some(GROUP_FEATURE_VERSION as u64) {
+            return Err(format!(
+                "模型需要第 {} 版分組特徵，這個版本是第 {GROUP_FEATURE_VERSION} 版",
+                header["groupFeatures"]
+            ));
+        }
+        let inputs = if grouped { INPUTS + G_COLS } else { INPUTS };
+        let window = match header["window"].as_u64() {
+            Some(w) if grouped && w >= 2 => Some(w as usize),
+            None if !grouped => None,
+            _ => return Err("分組模型需要 2 以上的推論視窗".into()),
+        };
         let mut nets = vec![];
         for table in header["nets"].as_array().ok_or("模型沒有網路")? {
             let tensor = |name: &str| -> Result<(Vec<f32>, Vec<usize>), String> {
@@ -191,12 +241,12 @@ impl TemotoModel {
                     inp: shape[1],
                 })
             };
-            let gru = |layer: usize, reverse: bool| -> Result<GruDir, String> {
+            let gru = |rnn: &str, layer: usize, reverse: bool| -> Result<GruDir, String> {
                 let suffix = format!("l{layer}{}", if reverse { "_reverse" } else { "" });
-                let (w_ih, shape) = tensor(&format!("rnn.weight_ih_{suffix}"))?;
-                let (w_hh, _) = tensor(&format!("rnn.weight_hh_{suffix}"))?;
-                let (b_ih, _) = tensor(&format!("rnn.bias_ih_{suffix}"))?;
-                let (b_hh, _) = tensor(&format!("rnn.bias_hh_{suffix}"))?;
+                let (w_ih, shape) = tensor(&format!("{rnn}.weight_ih_{suffix}"))?;
+                let (w_hh, _) = tensor(&format!("{rnn}.weight_hh_{suffix}"))?;
+                let (b_ih, _) = tensor(&format!("{rnn}.bias_ih_{suffix}"))?;
+                let (b_hh, _) = tensor(&format!("{rnn}.bias_hh_{suffix}"))?;
                 Ok(GruDir {
                     w_ih,
                     w_hh,
@@ -207,15 +257,27 @@ impl TemotoModel {
             };
             let mut net_layers = vec![];
             for l in 0..layers {
-                net_layers.push([gru(l, false)?, gru(l, true)?]);
+                net_layers.push([gru("rnn", l, false)?, gru("rnn", l, true)?]);
             }
             let inp = linear("inp.0")?;
-            if inp.inp != INPUTS {
-                return Err(format!("模型輸入是 {} 維，程式產生 {INPUTS} 維", inp.inp));
+            if inp.inp != inputs {
+                return Err(format!("模型輸入是 {} 維，程式產生 {inputs} 維", inp.inp));
             }
+            let group = if grouped {
+                Some(GroupLayers {
+                    gin: linear("gin.0")?,
+                    grnn: [gru("grnn", 0, false)?, gru("grnn", 0, true)?],
+                    pat_hid: linear("pat.0")?,
+                    pat_out: linear("pat.2")?,
+                    gh: header["groupHidden"].as_u64().unwrap_or(64) as usize,
+                })
+            } else {
+                None
+            };
             nets.push(Net {
                 inp,
                 layers: net_layers,
+                group,
                 hid: linear("out.0")?,
                 head: linear("out.3")?,
                 h,
@@ -228,71 +290,126 @@ impl TemotoModel {
                     .map_err(|e| format!("模型的 V3 權重無法解析：{e}"))?,
             ))),
         };
+        let (mu, sd) = (floats(&header["mu"]), floats(&header["sd"]));
+        if mu.len() != inputs || sd.len() != inputs {
+            return Err(format!("模型的正規化參數不是 {inputs} 維"));
+        }
         Ok(Self {
             name: header["name"].as_str().unwrap_or("temoto").into(),
             tuning,
-            mu: floats(&header["mu"]),
-            sd: floats(&header["sd"]),
+            flip_at: 0.5,
+            inputs,
+            window,
+            mu,
+            sd,
             nets,
         })
     }
 
     /// 內建模型（依 id 取得，第一次使用時解壓）。
+    ///
+    /// 改動門檻依四份真人標註的掃描決定：tokiwa 在 0.6 時合計多對最多，把握不到 0.6 的修改
+    /// 改對與改錯差不多；akane 在 0.5 時最多。ruri（分組架構，基座 V3.2）沿用 0.5。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
         static TOKIWA: OnceLock<TemotoModel> = OnceLock::new();
         static AKANE: OnceLock<TemotoModel> = OnceLock::new();
+        static RURI: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
-                Self::load(include_bytes!("../models/temoto-1-tokiwa.temoto"))
-                    .expect("內建模型 tokiwa")
+                Self {
+                    flip_at: 0.6,
+                    ..Self::load(include_bytes!("../models/temoto-1-tokiwa.temoto"))
+                        .expect("內建模型 tokiwa")
+                }
             })),
             "temoto-1-akane" => Some(AKANE.get_or_init(|| {
                 Self::load(include_bytes!("../models/temoto-1-akane.temoto"))
                     .expect("內建模型 akane")
             })),
+            "temoto-1-ruri" => Some(RURI.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-1-ruri.temoto")).expect("內建模型 ruri")
+            })),
             _ => None,
         }
+    }
+
+    /// 分組架構：模型讀分組特徵，修正時有規則的自動分組整組套用。
+    pub fn grouped(&self) -> bool {
+        self.window.is_some()
     }
 
     pub fn tuning(&self) -> Option<&'static TuningV3> {
         self.tuning
     }
 
-    /// 每顆音符（依 `features` 的排序）用右手的機率：[接觸, 滑行]。三個 seed × 鏡像平均。
+    pub fn flip_at(&self) -> f32 {
+        self.flip_at
+    }
+
+    /// 每顆音符（依 `features` 的排序）用右手的機率：[接觸, 滑行]。各 seed × 左右鏡像平均。
+    /// 分組架構照訓練時切成重疊一半的視窗，每顆取離視窗中心最近的那一段。
     pub fn predict(&self, input: &Features) -> Vec<[f32; 2]> {
         let n = input.x.len();
         if n == 0 {
             return vec![];
         }
-        let runs: Vec<(usize, bool)> = (0..self.nets.len())
-            .flat_map(|k| [(k, false), (k, true)])
+        let normalized = [self.normalized(input, false), self.normalized(input, true)];
+        let spans: Vec<(usize, usize)> = match self.window {
+            Some(win) if n > win => (0..(n - win / 2).max(1))
+                .step_by(win / 2)
+                .map(|a| (a, (a + win).min(n)))
+                .collect(),
+            _ => vec![(0, n)],
+        };
+        let runs: Vec<(usize, usize, bool)> = (0..spans.len())
+            .flat_map(|s| (0..self.nets.len()).flat_map(move |k| [(s, k, false), (s, k, true)]))
             .collect();
+        let width = self.inputs;
         let outputs: Vec<Vec<[f32; 2]>> = std::thread::scope(|scope| {
             let handles: Vec<_> = runs
                 .iter()
-                .map(|&(k, flipped)| {
+                .map(|&(s, k, flipped)| {
+                    let (a, b) = spans[s];
+                    let x = &normalized[usize::from(flipped)][a * width..b * width];
                     scope.spawn(move || {
-                        let x = self.normalized(input, flipped);
-                        let p = self.nets[k].forward(&x);
+                        let mut p = match self.window {
+                            // 和訓練時一樣補零到整個視窗長度再跑：逐顆 GRU 的逆向會先經過補的零
+                            Some(win) => {
+                                let mut padded = vec![0f32; win * width];
+                                padded[..x.len()].copy_from_slice(x);
+                                let groups = WindowGroups::new(input, a, b);
+                                self.nets[k].forward(&padded, width, Some(&groups))
+                            }
+                            None => self.nets[k].forward(x, width, None),
+                        };
+                        p.truncate(b - a);
                         p.into_iter()
-                            .map(|[a, b]| if flipped { [1.0 - a, 1.0 - b] } else { [a, b] })
+                            .map(|[p, q]| if flipped { [1.0 - p, 1.0 - q] } else { [p, q] })
                             .collect::<Vec<_>>()
                     })
                 })
                 .collect();
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
-        let m = outputs.len() as f32;
-        (0..n)
-            .map(|i| {
-                let mut s = [0f32; 2];
-                for o in &outputs {
-                    s[0] += o[i][0];
-                    s[1] += o[i][1];
+        let per = 2 * self.nets.len();
+        let mut out = vec![[0f32; 2]; n];
+        let mut nearest = vec![f64::INFINITY; n];
+        for (s, &(a, b)) in spans.iter().enumerate() {
+            let center = (a + b) as f64 / 2.0;
+            for j in a..b {
+                let d = (j as f64 - center).abs();
+                if d < nearest[j] {
+                    nearest[j] = d;
+                    let mut sum = [0f32; 2];
+                    for o in &outputs[s * per..(s + 1) * per] {
+                        sum[0] += o[j - a][0];
+                        sum[1] += o[j - a][1];
+                    }
+                    out[j] = [sum[0] / per as f32, sum[1] / per as f32];
                 }
-                [s[0] / m, s[1] / m]
-            })
-            .collect()
+            }
+        }
+        out
     }
 
     fn normalized(&self, input: &Features, flipped: bool) -> Vec<f32> {
@@ -304,9 +421,9 @@ impl TemotoModel {
                 [1.0, 2.0 * v as f32 - 1.0]
             }
         };
-        let mut out = Vec::with_capacity(input.x.len() * INPUTS);
+        let mut out = Vec::with_capacity(input.x.len() * self.inputs);
+        let mut r = vec![0f32; self.inputs];
         for (i, row) in input.x.iter().enumerate() {
-            let mut r = [0f32; INPUTS];
             r[..FEATURES].copy_from_slice(row);
             if flipped {
                 for c in X_COLS {
@@ -316,7 +433,11 @@ impl TemotoModel {
             }
             let [a, b] = enc(input.v3_hand[i]);
             let [c, d] = enc(input.v3_track[i]);
-            r[FEATURES..].copy_from_slice(&[a, b, c, d]);
+            r[FEATURES..INPUTS].copy_from_slice(&[a, b, c, d]);
+            // 分組特徵左右鏡像不變
+            if self.inputs > INPUTS {
+                r[INPUTS..].copy_from_slice(&input.g[i]);
+            }
             for (k, v) in r.iter().enumerate() {
                 out.push((v - self.mu[k]) / self.sd[k]);
             }
@@ -325,15 +446,148 @@ impl TemotoModel {
     }
 }
 
+/// 視窗 [a, b) 裡的組（依組的編號排序）：組在視窗內的音符（視窗內的位置）與組的描述，
+/// 以及每顆所在的組、在組內是第奇數顆還是偶數顆（交替打法用）。
+struct WindowGroups {
+    members: Vec<Vec<usize>>,
+    desc: Vec<[f32; GD_COLS]>,
+    note_group: Vec<Option<usize>>,
+    odd: Vec<bool>,
+}
+
+impl WindowGroups {
+    fn new(input: &Features, a: usize, b: usize) -> Self {
+        let mut ids: Vec<usize> = input.gid[a..b].iter().flatten().copied().collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let local: HashMap<usize, usize> = ids.iter().enumerate().map(|(k, &g)| (g, k)).collect();
+        let mut members = vec![vec![]; ids.len()];
+        let note_group: Vec<Option<usize>> = (a..b)
+            .map(|j| {
+                input.gid[j].map(|g| {
+                    let k = local[&g];
+                    members[k].push(j - a);
+                    k
+                })
+            })
+            .collect();
+        Self {
+            members,
+            desc: ids.iter().map(|&g| input.gdesc[g]).collect(),
+            note_group,
+            odd: (a..b).map(|j| input.gpos[j] % 2 == 1).collect(),
+        }
+    }
+}
+
+/// 雙向 GRU 一層：輸入 n × width，輸出 n × 2h（每列 [順向, 逆向]）。
+fn bigru(dirs: &[GruDir; 2], seq: &[f32], n: usize, width: usize, h: usize) -> Vec<f32> {
+    let mut next = vec![0f32; n * 2 * h];
+    for (d, dir) in dirs.iter().enumerate() {
+        // 先算所有時刻的輸入投影
+        let mut proj = vec![0f32; n * 3 * h];
+        for t in 0..n {
+            let xt = &seq[t * width..(t + 1) * width];
+            for o in 0..3 * h {
+                proj[t * 3 * h + o] =
+                    dir.b_ih[o] + dot(&dir.w_ih[o * dir.inp..(o + 1) * dir.inp], xt);
+            }
+        }
+        let mut state = vec![0f32; h];
+        let mut rec = vec![0f32; 3 * h];
+        for step in 0..n {
+            let t = if d == 0 { step } else { n - 1 - step };
+            for (o, r) in rec.iter_mut().enumerate() {
+                *r = dir.b_hh[o] + dot(&dir.w_hh[o * h..(o + 1) * h], &state);
+            }
+            let p = &proj[t * 3 * h..(t + 1) * 3 * h];
+            for j in 0..h {
+                let r = sigmoid(p[j] + rec[j]);
+                let z = sigmoid(p[h + j] + rec[h + j]);
+                let cand = (p[2 * h + j] + r * rec[2 * h + j]).tanh();
+                state[j] = (1.0 - z) * cand + z * state[j];
+            }
+            next[t * 2 * h + d * h..t * 2 * h + (d + 1) * h].copy_from_slice(&state);
+        }
+    }
+    next
+}
+
+impl GroupLayers {
+    /// 每組：組內音符的 GRU 輸出取平均、接上組的描述 → 組與組之間的雙向 GRU。
+    /// 回傳每組的狀態（G × 2gh）與五種打法的機率。
+    fn forward(
+        &self,
+        seq: &[f32],
+        width: usize,
+        groups: &WindowGroups,
+    ) -> (Vec<f32>, Vec<[f32; 5]>) {
+        let count = groups.members.len();
+        let gw = self.gin.out;
+        let mut g = vec![0f32; count * gw];
+        let mut row = vec![0f32; width + GD_COLS];
+        for (k, members) in groups.members.iter().enumerate() {
+            row.fill(0.0);
+            for &j in members {
+                for (c, v) in row[..width].iter_mut().enumerate() {
+                    *v += seq[j * width + c];
+                }
+            }
+            let cnt = members.len().max(1) as f32;
+            for v in &mut row[..width] {
+                *v /= cnt;
+            }
+            row[width..].copy_from_slice(&groups.desc[k]);
+            let out = &mut g[k * gw..(k + 1) * gw];
+            self.gin.apply(&row, out);
+            for v in out.iter_mut() {
+                *v = gelu(*v);
+            }
+        }
+        let states = bigru(&self.grnn, &g, count, gw, self.gh);
+        let sw = 2 * self.gh;
+        let mut hidden = vec![0f32; self.pat_hid.out];
+        let mut logits = [0f32; 5];
+        let patterns = (0..count)
+            .map(|k| {
+                self.pat_hid
+                    .apply(&states[k * sw..(k + 1) * sw], &mut hidden);
+                for v in &mut hidden {
+                    *v = gelu(*v);
+                }
+                self.pat_out.apply(&hidden, &mut logits);
+                let top = logits.iter().cloned().fold(f32::MIN, f32::max);
+                let e = logits.map(|l| (l - top).exp());
+                let sum: f32 = e.iter().sum();
+                e.map(|v| v / sum)
+            })
+            .collect();
+        (states, patterns)
+    }
+}
+
+/// 組內音符用右手的機率：對五種打法（全左、全右、左起交替、右起交替、自由）取邊際。
+/// 固定打法時單顆仍有 `PATTERN_EPS` 的機率和打法不同；自由打法用逐顆頭的機率。
+fn pattern_marginal(pattern: &[f32; 5], odd: bool, free: f32) -> f32 {
+    let alt_left = if odd { 1.0 } else { 0.0 };
+    let fixed = [0.0, 1.0, alt_left, 1.0 - alt_left];
+    let mut m = pattern[4] * free;
+    for (pi, v) in pattern.iter().zip(fixed) {
+        m += pi * (v * (1.0 - 2.0 * PATTERN_EPS) + PATTERN_EPS);
+    }
+    m
+}
+
 impl Net {
-    fn forward(&self, x: &[f32]) -> Vec<[f32; 2]> {
-        let n = x.len() / INPUTS;
+    /// `x`：n 顆、每顆 `inputs` 維（已正規化）。分組架構另給這段的組（`groups`）。
+    fn forward(&self, x: &[f32], inputs: usize, groups: Option<&WindowGroups>) -> Vec<[f32; 2]> {
+        let n = x.len() / inputs;
         let h = self.h;
         // 輸入層
         let mut seq = vec![0f32; n * h];
         for t in 0..n {
             self.inp.apply(
-                &x[t * INPUTS..(t + 1) * INPUTS],
+                &x[t * inputs..(t + 1) * inputs],
                 &mut seq[t * h..(t + 1) * h],
             );
             for v in &mut seq[t * h..(t + 1) * h] {
@@ -342,48 +596,44 @@ impl Net {
         }
         let mut width = h;
         for layer in &self.layers {
-            let mut next = vec![0f32; n * 2 * h];
-            for (d, dir) in layer.iter().enumerate() {
-                // 先算所有時刻的輸入投影
-                let mut proj = vec![0f32; n * 3 * h];
-                for t in 0..n {
-                    let xt = &seq[t * width..(t + 1) * width];
-                    for o in 0..3 * h {
-                        proj[t * 3 * h + o] =
-                            dir.b_ih[o] + dot(&dir.w_ih[o * dir.inp..(o + 1) * dir.inp], xt);
-                    }
-                }
-                let mut state = vec![0f32; h];
-                let mut rec = vec![0f32; 3 * h];
-                for step in 0..n {
-                    let t = if d == 0 { step } else { n - 1 - step };
-                    for (o, r) in rec.iter_mut().enumerate() {
-                        *r = dir.b_hh[o] + dot(&dir.w_hh[o * h..(o + 1) * h], &state);
-                    }
-                    let p = &proj[t * 3 * h..(t + 1) * 3 * h];
-                    for j in 0..h {
-                        let r = sigmoid(p[j] + rec[j]);
-                        let z = sigmoid(p[h + j] + rec[h + j]);
-                        let cand = (p[2 * h + j] + r * rec[2 * h + j]).tanh();
-                        state[j] = (1.0 - z) * cand + z * state[j];
-                    }
-                    next[t * 2 * h + d * h..t * 2 * h + (d + 1) * h].copy_from_slice(&state);
-                }
-            }
-            seq = next;
+            seq = bigru(layer, &seq, n, width, h);
             width = 2 * h;
         }
+        // 分組架構：每顆接上所在組的狀態與「在組內」旗標（不在組內為 0），組內的手對打法取邊際
+        let grouped = self
+            .group
+            .as_ref()
+            .zip(groups)
+            .map(|(layers, groups)| (layers.forward(&seq, width, groups), groups));
+        let extra = self.group.as_ref().map_or(0, |g| 2 * g.gh + 1);
+        let mut row = vec![0f32; width + extra];
         let mut hidden = vec![0f32; self.hid.out];
         let mut logits = [0f32; 2];
         (0..n)
             .map(|t| {
-                self.hid
-                    .apply(&seq[t * width..(t + 1) * width], &mut hidden);
+                row[..width].copy_from_slice(&seq[t * width..(t + 1) * width]);
+                row[width..].fill(0.0);
+                let mut pattern = None;
+                if let Some(((states, patterns), groups)) = &grouped {
+                    // 補零的列不在任何組裡
+                    if let Some(k) = groups.note_group.get(t).copied().flatten() {
+                        let sw = extra - 1;
+                        row[width..width + sw].copy_from_slice(&states[k * sw..(k + 1) * sw]);
+                        row[width + sw] = 1.0;
+                        pattern = Some((&patterns[k], groups.odd[t]));
+                    }
+                }
+                self.hid.apply(&row, &mut hidden);
                 for v in &mut hidden {
                     *v = gelu(*v);
                 }
                 self.head.apply(&hidden, &mut logits);
-                [sigmoid(logits[0]), sigmoid(logits[1])]
+                let free = sigmoid(logits[0]);
+                let hand = match pattern {
+                    Some((p, odd)) => pattern_marginal(p, odd, free),
+                    None => free,
+                };
+                [hand, sigmoid(logits[1])]
             })
             .collect()
     }
@@ -396,6 +646,41 @@ pub struct Features {
     pub x: Vec<[f32; FEATURES]>,
     pub v3_hand: Vec<i8>,
     pub v3_track: Vec<i8>,
+    /// 分組特徵（分組架構才用）：每顆的特徵、所在的組與組內序號，以及每組的描述。
+    pub g: Vec<[f32; G_COLS]>,
+    pub gid: Vec<Option<usize>>,
+    pub gpos: Vec<usize>,
+    pub gdesc: Vec<[f32; GD_COLS]>,
+}
+
+/// 分組的種類（與 g1/build_data.py 的 group_type 對應）：0 同鍵、1 階梯、2 兩顆、3 其他、4 含 Touch。
+fn group_type(notes: &[&Note]) -> usize {
+    let spec: Vec<(u8, bool)> = notes
+        .iter()
+        .map(|n| {
+            let touch = n.touch_area.as_deref().is_some_and(|a| !a.is_empty());
+            (n.button, touch)
+        })
+        .collect();
+    group_kind(&spec)
+}
+
+/// 同 [`group_type`]，輸入每顆的（鍵位, 是不是 Touch）。
+fn group_kind(spec: &[(u8, bool)]) -> usize {
+    if spec.iter().any(|&(_, touch)| touch) {
+        return 4;
+    }
+    let b: Vec<i32> = spec.iter().map(|&(button, _)| button as i32).collect();
+    let steps: Vec<i32> = b.windows(2).map(|w| (w[1] - w[0]).rem_euclid(8)).collect();
+    if b.iter().all(|&x| x == b[0]) {
+        0
+    } else if b.len() >= 3 && (steps.iter().all(|&s| s == 1) || steps.iter().all(|&s| s == 7)) {
+        1
+    } else if b.len() == 2 {
+        2
+    } else {
+        3
+    }
 }
 
 fn button_xy(b: u8) -> (f64, f64) {
@@ -471,6 +756,10 @@ pub fn features(chart: &Chart, solution: Option<&Solution>) -> Features {
         x: vec![],
         v3_hand: vec![],
         v3_track: vec![],
+        g: vec![[0.0; G_COLS]; notes.len()],
+        gid: vec![None; notes.len()],
+        gpos: vec![0; notes.len()],
+        gdesc: vec![],
     };
     let mut last_by_btn: HashMap<u8, f64> = HashMap::new();
     let kinds = ["tap", "hold", "touch", "touchHold", "slide"];
@@ -593,6 +882,55 @@ pub fn features(chart: &Chart, solution: Option<&Solution>) -> Features {
         out.v3_track
             .push(a.and_then(|a| a.get("slide").copied()).unwrap_or(-1));
     }
+    // 分組特徵（與 g1/build_data.py 的 build 逐項對應）：自動分組依序編號；
+    // 和前面的組重疊、或譜面上不到兩顆的組略過。
+    let pos: HashMap<&str, usize> = notes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (n.key.as_str(), i))
+        .collect();
+    let mut prev_start: Option<f64> = None;
+    for (members, rule, auto) in solver::auto_group_info(chart) {
+        let idx: Vec<usize> = members
+            .iter()
+            .filter_map(|n| pos.get(n.key.as_str()).copied())
+            .collect();
+        if idx.len() < 2 || idx.iter().any(|&i| out.gid[i].is_some()) {
+            continue;
+        }
+        let size = idx.len();
+        let (t0, t1) = (
+            members[0].time_seconds,
+            members[members.len() - 1].time_seconds,
+        );
+        let gap = prev_start.map_or(5.0, |p| t0 - p);
+        prev_start = Some(t0);
+        let mut desc = [0f32; GD_COLS];
+        desc[group_type(&members)] = 1.0;
+        if members.iter().any(|n| n.kind == "slide") {
+            desc[GROUP_TYPES] = 1.0;
+        }
+        if rule < 3 {
+            desc[GROUP_TYPES + 1 + rule as usize] = 1.0;
+        }
+        desc[GROUP_TYPES + 4 + auto.filter(|a| *a < 3).map_or(3, usize::from)] = 1.0;
+        let log_size = (size as f64).ln_1p() as f32;
+        desc[GD_COLS - 3] = log_size;
+        desc[GD_COLS - 2] = lg(t1 - t0) as f32;
+        desc[GD_COLS - 1] = lg(gap) as f32;
+        let g = out.gdesc.len();
+        out.gdesc.push(desc);
+        for (k, &i) in idx.iter().enumerate() {
+            out.gid[i] = Some(g);
+            out.gpos[i] = k;
+            let row = &mut out.g[i];
+            row[0] = 1.0;
+            row[1..G_COLS - 3].copy_from_slice(&desc[..GD_COLS - 3]);
+            row[G_COLS - 3] = (k as f64 / (size - 1) as f64) as f32;
+            row[G_COLS - 2] = if k == 0 { 1.0 } else { 0.0 };
+            row[G_COLS - 1] = log_size;
+        }
+    }
     out
 }
 
@@ -621,6 +959,96 @@ fn build_rules(constraints: &[Constraint]) -> HandRules {
     rules
 }
 
+/// 模型給的手（`p` 是用右手的機率，`v3` 是 V3 的手：1 右、0 左）：和 V3 不同時，
+/// 把握（較大那一邊的機率）要到 `flip_at` 才改，不到就照 V3。
+fn chosen_hand(p: f32, v3: i8, flip_at: f32) -> Hand {
+    let model = if p > 0.5 { Hand::R } else { Hand::L };
+    let v3 = if v3 == 1 { Hand::R } else { Hand::L };
+    if model != v3 && p.max(1.0 - p) < flip_at {
+        v3
+    } else {
+        model
+    }
+}
+
+/// 整組的手：在符合規則的打法（`rule` 0 同手：全右／全左；1 交替：右起／左起；
+/// 2 兩者皆可：四種都算）與 V3 原本的手之間，取模型機率（對數）總和最大的；
+/// 沒有打法比 V3 好就照 V3。`p` 是每顆用右手的機率，`v3` 是 V3 的手（true 右）。
+fn group_choice(p: &[f32], v3: &[bool], rule: u8) -> Vec<bool> {
+    let n = p.len();
+    let score = |hands: &[bool]| {
+        p.iter()
+            .zip(hands)
+            .map(|(&p, &right)| {
+                let p = (p as f64).clamp(1e-4, 1.0 - 1e-4);
+                if right {
+                    p.ln()
+                } else {
+                    (1.0 - p).ln()
+                }
+            })
+            .sum::<f64>()
+    };
+    let mut candidates: Vec<Vec<bool>> = vec![];
+    if rule != 1 {
+        candidates.push(vec![true; n]);
+        candidates.push(vec![false; n]);
+    }
+    if rule != 0 {
+        candidates.push((0..n).map(|k| k % 2 == 0).collect());
+        candidates.push((0..n).map(|k| k % 2 == 1).collect());
+    }
+    let base = score(v3);
+    candidates
+        .into_iter()
+        .map(|c| (score(&c), c))
+        .max_by(|a, b| a.0.total_cmp(&b.0))
+        .filter(|(s, _)| *s > base)
+        .map(|(_, c)| c)
+        .unwrap_or_else(|| v3.to_vec())
+}
+
+/// 分組架構：有規則的自動分組整組決定接觸手（取代組內逐顆的修正）。
+/// 含 Touch 的組不整組套用，照逐顆修正（研究時在開發集上選定的設定）。
+fn apply_whole_groups(
+    chart: &Chart,
+    input: &Features,
+    probs: &[[f32; 2]],
+    constraints: &mut [Constraint],
+) {
+    let pos: HashMap<&str, usize> = input
+        .order
+        .iter()
+        .enumerate()
+        .map(|(i, &ni)| (chart.notes[ni].id.as_str(), i))
+        .collect();
+    for (notes, rule) in solver::rule_groups(chart) {
+        if notes.iter().any(|n| n.touch_area.is_some()) {
+            continue;
+        }
+        let idx: Vec<usize> = notes
+            .iter()
+            .filter_map(|n| pos.get(n.id.as_str()).copied())
+            .filter(|&i| input.v3_hand[i] >= 0)
+            .collect();
+        if idx.len() != notes.len() || idx.len() < 2 {
+            continue;
+        }
+        let p: Vec<f32> = idx.iter().map(|&i| probs[i][0]).collect();
+        let v3: Vec<bool> = idx.iter().map(|&i| input.v3_hand[i] == 1).collect();
+        for (&i, right) in idx.iter().zip(group_choice(&p, &v3, rule)) {
+            let id = &chart.notes[input.order[i]].id;
+            if let Some(k) = constraints
+                .iter_mut()
+                .find(|k| !k.track && &k.note_id == id)
+            {
+                k.hand = if right { Hand::R } else { Hand::L };
+                k.flipped = right != (input.v3_hand[i] == 1);
+            }
+        }
+    }
+}
+
 /// 放寬次數上限：每次在走不下去的時刻附近拿掉一些限制。
 const MAX_RELAX: usize = 24;
 
@@ -642,9 +1070,8 @@ pub fn solve(
         let mut constraints = vec![];
         for (i, &ni) in input.order.iter().enumerate() {
             let note = &chart.notes[ni];
-            let hand = |p: f32| if p > 0.5 { Hand::R } else { Hand::L };
             let mut push = |track: bool, p: f32, v3: i8| {
-                let h = hand(p);
+                let h = chosen_hand(p, v3, model.flip_at);
                 constraints.push(Constraint {
                     note_id: note.id.clone(),
                     time: note.time_seconds,
@@ -672,6 +1099,9 @@ pub fn solve(
             if input.v3_track[i] >= 0 && !wifi && !handover {
                 push(true, probs[i][1], input.v3_track[i]);
             }
+        }
+        if model.grouped() {
+            apply_whole_groups(chart, &input, &probs, &mut constraints);
         }
         let mut last_fail: Option<f64> = None;
         let mut strikes = 0;
@@ -735,5 +1165,76 @@ pub fn solve(
     match model.tuning() {
         Some(t) => crate::scoring_v3::with_tuning(t, run),
         None => run(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 和 V3 相同時照模型；不同時把握到門檻才改。
+    #[test]
+    fn corrections_need_enough_confidence() {
+        // V3 左手，模型 0.55 偏右：0.5 改，0.6 不改
+        assert_eq!(chosen_hand(0.55, 0, 0.5), Hand::R);
+        assert_eq!(chosen_hand(0.55, 0, 0.6), Hand::L);
+        // 把握 0.7 時兩個門檻都改，左右對稱
+        assert_eq!(chosen_hand(0.7, 0, 0.6), Hand::R);
+        assert_eq!(chosen_hand(0.3, 1, 0.6), Hand::L);
+        assert_eq!(chosen_hand(0.45, 1, 0.6), Hand::R);
+        // 和 V3 一致時不看門檻
+        assert_eq!(chosen_hand(0.55, 1, 0.9), Hand::R);
+        assert_eq!(chosen_hand(0.45, 0, 0.9), Hand::L);
+    }
+
+    /// 整組套用：只在符合規則的打法裡選，而且要比 V3 原本的手更符合模型才改。
+    #[test]
+    fn whole_group_follows_rule_and_beats_v3() {
+        let (r, l) = (true, false);
+        // 模型偏向交替（右起），規則允許交替就整組改成右左右
+        let alt = [0.8, 0.2, 0.7];
+        assert_eq!(group_choice(&alt, &[r, r, r], 1), vec![r, l, r]);
+        assert_eq!(group_choice(&alt, &[r, r, r], 2), vec![r, l, r]);
+        // 規則只允許同手時不能交替：全右（0.8·0.2·0.7）比全左好，但沒有比 V3 的全右好，照 V3
+        assert_eq!(group_choice(&alt, &[r, r, r], 0), vec![r, r, r]);
+        // V3 的手比任何打法都符合模型時照 V3（即使 V3 本身不符合規則）
+        assert_eq!(group_choice(&alt, &[r, l, r], 0), vec![r, l, r]);
+        // 模型偏左：同手規則整組改全左
+        assert_eq!(
+            group_choice(&[0.1, 0.3, 0.2, 0.4], &[r, l, r, l], 0),
+            vec![l; 4]
+        );
+    }
+
+    /// 打法邊際：固定打法時單顆有 PATTERN_EPS 的機率不同，自由打法用逐顆的機率。
+    #[test]
+    fn pattern_marginal_mixes_patterns() {
+        let eps = PATTERN_EPS;
+        assert!((pattern_marginal(&[1.0, 0.0, 0.0, 0.0, 0.0], false, 0.9) - eps).abs() < 1e-6);
+        assert!(
+            (pattern_marginal(&[0.0, 1.0, 0.0, 0.0, 0.0], true, 0.1) - (1.0 - eps)).abs() < 1e-6
+        );
+        // 左起交替：偶數顆左、奇數顆右
+        assert!((pattern_marginal(&[0.0, 0.0, 1.0, 0.0, 0.0], false, 0.5) - eps).abs() < 1e-6);
+        assert!(
+            (pattern_marginal(&[0.0, 0.0, 1.0, 0.0, 0.0], true, 0.5) - (1.0 - eps)).abs() < 1e-6
+        );
+        assert!(
+            (pattern_marginal(&[0.0, 0.0, 0.0, 1.0, 0.0], false, 0.5) - (1.0 - eps)).abs() < 1e-6
+        );
+        assert!((pattern_marginal(&[0.0, 0.0, 0.0, 0.0, 1.0], false, 0.3) - 0.3).abs() < 1e-6);
+    }
+
+    /// 分組種類：Touch 優先，其次同鍵、單向逐鍵（含跨 8→1）的階梯、兩顆、其他。
+    #[test]
+    fn group_types_match_training() {
+        let (n, t) = (false, true);
+        assert_eq!(group_kind(&[(3, n), (3, n), (3, n)]), 0);
+        assert_eq!(group_kind(&[(7, n), (8, n), (1, n)]), 1);
+        assert_eq!(group_kind(&[(2, n), (1, n), (8, n)]), 1);
+        // 兩顆相鄰不算階梯
+        assert_eq!(group_kind(&[(1, n), (2, n)]), 2);
+        assert_eq!(group_kind(&[(1, n), (2, n), (4, n)]), 3);
+        assert_eq!(group_kind(&[(1, n), (0, t)]), 4);
     }
 }

@@ -226,6 +226,9 @@ pub struct SolverConfig {
     pub hold_early_release: bool,
     /// V3 限定：以 Temoto 模型（從玩家手元影片學到的打法）修正手順；None 為純 V3。
     pub ml_model: Option<String>,
+    /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`，見 `scoring_v3::V3_VARIANTS`）；None 為出貨的 V3。
+    /// Temoto 模型自帶基座權重，兩者不能同時指定。
+    pub v3_variant: Option<String>,
     pub preparation_seconds: f64,
     pub speed_reference: f64,
     pub repetition_seconds: f64,
@@ -260,6 +263,8 @@ struct SolverConfigWire {
     hold_early_release: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     ml_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    v3_variant: Option<String>,
     preparation_seconds: f64,
     speed_reference: f64,
     repetition_seconds: f64,
@@ -298,6 +303,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
             ml_model: c.ml_model.clone(),
+            v3_variant: c.v3_variant.clone(),
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -333,6 +339,7 @@ impl From<SolverConfigWire> for SolverConfig {
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
             ml_model: c.ml_model,
+            v3_variant: c.v3_variant,
             preparation_seconds: c.preparation_seconds,
             speed_reference: c.speed_reference,
             repetition_seconds: c.repetition_seconds,
@@ -375,11 +382,11 @@ impl<'de> Deserialize<'de> for SolverConfig {
             "human-motion-v3" => LEGACY_KEYS.into_iter().chain(["repeatTolerance"]).collect(),
             "hand-affinity-v2" => LEGACY_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut", "mlModel"])
+                .chain(["jackTolerance", "slideShortcut", "mlModel", "v3Variant"])
                 .collect(),
             _ => V2_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut", "mlModel"])
+                .chain(["jackTolerance", "slideShortcut", "mlModel", "v3Variant"])
                 .collect(),
         };
         if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
@@ -449,6 +456,7 @@ impl Default for SolverConfig {
             slide_shortcut: false,
             hold_early_release: false,
             ml_model: None,
+            v3_variant: None,
             preparation_seconds: 1.0,
             speed_reference: 4.0,
             repetition_seconds: 0.15,
@@ -518,6 +526,17 @@ impl SolverConfig {
             }
             if !crate::temoto::MODEL_IDS.contains(&id.as_str()) {
                 return Err(format!("未知 mlModel：{id}"));
+            }
+        }
+        if let Some(id) = &self.v3_variant {
+            if !self.is_v3() {
+                return Err("v3Variant 只適用 human-motion-v3".into());
+            }
+            if !crate::scoring_v3::V3_VARIANTS.contains(&id.as_str()) {
+                return Err(format!("未知 v3Variant：{id}"));
+            }
+            if self.ml_model.is_some() {
+                return Err("Temoto 模型自帶基座權重，不能和 v3Variant 同時指定".into());
             }
         }
         if !self.is_legacy() {
