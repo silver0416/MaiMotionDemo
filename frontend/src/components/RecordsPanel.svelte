@@ -49,16 +49,19 @@
   type FolderView = string;
   const VIEW_KEY = 'maimotion.records.view';
 
-  function readView(): { folder: FolderView; sort: SortKey; tags: string[] } {
+  function readView(): { folder: FolderView; sort: SortKey; tags: string[]; hidden: string[] } {
+    const names = (value: unknown) =>
+      Array.isArray(value) ? value.filter((tag): tag is string => typeof tag === 'string') : [];
     try {
       const raw = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Record<string, unknown>;
       return {
         folder: typeof raw.folder === 'string' ? raw.folder : 'all',
         sort: SORTS.some((item) => item.id === raw.sort) ? (raw.sort as SortKey) : 'created-desc',
-        tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+        tags: names(raw.tags),
+        hidden: names(raw.hidden),
       };
     } catch {
-      return { folder: 'all', sort: 'created-desc', tags: [] };
+      return { folder: 'all', sort: 'created-desc', tags: [], hidden: [] };
     }
   }
 
@@ -66,10 +69,12 @@
   let folderView = $state<FolderView>(initial.folder);
   let sortKey = $state<SortKey>(initial.sort);
   let tagFilter = $state<string[]>(initial.tags);
+  /** 隱藏的標籤：有任一個隱藏標籤的紀錄不出現在清單（優先於標籤篩選）。 */
+  let hiddenTags = $state<string[]>(initial.hidden);
   let query = $state('');
 
   $effect(() => {
-    const value = JSON.stringify({ folder: folderView, sort: sortKey, tags: tagFilter });
+    const value = JSON.stringify({ folder: folderView, sort: sortKey, tags: tagFilter, hidden: hiddenTags });
     try {
       localStorage.setItem(VIEW_KEY, value);
     } catch {
@@ -81,30 +86,48 @@
   $effect(() => {
     if (!records.loaded) return;
     if (folderView !== 'all' && folderView !== 'none' && !records.folderById(folderView)) folderView = 'all';
-    const known = tagFilter.filter((tag) => records.tags.some((item) => item.name === tag));
+    const knownHidden = hiddenTags.filter((tag) => records.tags.some((item) => item.name === tag));
+    if (knownHidden.length !== hiddenTags.length) hiddenTags = knownHidden;
+    // 隱藏的標籤不同時當篩選（改名合併進隱藏的標籤時會撞在一起）。
+    const known = [...new Set(tagFilter)].filter(
+      (tag) => records.tags.some((item) => item.name === tag) && !knownHidden.includes(tag),
+    );
     if (known.length !== tagFilter.length) tagFilter = known;
   });
 
+  const hiddenSet = $derived(new Set(hiddenTags));
+  const isHidden = (record: ChartRecord) => (record.tags ?? []).some((tag) => hiddenSet.has(tag));
+  /** 沒被隱藏的紀錄；資料夾與清單都只算這些。 */
+  const shownItems = $derived(hiddenTags.length > 0 ? records.items.filter((record) => !isHidden(record)) : records.items);
+
   const folderCounts = $derived.by(() => {
     const counts = new Map<string, number>();
-    for (const record of records.items) {
+    for (const record of shownItems) {
       const key = record.folder ?? 'none';
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   });
 
+  // 隱藏的標籤算它藏了幾筆，其他標籤只算看得到的紀錄。
   const tagCounts = $derived.by(() => {
     const counts = new Map<string, number>();
-    for (const record of records.items) for (const tag of record.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    for (const record of records.items) {
+      const hidden = isHidden(record);
+      for (const tag of record.tags ?? []) {
+        if (hidden && !hiddenSet.has(tag)) continue;
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
     return counts;
   });
 
   const collator = new Intl.Collator('zh-Hant', { numeric: true, sensitivity: 'base' });
 
-  const visible = $derived.by(() => {
+  /** 符合資料夾、標籤與文字篩選的紀錄（還沒拿掉隱藏的）。 */
+  const matched = $derived.by(() => {
     const needle = query.trim().toLowerCase();
-    const list = records.items.filter((record) => {
+    return records.items.filter((record) => {
       if (folderView === 'none' ? record.folder !== undefined : folderView !== 'all' && record.folder !== folderView) {
         return false;
       }
@@ -115,6 +138,13 @@
       }
       return true;
     });
+  });
+
+  /** 篩選後因為隱藏標籤而沒顯示的筆數。 */
+  const hiddenHere = $derived(hiddenTags.length > 0 ? matched.filter(isHidden).length : 0);
+
+  const visible = $derived.by(() => {
+    const list = hiddenTags.length > 0 ? matched.filter((record) => !isHidden(record)) : [...matched];
     const byCreated = (a: ChartRecord, b: ChartRecord) => b.createdAt - a.createdAt;
     const compare: Record<SortKey, (a: ChartRecord, b: ChartRecord) => number> = {
       'created-desc': byCreated,
@@ -129,8 +159,40 @@
 
   const filtering = $derived(query.trim() !== '' || tagFilter.length > 0);
 
-  function toggleTagFilter(name: string) {
+  /** 點標籤：隱藏中的先取消隱藏，否則切換篩選。 */
+  function onTagClick(name: string) {
+    if (hiddenSet.has(name)) {
+      setTagHidden(name, false);
+      return;
+    }
     tagFilter = tagFilter.includes(name) ? tagFilter.filter((tag) => tag !== name) : [...tagFilter, name];
+  }
+
+  /** 隱藏或顯示整個標籤的紀錄；隱藏的標籤不同時當篩選。 */
+  function setTagHidden(name: string, hide: boolean) {
+    if (!hide) {
+      hiddenTags = hiddenTags.filter((tag) => tag !== name);
+      return;
+    }
+    if (hiddenSet.has(name)) return;
+    const wasFilter = tagFilter.includes(name);
+    const count = records.items.filter((record) => record.tags?.includes(name)).length;
+    hiddenTags = [...hiddenTags, name];
+    tagFilter = tagFilter.filter((tag) => tag !== name);
+    toasts.show({
+      id: 'records-tag-hide',
+      tone: 'info',
+      title: `已隱藏標籤「${name}」的紀錄`,
+      body: `${count} 筆紀錄不會出現在清單，紀錄本身沒有刪除。點標籤可以再顯示。`,
+      action: {
+        label: '復原',
+        icon: 'rotate-ccw',
+        run: () => {
+          hiddenTags = hiddenTags.filter((tag) => tag !== name);
+          if (wasFilter && !tagFilter.includes(name)) tagFilter = [...tagFilter, name];
+        },
+      },
+    });
   }
 
   // ---- 多選 ----
@@ -145,9 +207,9 @@
   let selecting = $state(false);
   const multi = $derived(selecting);
 
-  // 被刪掉或不在清單裡的紀錄不留在選取中。
+  // 被刪掉或被隱藏標籤藏起來的紀錄不留在選取中，批量動作不會動到看不見的紀錄。
   $effect(() => {
-    const ids = new Set(records.items.map((record) => record.id));
+    const ids = new Set(shownItems.map((record) => record.id));
     if (selected.some((id) => !ids.has(id))) selected = selected.filter((id) => ids.has(id));
   });
 
@@ -441,8 +503,13 @@
         break;
       case 'rename-tag': {
         const from = picker.tag.name;
+        // 改成已有的標籤名稱時兩個合併，隱藏與否跟著原本就叫這個名字的標籤。
+        const merged = name !== from && records.tags.some((tag) => tag.name === name);
         records.renameTag(from, name);
         tagFilter = tagFilter.map((tag) => (tag === from ? name : tag));
+        hiddenTags = merged
+          ? hiddenTags.filter((tag) => tag !== from)
+          : hiddenTags.map((tag) => (tag === from ? name : tag));
         closePicker();
         break;
       }
@@ -481,8 +548,12 @@
         { id: 'delete', label: '刪除資料夾', icon: 'trash', danger: true, divider: true },
       ];
     }
+    const hidden = hiddenSet.has(chipMenu.tag.name);
     return [
-      { id: 'rename', label: '重新命名', icon: 'pencil' },
+      hidden
+        ? { id: 'show', label: '顯示這個標籤的紀錄', icon: 'eye' }
+        : { id: 'hide', label: '隱藏這個標籤的紀錄', icon: 'eye-off' },
+      { id: 'rename', label: '重新命名', icon: 'pencil', divider: true },
       { id: 'color', label: '換顏色', icon: 'circle-dot' },
       { id: 'delete', label: '刪除標籤', icon: 'trash', danger: true, divider: true },
     ];
@@ -516,9 +587,11 @@
       }
     } else {
       const { tag } = current;
+      if (action === 'hide' || action === 'show') setTagHidden(tag.name, action === 'hide');
       if (action === 'rename') picker = { kind: 'rename-tag', tag, ...at };
       if (action === 'color') picker = { kind: 'tag-color', tag, ...at };
       if (action === 'delete') {
+        const wasHidden = hiddenSet.has(tag.name);
         const tagged = records.deleteTag(tag.name);
         toasts.show({
           id: 'records-tag-delete',
@@ -531,6 +604,7 @@
             run: () => {
               records.createTag(tag.name, tag.color);
               records.setTag(tagged, tag.name, true);
+              if (wasHidden && !hiddenTags.includes(tag.name)) hiddenTags = [...hiddenTags, tag.name];
             },
           },
         });
@@ -691,7 +765,11 @@
   <div class="swap swap--title" class:is-shut={multi} inert={multi}>
     <div class="records-title">
       <span>譜面紀錄</span>
-      <span class="mono">{filtering || folderView !== 'all' ? `${visible.length} / ${records.items.length}` : records.items.length}</span>
+      <span class="mono"
+        >{filtering || folderView !== 'all' || visible.length !== records.items.length
+          ? `${visible.length} / ${records.items.length}`
+          : records.items.length}</span
+      >
     </div>
   </div>
 
@@ -703,7 +781,7 @@
         aria-pressed={folderView === 'all'}
         onclick={() => (folderView = 'all')}
       >
-        全部<span class="chip-count">{records.items.length}</span>
+        全部<span class="chip-count">{shownItems.length}</span>
       </button>
       <button
         class="chip"
@@ -747,19 +825,27 @@
     {#if records.tags.length > 0}
       <div class="chips" role="group" aria-label="依標籤篩選（符合任一）">
         {#each records.tags as tag (tag.name)}
+          {@const hidden = hiddenSet.has(tag.name)}
           <button
             class="chip"
             class:is-on={tagFilter.includes(tag.name)}
+            class:is-hidden={hidden}
             class:is-drop={dropTarget === `tag:${tag.name}`}
             aria-pressed={tagFilter.includes(tag.name)}
-            onclick={() => toggleTagFilter(tag.name)}
+            onclick={() => onTagClick(tag.name)}
             oncontextmenu={(event) => openChipMenu({ kind: 'tag', tag }, event)}
             ondragover={(event) => onDragOver(`tag:${tag.name}`, event)}
             ondragleave={() => (dropTarget = null)}
             ondrop={(event) => onDropTag(tag, event)}
-            title="點選篩選（符合任一）；右鍵改名、換色或刪除；可以把紀錄拖到這裡加上標籤"
+            title={hidden
+              ? '已隱藏：有這個標籤的紀錄不會出現在清單。點一下再顯示；右鍵改名、換色或刪除'
+              : '點選篩選（符合任一）；右鍵隱藏、改名、換色或刪除；可以把紀錄拖到這裡加上標籤'}
           >
-            <span class="dot" style={`background:${tag.color}`}></span>{tag.name}<span class="chip-count"
+            {#if hidden}
+              <Icon name="eye-off" size={12} />
+            {:else}
+              <span class="dot" style={`background:${tag.color}`}></span>
+            {/if}{tag.name}{#if hidden}<span class="sr-only">（已隱藏）</span>{/if}<span class="chip-count"
               >{tagCounts.get(tag.name) ?? 0}</span
             >
           </button>
@@ -798,6 +884,14 @@
         />
       </span>
     </div>
+
+    {#if hiddenHere > 0}
+      <div class="hidden-row xsmall muted">
+        <Icon name="eye-off" size={12} />
+        <span>隱藏了 <span class="mono">{hiddenHere}</span> 筆</span>
+        <button class="chip" onclick={() => (hiddenTags = [])} title="取消所有標籤的隱藏">全部顯示</button>
+      </div>
+    {/if}
   </div>
 
   <div class="swap swap--bar" class:is-shut={!multi} inert={!multi}>
@@ -867,7 +961,11 @@
       <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt，或從 Majdata、simai Wiki 搜尋匯入。</p>
     {:else if visible.length === 0}
       <p class="empty small muted">
-        {filtering ? '沒有符合篩選的紀錄。' : folderView === 'none' ? '所有紀錄都已放進資料夾。' : '這個資料夾還是空的。可以把紀錄拖到上方的資料夾，或在紀錄上按右鍵「移到資料夾」。'}
+        {hiddenHere > 0
+          ? '這裡的紀錄都被隱藏了。點標籤列上畫虛線的標籤，或按「全部顯示」可以再顯示。'
+          : filtering
+            ? '沒有符合篩選的紀錄。'
+            : folderView === 'none' ? '所有紀錄都已放進資料夾。' : '這個資料夾還是空的。可以把紀錄拖到上方的資料夾，或在紀錄上按右鍵「移到資料夾」。'}
       </p>
     {:else}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -1250,6 +1348,34 @@
   .chip.is-drop {
     border-color: var(--c-focus);
     color: var(--c-text-strong);
+  }
+
+  /* 隱藏的標籤：虛線外框、不填底，和篩選中的反白區分開。 */
+  .chip.is-hidden {
+    color: var(--c-text-dim);
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--c-border-strong);
+  }
+
+  .chip.is-hidden:hover {
+    color: var(--c-text);
+    background: var(--c-control);
+  }
+
+  .chip.is-hidden.is-drop {
+    border-color: var(--c-focus);
+  }
+
+  .hidden-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-1);
+  }
+
+  .hidden-row .chip {
+    margin-left: auto;
   }
 
   .chip--icon {
