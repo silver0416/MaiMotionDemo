@@ -110,7 +110,10 @@ impl<'a> Context<'a> {
                 given.into_iter().map(|(n, r)| (n, r, None)).collect(),
                 tuning.group_pattern,
             ),
-            None if tuning.group_auto > 0.0 => (phrases::auto_rules(chart), tuning.group_auto),
+            None if tuning.group_auto > 0.0 => (
+                phrases::auto_rules(chart, phrases::GroupCut::of(tuning)),
+                tuning.group_auto,
+            ),
             None => (vec![], 0.0),
         };
         let mut group_at = BTreeMap::new();

@@ -1303,12 +1303,74 @@ export class AnnotationStore {
     this.#touch();
   }
 
+  /** 還沒確認的預填分組數。 */
+  get prefilledGroups(): number {
+    return this.draft.groups.filter((group) => group.prefilled).length;
+  }
+
+  /**
+   * 以 Rust 的自動分組預填：只加和現有分組（含預填）沒有共用音符的組，標成預填。
+   * 回傳加了幾組。
+   */
+  prefillGroups(groups: string[][]): number {
+    if (!this.groupsAvailable) return 0;
+    const taken = new Set(this.draft.groups.flatMap((group) => this.#resolved(group).keys));
+    let added = 0;
+    for (const keys of groups) {
+      const notes = keys.map((key) => this.#byKey.get(key)).filter((note): note is Note => !!note);
+      if (notes.length < 2 || notes.length !== keys.length || keys.some((key) => taken.has(key))) continue;
+      const sorted = notes.sort((a, b) => this.noteNumber(a) - this.noteNumber(b)).map((note) => note.key ?? '');
+      this.draft.groups.push({ keys: sorted, prefilled: true });
+      for (const key of sorted) taken.add(key);
+      added += 1;
+    }
+    if (added > 0) this.#touch();
+    return added;
+  }
+
+  /** 確認預填的分組：之後算真人分組，記上標註者。 */
+  #own(group: NoteGroup): void {
+    if (!group.prefilled) return;
+    delete group.prefilled;
+    if (this.annotator && !group.by) group.by = this.annotator;
+  }
+
+  confirmGroup(index: number): void {
+    const group = this.draft.groups[index];
+    if (!group?.prefilled) return;
+    this.#own(group);
+    this.#touch();
+  }
+
+  /** 確認全部預填分組；回傳確認了幾組。 */
+  confirmAllGroups(): number {
+    let count = 0;
+    for (const group of this.draft.groups) {
+      if (!group.prefilled) continue;
+      this.#own(group);
+      count += 1;
+    }
+    if (count > 0) this.#touch();
+    return count;
+  }
+
+  /** 刪除還沒確認的預填分組；回傳刪了幾組。 */
+  clearPrefilledGroups(): number {
+    const before = this.draft.groups.length;
+    this.draft.groups = this.draft.groups.filter((group) => !group.prefilled);
+    const count = before - this.draft.groups.length;
+    if (count > 0) this.#touch();
+    return count;
+  }
+
+  /** 改名或增減音符都算確認了這一組。 */
   renameGroup(index: number, label: string): void {
     const group = this.draft.groups[index];
     if (!group) return;
     const text = label.trim().slice(0, 40);
     if ((group.label ?? '') === text) return;
     this.#materialize(group);
+    this.#own(group);
     if (text) group.label = text;
     else delete group.label;
     this.#touch();
@@ -1325,6 +1387,7 @@ export class AnnotationStore {
     const group = this.draft.groups[index];
     if (!group || !note.key) return false;
     this.#materialize(group);
+    this.#own(group);
     group.keys = group.keys.filter((key) => key !== note.key);
     if (group.keys.length < 2) {
       this.draft.groups.splice(index, 1);
@@ -1340,6 +1403,7 @@ export class AnnotationStore {
     if (!group || !note.key) return;
     this.#materialize(group);
     if (group.keys.includes(note.key)) return;
+    this.#own(group);
     group.keys = [...group.keys, note.key]
       .map((key) => this.#byKey.get(key))
       .filter((item): item is Note => !!item)

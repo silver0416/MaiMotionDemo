@@ -53,6 +53,12 @@ export async function chartNoteKeys(source: string): Promise<string[]> {
   return await invoke<string[]>('chart_note_keys', { source });
 }
 
+/** 標註預填分組：Rust 以擬人切法切出的自動分組，每組是音符穩定鍵（依時間排序）。只解析譜面，不求解。 */
+export async function chartAutoGroups(source: string, firstSeconds: number): Promise<string[][]> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<string[][]>('chart_auto_groups', { source, firstSeconds });
+}
+
 /** 經由 Rust 搜尋 Majdata；前端不直接連線外部網站。失敗時 reject 可讀的字串。 */
 export async function searchMajdataCharts(query: string): Promise<MajdataChartSummary[]> {
   const { invoke } = await import('@tauri-apps/api/core');

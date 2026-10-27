@@ -58,8 +58,17 @@ fn without_auto<R>(f: impl FnOnce() -> R) -> R {
 
 /// 自動分組，每組以 chart.notes 的索引表示，組與組內依索引排序。
 fn auto(source: &str) -> Vec<Vec<usize>> {
+    indices(source, auto_group_keys)
+}
+
+/// app 標註預填用的擬人切法分組（不看 V3 權重），表示法同 [`auto`]。
+fn motion(source: &str) -> Vec<Vec<usize>> {
+    indices(source, motion_group_keys)
+}
+
+fn indices(source: &str, keys: fn(&Chart) -> Vec<Vec<String>>) -> Vec<Vec<usize>> {
     let chart = parse_chart(source, 0.0).unwrap().chart;
-    let mut groups: Vec<Vec<usize>> = auto_group_keys(&chart)
+    let mut groups: Vec<Vec<usize>> = keys(&chart)
         .iter()
         .map(|g| {
             let mut g: Vec<usize> = g
@@ -153,6 +162,74 @@ fn auto_groups_follow_rhythm_and_repeated_keys() {
     // 同一顆鍵 8 分連打 5 下，最後一下是 Hold。
     let groups = auto("(150){8}8,8,8,8,8h[8:1],E");
     assert_eq!(groups, vec![vec![0, 1, 2, 3]]);
+}
+
+/// 用擬人切法（groupCut 1）跑 `f`。
+fn motion_cut<R>(f: impl FnOnce() -> R) -> R {
+    let tuning: &'static TuningV3 = Box::leak(Box::new(TuningV3 {
+        group_cut: 1.0,
+        ..TuningV3::default()
+    }));
+    with_tuning(tuning, f)
+}
+
+/// 擬人切法（預設關）：均勻的 16 分連打在手跳得比前後都遠的地方切，不照拍點兩顆一組。
+/// 1 3 2 4 5 8 7 2：2→4、5→8 是比前後都遠的跳躍。
+#[test]
+fn motion_cut_splits_streams_where_the_hand_jumps() {
+    assert_eq!(TuningV3::default().group_cut, 0.0);
+    let source = "(160){16}1,3,2,4,5,8,7,2,E";
+    assert_eq!(
+        auto(source),
+        vec![vec![0, 1], vec![2, 3], vec![4, 5], vec![6, 7]]
+    );
+    assert_eq!(
+        motion_cut(|| auto(source)),
+        vec![vec![0, 1, 2], vec![3, 4], vec![5, 6, 7]]
+    );
+    // app 預填用的不看權重：預設權重下也是擬人切法。
+    assert_eq!(motion(source), motion_cut(|| auto(source)));
+}
+
+/// 擬人切法：接 Hold 的那顆 Tap 和 Hold 一組（點完接著按是一個動作）。
+#[test]
+fn motion_cut_keeps_a_tap_with_the_hold_it_leads_into() {
+    // 同一顆鍵 8 分連打 4 下接 Hold：拍點切法反覆一路到 Hold 前，擬人切法最後一下留給 Hold。
+    let source = "(150){8}8,8,8,8,8h[8:1],E";
+    assert_eq!(auto(source), vec![vec![0, 1, 2, 3]]);
+    assert_eq!(motion_cut(|| auto(source)), vec![vec![0, 1, 2], vec![3, 4]]);
+    // 8 分 1 4 6 接 5 的 Hold：四顆一段時拍點切法不切；擬人切法 6 跟著 Hold。
+    let source = "(150){8}1,4,6,5h[8:1],E";
+    assert_eq!(auto(source), vec![vec![0, 1, 2, 3]]);
+    assert_eq!(motion_cut(|| auto(source)), vec![vec![0, 1], vec![2, 3]]);
+}
+
+/// 擬人切法：留給 Hold 的那顆沒和 Hold 分在一起時還給階梯，不會落單（沒有分組）。
+#[test]
+fn motion_cut_returns_the_tap_when_the_hold_starts_its_own_run() {
+    // 1 2 3 4 階梯接 5 的 Hold，Hold 又開始 5 6 7 階梯：4 回到前一組。
+    let source = "(150){16}1,2,3,4,5h[16:1],6,7,E";
+    assert_eq!(auto(source), vec![vec![0, 1, 2, 3], vec![4, 5, 6]]);
+    assert_eq!(
+        motion_cut(|| auto(source)),
+        vec![vec![0, 1, 2, 3], vec![4, 5, 6]]
+    );
+    assert_eq!(motion(source), vec![vec![0, 1, 2, 3], vec![4, 5, 6]]);
+}
+
+/// 擬人切法：同鍵反覆後落單的同鍵 Tap 只在間隔夠短時併進反覆，隔了休息就不併。
+#[test]
+fn motion_cut_attaches_a_trailing_jack_tap_only_without_a_rest() {
+    // 16 分連打三下，空一拍再一下：最後一下併進反覆。
+    let source = "(150){16}8,8,8,,8,E";
+    assert_eq!(auto(source), vec![vec![0, 1, 2]]);
+    assert_eq!(motion(source), vec![vec![0, 1, 2, 3]]);
+    // 8 分連打三下，休息 2 秒後在譜尾再一下：不併。
+    let source = "(150){8}8,8,8,,,,,,,,,,8,E";
+    assert_eq!(motion(source), vec![vec![0, 1, 2]]);
+    // 譜中間：休息 1 秒後一下、再休息更久：不併。
+    let source = "(150){8}8,8,8,,,,,8,,,,,,,,,1,E";
+    assert_eq!(motion(source), vec![vec![0, 1, 2]]);
 }
 
 /// 快速同鍵連打（16 分、六顆）一路交替，起手接續前面 2／8 交替的下一手；關掉自動分組時不會。

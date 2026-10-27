@@ -116,6 +116,18 @@ async fn chart_note_keys(source: String) -> Result<Vec<String>, String> {
     .map_err(|e| format!("解析工作失敗：{e}"))?
 }
 
+/// 標註預填分組：只解析譜面（不求解），回傳擬人切法的自動分組，每組是音符穩定鍵，依時間排序。
+#[tauri::command]
+async fn chart_auto_groups(source: String, first_seconds: f64) -> Result<Vec<Vec<String>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        mai_motion_core::parse_chart(&source, first_seconds)
+            .map(|parsed| mai_motion_core::motion_group_keys(&parsed.chart))
+            .map_err(|d| d.message)
+    })
+    .await
+    .map_err(|e| format!("解析工作失敗：{e}"))?
+}
+
 /// 匯出的文字檔只允許 .json，避免前端誤寫其他類型的檔案。
 fn export_path_ok(path: &std::path::Path) -> Result<(), String> {
     let json = path
@@ -376,6 +388,7 @@ fn main() {
             evaluate_annotation,
             cancel_analysis,
             chart_note_keys,
+            chart_auto_groups,
             save_text_file,
             save_text_in_dir,
             app_distribution,

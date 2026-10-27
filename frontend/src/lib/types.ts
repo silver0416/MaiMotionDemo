@@ -532,6 +532,8 @@ export interface NoteGroup {
   /** 選填名稱，例如「交替」「階梯」 */
   label?: string;
   by?: string;
+  /** 自動分組預填的草稿（Rust 擬人切法）；確認或修改前不算真人分組，匯出時保留這個標記 */
+  prefilled?: boolean;
 }
 
 export interface HandAnnotation {

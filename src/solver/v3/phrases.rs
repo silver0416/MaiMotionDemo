@@ -221,21 +221,51 @@ pub(crate) fn classify(notes: Vec<&Note>) -> Option<(Vec<&Note>, GroupRule)> {
 const RUN_MIN: usize = 3;
 /// 節奏段超過這麼多個落點時再往下切。
 const GROUP_MAX_ONSETS: usize = 4;
+/// 擬人切法：同鍵反覆後的那一下，最多隔反覆間隔的幾倍還算連打的最後一下（2 ＝ 空一拍）。
+const ATTACH_MAX_RATIO: f64 = 2.0;
 
 type Onset<'a> = Vec<&'a Note>;
 
+/// 自動分組怎麼切長段（[`TuningV3::group_cut`](crate::scoring_v3::TuningV3::group_cut)）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GroupCut {
+    /// 從段首起依拍點切；Temoto 模型訓練時用的切法，模型特徵一律用這個。
+    Beats,
+    /// 依手的動作切（擬人切法），見 [`motion_split`]。
+    Motion,
+}
+
+impl GroupCut {
+    pub(crate) fn of(tuning: &crate::scoring_v3::TuningV3) -> Self {
+        if tuning.group_cut >= 0.5 {
+            Self::Motion
+        } else {
+            Self::Beats
+        }
+    }
+}
+
+fn is_hold(onset: &Onset) -> bool {
+    onset.len() == 1 && onset[0].kind == "hold"
+}
+
 /// 自動分組（對照 records.20261016 的真人分組調出來）：
 /// 1. 同鍵反覆與階梯（連續三顆以上單獨落下的按鍵、節奏均勻、不接 Hold）自成一組；
+///    擬人切法時，緊接 Hold（節奏沒放慢）的最後一顆留給 Hold：點完接著按是一個動作，
+///    留下的不到三顆就不算反覆；
 /// 2. 其餘依節奏切段：間隔超過 PHRASE_MAX_GAP，或比前一個或後一個間隔長 PHRASE_BREAK_RATIO 倍；
-/// 3. 超過 GROUP_MAX_ONSETS 個落點的段：有兩顆以上星星頭就在每顆星星頭前切，
-///    否則從段首起依拍點切（16 分兩顆一組、三連音與 24 分三顆一組）。
+/// 3. 超過 GROUP_MAX_ONSETS 個落點的段：拍點切法有兩顆以上星星頭就在每顆星星頭前切，
+///    否則從段首起依拍點切（16 分兩顆一組、三連音與 24 分三顆一組）；擬人切法見 [`motion_split`]；
+/// 4. 擬人切法時，落單的 Tap 見 [`attach_to_repeats`]。
 ///
 /// 回傳每組的音符（含和弦）；少於兩個落點的不算一組。
-pub(crate) fn auto_groups(chart: &Chart) -> Vec<Vec<&Note>> {
+pub(crate) fn auto_groups(chart: &Chart, cut: GroupCut) -> Vec<Vec<&Note>> {
     let onsets = onsets(chart);
     let single = |o: &Onset| o.len() == 1 && o[0].touch_area.is_none();
     let time = |i: usize| onsets[i][0].time_seconds;
     let mut groups: Vec<Vec<Onset>> = vec![];
+    // 留給 Hold 的反覆最後一顆（落點索引）。
+    let mut bonded: Vec<usize> = vec![];
     let mut free = 0;
     let mut i = 0;
     while i < onsets.len() {
@@ -264,20 +294,85 @@ pub(crate) fn auto_groups(chart: &Chart) -> Vec<Vec<&Note>> {
             }
         }
         if best > i {
-            rhythm_segments(&onsets[free..i], &mut groups);
-            groups.push(onsets[i..=best].to_vec());
-            i = best + 1;
-            free = i;
+            let end = best;
+            if cut == GroupCut::Motion
+                && onsets.get(best + 1).is_some_and(is_hold)
+                && time(best + 1) - time(best) <= PHRASE_BREAK_RATIO * (time(best) - time(best - 1))
+            {
+                best -= 1;
+            }
+            if best + 1 - i >= RUN_MIN {
+                rhythm_segments(&onsets[free..i], cut, &mut groups);
+                groups.push(onsets[i..=best].to_vec());
+                free = best + 1;
+                if best < end {
+                    bonded.push(end);
+                }
+            }
+            i = end + 1;
         } else {
             i += 1;
         }
     }
-    rhythm_segments(&onsets[free..], &mut groups);
+    rhythm_segments(&onsets[free..], cut, &mut groups);
+    if cut == GroupCut::Motion {
+        groups = attach_to_repeats(&onsets, groups, &bonded);
+    }
     groups
         .into_iter()
         .filter(|g| g.len() >= 2)
         .map(|g| g.into_iter().flatten().collect())
         .collect()
+}
+
+/// 擬人切法：落單的一顆 Tap 併進前一組。`groups` 依序涵蓋所有落點。
+/// - 留給 Hold 的反覆最後一顆（`bonded`）卻沒和 Hold 分在一起（Hold 自己開了反覆，或節奏在兩者之間切開）時，
+///   還給反覆，不讓它落單；
+/// - 緊接在同鍵反覆（全是單獨落下的同一顆鍵）後面、同一顆鍵，前面的間隔不超過反覆間隔的
+///   ATTACH_MAX_RATIO 倍（最多空一拍）、也不比後面長時，併進那組（連打的最後一下）；隔了休息就不併。
+fn attach_to_repeats<'a>(
+    onsets: &[Onset<'a>],
+    groups: Vec<Vec<Onset<'a>>>,
+    bonded: &[usize],
+) -> Vec<Vec<Onset<'a>>> {
+    let time = |i: usize| onsets[i][0].time_seconds;
+    let mut out: Vec<Vec<Onset>> = vec![];
+    let mut at = 0;
+    for group in groups {
+        let i = at;
+        at += group.len();
+        if let ([lone], Some(last)) = (group.as_slice(), out.last_mut()) {
+            if bonded.contains(&i) {
+                last.push(lone.clone());
+                continue;
+            }
+            let repeats = last.len() >= 2
+                && last.iter().all(|o| {
+                    o.len() == 1 && o[0].touch_area.is_none() && o[0].button == lone[0].button
+                });
+            let before = time(i) - time(i - 1);
+            let inner = match last.as_slice() {
+                [.., a, b] => b[0].time_seconds - a[0].time_seconds,
+                _ => 0.0,
+            };
+            let after = if i + 1 < onsets.len() {
+                time(i + 1) - time(i)
+            } else {
+                f64::INFINITY
+            };
+            if repeats
+                && lone.len() == 1
+                && lone[0].kind == "tap"
+                && before <= ATTACH_MAX_RATIO * inner + 1e-6
+                && before <= after + 1e-6
+            {
+                last.push(lone.clone());
+                continue;
+            }
+        }
+        out.push(group);
+    }
+    out
 }
 
 /// 所有接觸（含星星頭，不含沒有星星頭的 Slide）依時間排序，同時落下的併成一個落點。
@@ -302,7 +397,7 @@ fn onsets(chart: &Chart) -> Vec<Onset<'_>> {
     onsets
 }
 
-fn rhythm_segments<'a>(onsets: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+fn rhythm_segments<'a>(onsets: &[Onset<'a>], cut: GroupCut, groups: &mut Vec<Vec<Onset<'a>>>) {
     if onsets.is_empty() {
         return;
     }
@@ -317,14 +412,25 @@ fn rhythm_segments<'a>(onsets: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
             || longer(i.checked_sub(1).map(|k| &gaps[k]))
             || longer(gaps.get(i + 1))
         {
-            split_segment(&onsets[start..=i], groups);
+            split_segment(&onsets[start..=i], cut, groups);
             start = i + 1;
         }
     }
-    split_segment(&onsets[start..], groups);
+    split_segment(&onsets[start..], cut, groups);
 }
 
-fn split_segment<'a>(segment: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+fn split_segment<'a>(segment: &[Onset<'a>], cut: GroupCut, groups: &mut Vec<Vec<Onset<'a>>>) {
+    if cut == GroupCut::Motion {
+        // 三四顆的短段裡有 Hold（不在段首）也要看點完接 Hold 該不該切開。
+        if segment.len() > GROUP_MAX_ONSETS
+            || (segment.len() >= 3 && segment[1..].iter().any(is_hold))
+        {
+            motion_split(segment, groups);
+        } else {
+            groups.push(segment.to_vec());
+        }
+        return;
+    }
     if segment.len() <= GROUP_MAX_ONSETS {
         groups.push(segment.to_vec());
         return;
@@ -380,6 +486,91 @@ fn beat_slots<'a>(segment: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
     groups.push(current);
 }
 
+/// 擬人切法的參數（對照 groups12 的真人分組調出來，2026-10-27；逐首留一驗證完全符合
+/// 102/135 組，拍點切法 96/135）。
+const MOTION_PEAK: f64 = 1.0;
+const MOTION_HOLD_PAIR: f64 = 2.0;
+const MOTION_GROUP: f64 = 2.0;
+const MOTION_SINGLE: f64 = 3.0;
+const MOTION_MAX_ONSETS: usize = 5;
+
+/// 擬人切法：在手換動作的地方切。相鄰兩個落點之間切開的分數是手在環上要跳多遠（0–4 格，
+/// 和弦取最近的一對，Touch 算 2），比前後兩處都遠時再加 MOTION_PEAK，切在「接 Hold 的那顆
+/// Tap」前加 MOTION_HOLD_PAIR（點完接著按是一個動作）；每多一組扣 MOTION_GROUP，
+/// 單一落點的組再扣 MOTION_SINGLE，每組最多 MOTION_MAX_ONSETS 個落點，取總分最高的切法
+/// （同分取前面的組比較大的）。
+fn motion_split<'a>(segment: &[Onset<'a>], groups: &mut Vec<Vec<Onset<'a>>>) {
+    let m = segment.len();
+    let jump: Vec<f64> = (0..m)
+        .map(|k| {
+            if k == 0 {
+                0.0
+            } else {
+                ring_jump(&segment[k - 1], &segment[k])
+            }
+        })
+        .collect();
+    let cut: Vec<f64> = (0..m)
+        .map(|k| {
+            if k == 0 {
+                return 0.0;
+            }
+            let left = if k > 1 { jump[k - 1] } else { -1.0 };
+            let right = jump.get(k + 1).copied().unwrap_or(-1.0);
+            let mut score = jump[k];
+            if jump[k] > left && jump[k] > right {
+                score += MOTION_PEAK;
+            }
+            if segment[k].len() == 1
+                && segment[k][0].kind == "tap"
+                && segment.get(k + 1).is_some_and(is_hold)
+            {
+                score += MOTION_HOLD_PAIR;
+            }
+            score
+        })
+        .collect();
+    let mut best = vec![f64::NEG_INFINITY; m + 1];
+    let mut back = vec![0; m + 1];
+    best[0] = 0.0;
+    for end in 1..=m {
+        for start in end.saturating_sub(MOTION_MAX_ONSETS)..end {
+            let mut score = best[start] + cut[start] - MOTION_GROUP;
+            if end - start == 1 {
+                score -= MOTION_SINGLE;
+            }
+            if score > best[end] {
+                best[end] = score;
+                back[end] = start;
+            }
+        }
+    }
+    let mut bounds = vec![m];
+    while let Some(&end) = bounds.last().filter(|&&e| e > 0) {
+        bounds.push(back[end]);
+    }
+    for w in bounds.windows(2).rev() {
+        groups.push(segment[w[1]..w[0]].to_vec());
+    }
+}
+
+/// 兩個落點之間手在環上要跳幾格（0–4）：和弦取最近的一對，有 Touch 的一對算 2。
+fn ring_jump(a: &Onset, b: &Onset) -> f64 {
+    let mut best = 4;
+    for x in a {
+        for y in b {
+            let d = if x.touch_area.is_some() || y.touch_area.is_some() {
+                2
+            } else {
+                let d = (y.button + 8 - x.button) % 8;
+                d.min(8 - d)
+            };
+            best = best.min(d);
+        }
+    }
+    f64::from(best)
+}
+
 /// 自動分組只在這些速度收手型成本（組內最長間隔，秒）：階梯不超過 AUTO_STAIR_GAP；
 /// 相鄰兩顆的交替在 AUTO_PAIR_GAP 範圍內。更快的兩顆真人多半一手連打兩顆，
 /// 更慢的、三顆以上的交替真人做法分散（eval18 與 records.20261016 的統計）。
@@ -403,9 +594,12 @@ const AUTO_JACK_MIN: usize = 5;
 /// - 階梯：只在快、而且不超過 AUTO_STAIR_MAX 顆時要求單手；
 /// - 兩顆不同鍵：只在 AUTO_PAIR_GAP 的速度要求一左一右；
 /// - 其餘不收成本。
-pub(crate) fn auto_rules(chart: &Chart) -> Vec<(Vec<&Note>, GroupRule, Option<&Note>)> {
+pub(crate) fn auto_rules(
+    chart: &Chart,
+    cut: GroupCut,
+) -> Vec<(Vec<&Note>, GroupRule, Option<&Note>)> {
     let onsets = onsets(chart);
-    let groups = auto_groups(chart);
+    let groups = auto_groups(chart, cut);
     let half = |g: &Vec<&Note>| -> Option<bool> {
         if g.iter().any(|n| n.touch_area.is_some()) {
             return None;
@@ -482,9 +676,21 @@ pub(crate) fn auto_rules(chart: &Chart) -> Vec<(Vec<&Note>, GroupRule, Option<&N
     result
 }
 
-/// 自動分組的音符 key（評估用）。
+/// 自動分組的音符 key（評估用），切法依目前的 V3 權重（groupCut）。
 pub fn auto_group_keys(chart: &Chart) -> Vec<Vec<String>> {
-    auto_groups(chart)
+    group_keys(auto_groups(
+        chart,
+        GroupCut::of(crate::scoring_v3::tuning()),
+    ))
+}
+
+/// 擬人切法的自動分組音符 key（不看 V3 權重）：app 標註預填分組用。依時間排序，組內依落點。
+pub fn motion_group_keys(chart: &Chart) -> Vec<Vec<String>> {
+    group_keys(auto_groups(chart, GroupCut::Motion))
+}
+
+fn group_keys(groups: Vec<Vec<&Note>>) -> Vec<Vec<String>> {
+    groups
         .into_iter()
         .map(|g| g.into_iter().map(|n| n.key.clone()).collect())
         .collect()

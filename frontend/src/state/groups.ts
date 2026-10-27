@@ -1,5 +1,6 @@
 // 分組標記的操作與提示：逐顆清單的右鍵選單、G 快捷鍵與備註頁共用。
 
+import { chartAutoGroups } from '../lib/api';
 import type { Note } from '../lib/types';
 import { annotation } from './annotation.svelte';
 import { playback } from './playback.svelte';
@@ -61,6 +62,62 @@ export function groupPicked(): void {
       action: { label: '復原', icon: 'rotate-ccw', run: () => annotation.restoreGroups(before) },
     });
   }
+}
+
+/** 進行中的自動預填（避免連按送出兩次）。 */
+let prefilling = false;
+
+/**
+ * 自動預填分組：請 Rust 用擬人切法切這份譜面，和現有分組沒有共用音符的組加成預填草稿，可以復原。
+ * 只有桌面版有 Rust 核心。
+ */
+export async function prefillGroups(): Promise<void> {
+  const result = session.result;
+  if (!annotation.groupsAvailable || !result || !session.desktop || prefilling) return;
+  prefilling = true;
+  try {
+    const groups = await chartAutoGroups(result.source, result.firstSeconds);
+    // 等 Rust 的時候換了譜面就不套用。
+    if (session.result !== result || !annotation.groupsAvailable) return;
+    const before = annotation.snapshotGroups();
+    const count = annotation.prefillGroups(groups);
+    if (count === 0) {
+      toasts.show({
+        id: TOAST,
+        tone: 'info',
+        title: '沒有可以預填的分組',
+        body: groups.length === 0 ? '這份譜面找不到連續的節奏組。' : '自動分組的音符都已經在現有分組裡。',
+      });
+      return;
+    }
+    toasts.show({
+      id: TOAST,
+      tone: 'ok',
+      title: `已預填 ${count} 組分組`,
+      body: '預填只是草稿，確認或修改後才算真人分組。已經在分組裡的音符不動。',
+      action: { label: '復原', icon: 'rotate-ccw', run: () => annotation.restoreGroups(before) },
+    });
+  } catch (error) {
+    toasts.show({
+      id: TOAST,
+      tone: 'error',
+      title: '自動分組失敗',
+      body: typeof error === 'string' ? error : String(error),
+    });
+  } finally {
+    prefilling = false;
+  }
+}
+
+export function confirmAllGroups(): void {
+  const count = annotation.confirmAllGroups();
+  if (count > 0) toasts.show({ id: TOAST, tone: 'ok', title: `已確認 ${count} 組預填分組` });
+}
+
+export function clearPrefilledGroups(): void {
+  const before = annotation.snapshotGroups();
+  const count = annotation.clearPrefilledGroups();
+  if (count > 0) undoableToast(`已清除 ${count} 組預填分組`, before);
 }
 
 export function cancelGroup(): void {

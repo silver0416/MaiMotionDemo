@@ -36,6 +36,7 @@ fn engine() -> ScoringV3 {
         phrase_one_hand: 0.0,
         group_pattern: 0.0,
         group_auto: 0.0,
+        group_cut: 0.0,
         glide_speed: 1.0,
         future_role: 0.15,
         arc_side: 0.0,

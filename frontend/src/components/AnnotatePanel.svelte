@@ -37,7 +37,18 @@
   import { session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { videoSync } from '../state/videoSync.svelte';
-  import { addToGroup, cancelGroup, groupPicked, markGroupAt, playGroup, removeFromGroup, removeGroup } from '../state/groups';
+  import {
+    addToGroup,
+    cancelGroup,
+    clearPrefilledGroups,
+    confirmAllGroups,
+    groupPicked,
+    markGroupAt,
+    playGroup,
+    prefillGroups,
+    removeFromGroup,
+    removeGroup,
+  } from '../state/groups';
   import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
@@ -313,6 +324,11 @@
         groupItems.push({ id: `group-in:${index}`, label: `加入分組「${annotation.groupName(index)}」`, icon: 'plus' });
       }
       for (const index of annotation.groupsOf(note)) {
+        if (annotation.draft.groups[index]?.prefilled) {
+          groupItems.push({ id: `group-confirm:${index}`, label: `確認分組「${annotation.groupName(index)}」`, icon: 'check' });
+        }
+      }
+      for (const index of annotation.groupsOf(note)) {
         groupItems.push({ id: `group-out:${index}`, label: `移出分組「${annotation.groupName(index)}」`, icon: 'x' });
       }
       for (const index of annotation.groupsOf(note)) {
@@ -364,6 +380,7 @@
       annotation.cancelGroup();
       markGroupAt(target.note);
     } else if (action === 'group-cancel') cancelGroup();
+    else if (action === 'group-confirm') annotation.confirmGroup(Number(line));
     else if (action === 'group-in') addToGroup(Number(line), target.note);
     else if (action === 'group-out') removeFromGroup(Number(line), target.note);
     else if (action === 'group-delete') removeGroup(Number(line));
@@ -539,13 +556,14 @@
     return columns;
   });
   const groupColumnCount = $derived(Math.max(0, ...[...groupColumns.values()].map((item) => item.column + 1)));
-  /** 清單每一列的分組條：上下列也在同一組就接起來。 */
+  /** 清單每一列的分組條：上下列也在同一組就接起來；預填（還沒確認）的畫虛線。 */
   const rowBars = $derived(
     rows.map((step, index) =>
       annotation.groupsOf(step.note).map((group) => ({
         index: group,
         column: groupColumns.get(group)?.column ?? 0,
         alt: groupColumns.get(group)?.alt ?? false,
+        prefilled: !!annotation.draft.groups[group]?.prefilled,
         up: index > 0 && annotation.groupsOf(rows[index - 1].note).includes(group),
         down: index + 1 < rows.length && annotation.groupsOf(rows[index + 1].note).includes(group),
       })),
@@ -1046,6 +1064,25 @@
           </button>
           <button class="btn btn--ghost" disabled={stats.prefilled === 0} onclick={() => annotation.clearPrefilled()}>清除預填</button>
         </div>
+        <!-- 分組也能先自動切一份草稿（依手的動作），清單左側畫成虛線，確認後才算真人分組。 -->
+        <div class="row row-wrap">
+          <button
+            class="btn"
+            disabled={!session.desktop || !annotation.groupsAvailable}
+            onclick={prefillGroups}
+            title={!session.desktop
+              ? '瀏覽器預覽沒有 Rust 核心，請改用桌面版'
+              : annotation.groupsAvailable
+                ? '依手的動作切一份分組草稿：手跳得遠的地方切開、接 Hold 的那顆跟著 Hold。已經在分組裡的音符不動'
+                : '目前的結果不是這筆紀錄的原文，無法分組'}
+          >
+            <Icon name="brackets" size={14} />自動預填分組
+          </button>
+          <button class="btn" disabled={annotation.prefilledGroups === 0} onclick={confirmAllGroups}>
+            <Icon name="check" size={14} />全部確認分組
+          </button>
+          <button class="btn btn--ghost" disabled={annotation.prefilledGroups === 0} onclick={clearPrefilledGroups}>清除預填分組</button>
+        </div>
         <label class="check">
           <input type="checkbox" checked={annotation.autoAdvance} onchange={(event) => annotation.setAutoAdvance(event.currentTarget.checked)} />
           <span>標完自動跳到下一步</span>
@@ -1192,10 +1229,11 @@
               <span
                 class="group-bar"
                 class:is-alt={bar.alt}
+                class:is-prefilled={bar.prefilled}
                 class:joins-up={bar.up}
                 class:joins-down={bar.down}
                 style={`left:calc(var(--space-4) + ${groupAxisLeft + bar.column * GROUP_COLUMN + 3}px)`}
-                title={`分組「${annotation.groupName(bar.index)}」`}
+                title={`分組「${annotation.groupName(bar.index)}」${bar.prefilled ? '（預填，還沒確認）' : ''}`}
               ></span>
             {/each}
             <!-- 有起點的 Slide 分兩步標：滑行那一列是同一顆的第二步，編號前加箭頭區分。 -->
@@ -1297,6 +1335,9 @@
         看譜時覺得「這幾顆是一組」就標起來：在「逐顆標註」清單選這組的第一顆按 <kbd>G</kbd>（或右鍵「從這顆開始分組」），
         再選最後一顆按一次。之後可以在清單按右鍵把單顆移出或加入。名稱可以不填；分組會跟著標註一起匯出，用來研究人怎麼拆解譜面，目前不影響模型。
       </p>
+      <p class="xsmall muted">
+        「逐顆標註」的「自動預填分組」可以先切一份草稿；標「預填」的組要確認、改名或增減音符後才算你的分組。
+      </p>
       {#each annotation.groupList as item (item.index)}
         {@const name = annotation.groupName(item.index)}
         <div class="range">
@@ -1306,6 +1347,7 @@
               : '找不到音符'}
           </button>
           <span class="xsmall muted" style="white-space: nowrap">{item.notes.length} 顆</span>
+          {#if item.group.prefilled}<span class="badge badge--quiet">預填</span>{/if}
           <input
             class="input grow"
             aria-label={`分組「${name}」的名稱`}
@@ -1313,6 +1355,11 @@
             value={item.group.label ?? ''}
             onchange={(event) => annotation.renameGroup(item.index, event.currentTarget.value)}
           />
+          {#if item.group.prefilled}
+            <button class="btn btn--icon" onclick={() => annotation.confirmGroup(item.index)} aria-label={`確認分組「${name}」`} title="確認">
+              <Icon name="check" size={14} />
+            </button>
+          {/if}
           <button class="btn btn--icon" onclick={() => removeGroup(item.index)} aria-label={`刪除分組「${name}」`} title="刪除">
             <Icon name="trash" size={14} />
           </button>
@@ -1802,6 +1849,18 @@
 
   .group-bar.is-alt {
     background: color-mix(in srgb, var(--c-accent) 45%, var(--c-text-dim));
+  }
+
+  /* 預填（還沒確認）的分組：同色虛線，不另加顏色。 */
+  .group-bar.is-prefilled {
+    width: 0;
+    background: none;
+    border-left: 3px dashed var(--c-accent);
+    border-radius: 0;
+  }
+
+  .group-bar.is-prefilled.is-alt {
+    border-left-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-text-dim));
   }
 
   .group-bar.joins-up {

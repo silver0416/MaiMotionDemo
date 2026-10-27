@@ -294,6 +294,7 @@ export function cleanGroups(value: unknown): NoteGroup[] {
     else continue;
     if (text(raw.label)) group.label = text(raw.label).slice(0, GROUP_LABEL_MAX);
     if (text(raw.by)) group.by = text(raw.by);
+    if (raw.prefilled === true) group.prefilled = true;
     if (!out.some((other) => sameGroup(other, group))) out.push(group);
   }
   return out;
@@ -982,8 +983,16 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
   draft.ranges.sort((a, b) => a.from - b.from);
   for (const group of file.groups ?? []) {
     const same = draft.groups.find((item) => sameGroup(item, group));
-    if (!same) draft.groups.push({ ...group, keys: [...group.keys] });
-    else if (!same.label && group.label) same.label = group.label;
+    if (!same) {
+      draft.groups.push({ ...group, keys: [...group.keys] });
+      continue;
+    }
+    if (!same.label && group.label) same.label = group.label;
+    // 和手順一樣：自己這組還是預填草稿、對方已經確認時，以對方的為準（預填不算真人分組）。
+    if (same.prefilled && !group.prefilled) {
+      delete same.prefilled;
+      if (group.by) same.by = group.by;
+    }
   }
   for (const name of file.annotators) {
     if (!draft.annotators.includes(name)) draft.annotators.push(name);

@@ -94,6 +94,12 @@ pub struct TuningV3 {
     /// image to satisfy a group, flipping notes the annotators had accepted.
     /// Temoto models whose bundled tuning predates this field use it as well.
     pub group_auto: f64,
+    /// How automatic groups are cut. 0: long rhythm segments in beat slots
+    /// from the segment start. 1: by hand motion (cut where the hand jumps
+    /// farthest, a tap stays with the hold it leads into), closer to the
+    /// annotated groups. Temoto models always use 0, the cut they were
+    /// trained on.
+    pub group_cut: f64,
     /// Share of burst speed charged while gliding along the ring.
     pub glide_speed: f64,
     /// Rank-only lookahead bias; kept mild.
@@ -144,6 +150,7 @@ impl Default for TuningV3 {
             phrase_one_hand: 0.0,
             group_pattern: 4.0,
             group_auto: 0.5,
+            group_cut: 0.0,
             glide_speed: 1.0,
             future_role: 0.15,
             arc_side: 0.0,
