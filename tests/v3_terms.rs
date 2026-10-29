@@ -42,6 +42,12 @@ fn engine() -> ScoringV3 {
         arc_side: 0.0,
         split_upper: 0.0,
         split_window: 0.5,
+        sweep_break: 0.0,
+        sweep_window: 0.06,
+        sweep_step: 0.8,
+        chord_cross: 0.0,
+        touch_palm: 0.0,
+        touch_palm_free: 0.37,
     });
     ScoringV3::new(PreferenceConfigV3 {
         travel_comfort: 6.5,

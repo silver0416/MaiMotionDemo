@@ -183,7 +183,9 @@ fn screen_sweep_records_continuous_contacts_in_each_hands_time_order() {
     let context = v3::Context::new(&chart, &c).unwrap();
     context.update(&s, &mut next).unwrap();
     context.verify(&next).unwrap();
-    assert_eq!(next.actions.len, 33);
+    // 33 顆各有接觸；同一高度的一排只算一個動作。
+    assert_eq!(next.assignments.len, 33);
+    assert!(next.actions.len < 33);
     for hand in [Hand::L, Hand::R] {
         let events: Vec<_> = next
             .actions
@@ -197,6 +199,21 @@ fn screen_sweep_records_continuous_contacts_in_each_hands_time_order() {
         assert!(events
             .windows(2)
             .all(|p| p[1].time_seconds >= p[0].time_seconds));
+        // 由上往下刷：y 向下增加。
+        assert!(events
+            .windows(2)
+            .all(|p| p[1].point.y >= p[0].point.y - 1e-9));
+        // 手掌沿半邊中線直直往下：移到最上面之後 x 不變、y 只增不減。
+        let glide = next.arms[hand.index()]
+            .segments
+            .to_vec()
+            .into_iter()
+            .find(|s| s.mode == "glide")
+            .unwrap();
+        assert!(glide.samples[1..].windows(2).all(|p| {
+            let (a, b) = (p[0].point(), p[1].point());
+            (b.x - a.x).abs() < 1e-9 && b.y >= a.y
+        }));
     }
     assert_eq!(next.v3.parts.jack_fatigue, 0.);
 }

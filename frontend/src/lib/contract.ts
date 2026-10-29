@@ -1,5 +1,6 @@
 import type {
   AnalyzeStatus,
+  BaseChoice,
   BaseSolverConfig,
   ConfigDraft,
   Hand,
@@ -56,35 +57,61 @@ export const DEFAULT_DRAFT: ConfigDraft = {
   v3: { ...DEFAULT_V3_PREFERENCES },
   slideShortcut: false,
   mlModel: null,
-  v3Variant: null,
+  v3Variant: 'v4',
 };
 
 /**
  * Temoto 模型（與 src/temoto.rs 的 MODEL_IDS 一致）。介面上一律標「TemotoAI-1」，
- * 選項卡只用 color 區分：ruri＝瑠璃色、akane＝茜色、tokiwa＝常磐色。
- * 排列順序就是參數頁的順序（使用者指定：瑠璃、茜一排，常磐第二排）。
+ * 選項卡只用 color 區分：rurikon＝瑠璃紺、ayame＝菖蒲色、ruri＝瑠璃色、akane＝茜色、tokiwa＝常磐色。
+ * 2026-10-30 使用者決定：主卡是瑠璃紺（瑠璃＋V4）與菖蒲（V4 重訓），舊的三個收進「顯示更多模型」。
+ * 各清單的順序就是參數頁的順序。
  */
 /** 介面顯示名稱（2026-10-16 使用者改為 TemotoAI-1；核心的模型 id 與提醒文字開頭仍是 Temoto-1）。 */
 export const TEMOTO_LABEL = 'TemotoAI-1';
-export type TemotoColor = 'ruri' | 'akane' | 'tokiwa';
-export const TEMOTO_MODELS: readonly { id: MlModelId; color: TemotoColor }[] = [
+export type TemotoColor = 'rurikon' | 'ayame' | 'ruri' | 'akane' | 'tokiwa';
+export interface TemotoModel {
+  id: MlModelId;
+  color: TemotoColor;
+}
+export const MAIN_MODELS: readonly TemotoModel[] = [
+  { id: 'temoto-1-rurikon', color: 'rurikon' },
+  { id: 'temoto-1-ayame', color: 'ayame' },
+];
+export const MORE_MODELS: readonly TemotoModel[] = [
   { id: 'temoto-1-ruri', color: 'ruri' },
   { id: 'temoto-1-akane', color: 'akane' },
   { id: 'temoto-1-tokiwa', color: 'tokiwa' },
 ];
+export const TEMOTO_MODELS: readonly TemotoModel[] = [...MAIN_MODELS, ...MORE_MODELS];
 
 export function isMlModelId(value: unknown): value is MlModelId {
   return TEMOTO_MODELS.some((model) => model.id === value);
 }
 
-/** V3 變體（與 src/scoring_v3.rs 的 V3_VARIANTS 一致），收在參數頁「顯示更多模型」裡。 */
+/** V3 變體（與 src/scoring_v3.rs 的 V3_VARIANTS 一致）。 */
 export const V3_VARIANTS: readonly { id: V3VariantId; label: string }[] = [
   { id: 'v3.1', label: 'V3.1' },
   { id: 'v3.2', label: 'V3.2' },
+  { id: 'v4', label: 'V4' },
 ];
 
 export function isV3VariantId(value: unknown): value is V3VariantId {
   return V3_VARIANTS.some((variant) => variant.id === value);
+}
+
+/**
+ * 參數頁的基座卡：V4 取代 V3 成為主卡（2026-10-29 使用者決定），
+ * 原始 V3 與 V3.1、V3.2 收在「顯示更多模型」裡留作對照。
+ */
+export const MAIN_BASE: { id: BaseChoice; label: string } = { id: 'v4', label: 'V4' };
+export const MORE_BASES: readonly { id: BaseChoice; label: string }[] = [
+  { id: 'v3', label: 'V3' },
+  { id: 'v3.1', label: 'V3.1' },
+  { id: 'v3.2', label: 'V3.2' },
+];
+
+function isBaseChoice(value: unknown): value is BaseChoice {
+  return value === 'v3' || isV3VariantId(value);
 }
 
 /** 純 V3 與 V3 變體在畫面上的名稱（Temoto 模型另顯示 TEMOTO_LABEL）。 */
@@ -102,7 +129,7 @@ export function projectConfig(draft: ConfigDraft): SolverConfig {
   for (const key of V3_PREFERENCE_KEYS) config[key] = draft.v3[key];
   config.slideShortcut = draft.slideShortcut;
   if (draft.mlModel) config.mlModel = draft.mlModel;
-  else if (draft.v3Variant) config.v3Variant = draft.v3Variant;
+  else if (draft.v3Variant && draft.v3Variant !== 'v3') config.v3Variant = draft.v3Variant;
   return config as unknown as SolverConfig;
 }
 
@@ -135,9 +162,11 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
   }
   if (typeof raw.slideShortcut === 'boolean') next.slideShortcut = raw.slideShortcut;
   if (raw.mlModel === null || isMlModelId(raw.mlModel)) next.mlModel = raw.mlModel;
-  if (raw.v3Variant === null || isV3VariantId(raw.v3Variant)) next.v3Variant = raw.v3Variant;
+  if (raw.v3Variant === null || isBaseChoice(raw.v3Variant)) next.v3Variant = raw.v3Variant;
   // 兩者只能選一個；舊資料或手改的資料兩個都有時以 Temoto 模型為準
   if (next.mlModel) next.v3Variant = null;
+  // 兩者都沒選的是 V4 之前的預設 V3：改用新的預設 V4。之後主動選 V3 的會存成 'v3'。
+  else if (next.v3Variant === null) next.v3Variant = DEFAULT_DRAFT.v3Variant;
   const v3 = raw.v3;
   if (v3 && typeof v3 === 'object') {
     for (const key of V3_PREFERENCE_KEYS) {

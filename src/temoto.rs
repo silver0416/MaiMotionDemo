@@ -26,7 +26,15 @@ const X_COLS: [usize; 6] = [7, 17, 18, 20, 22, 24];
 /// 群內由左到右的排名，鏡像時變成 1 − rank。
 const RANK_COL: usize = 15;
 
-pub const MODEL_IDS: [&str; 3] = ["temoto-1-tokiwa", "temoto-1-akane", "temoto-1-ruri"];
+/// 內建模型。rurikon（瑠璃紺）是 ruri 的網路配 V4 權重，ayame（菖蒲）是以 V4 基座重訓的分組架構
+/// （2026-10-30 使用者選入 App；tokiwa、akane、ruri 收進前端的「顯示更多模型」）。
+pub const MODEL_IDS: [&str; 5] = [
+    "temoto-1-tokiwa",
+    "temoto-1-akane",
+    "temoto-1-ruri",
+    "temoto-1-rurikon",
+    "temoto-1-ayame",
+];
 
 /// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
 pub const GROUP_FEATURE_VERSION: u32 = 1;
@@ -86,7 +94,11 @@ pub struct TemotoModel {
     pub name: String,
     tuning: Option<&'static TuningV3>,
     /// 和 V3 的手不同時，模型的把握（較大那一邊的機率）要到這個值才改，不到就照 V3。
+    /// 模型檔標頭的 `flipAt`，沒寫為 0.5。
     flip_at: f32,
+    /// 基座（V3）的手是不是輸入：模型檔標頭 `input` 為 `"none"` 的純模型不看，那兩欄一律當成
+    /// 「沒有」；這時每顆都照模型判斷（`flipAt` 0.5），基座只負責算動作與確認做得到。
+    uses_base: bool,
     /// 每顆的輸入維度：逐顆架構 `INPUTS`，分組架構另加 `G_COLS`。
     inputs: usize,
     /// 分組架構：推論視窗長度（訓練時的切段長度，視窗重疊一半）。逐顆架構為 None，整首一次跑完。
@@ -297,7 +309,8 @@ impl TemotoModel {
         Ok(Self {
             name: header["name"].as_str().unwrap_or("temoto").into(),
             tuning,
-            flip_at: 0.5,
+            flip_at: header["flipAt"].as_f64().map_or(0.5, |v| v as f32),
+            uses_base: header["input"].as_str() != Some("none"),
             inputs,
             window,
             mu,
@@ -309,11 +322,14 @@ impl TemotoModel {
     /// 內建模型（依 id 取得，第一次使用時解壓）。
     ///
     /// 改動門檻依四份真人標註的掃描決定：tokiwa 在 0.6 時合計多對最多，把握不到 0.6 的修改
-    /// 改對與改錯差不多；akane 在 0.5 時最多。ruri（分組架構，基座 V3.2）沿用 0.5。
+    /// 改對與改錯差不多；akane 在 0.5 時最多。ruri（分組架構，基座 V3.2）沿用 0.5，
+    /// rurikon、ayame（分組架構，基座 V4）也是 0.5。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
         static TOKIWA: OnceLock<TemotoModel> = OnceLock::new();
         static AKANE: OnceLock<TemotoModel> = OnceLock::new();
         static RURI: OnceLock<TemotoModel> = OnceLock::new();
+        static RURIKON: OnceLock<TemotoModel> = OnceLock::new();
+        static AYAME: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
                 Self {
@@ -329,6 +345,14 @@ impl TemotoModel {
             "temoto-1-ruri" => Some(RURI.get_or_init(|| {
                 Self::load(include_bytes!("../models/temoto-1-ruri.temoto")).expect("內建模型 ruri")
             })),
+            "temoto-1-rurikon" => Some(RURIKON.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-1-rurikon.temoto"))
+                    .expect("內建模型 rurikon")
+            })),
+            "temoto-1-ayame" => Some(AYAME.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-1-ayame.temoto"))
+                    .expect("內建模型 ayame")
+            })),
             _ => None,
         }
     }
@@ -340,6 +364,26 @@ impl TemotoModel {
 
     pub fn tuning(&self) -> Option<&'static TuningV3> {
         self.tuning
+    }
+
+    /// 基座在提醒文字裡的名稱：附帶的權重和哪個 V3 變體相同就用它的名字（V3.1、V3.2、V4），
+    /// 沒附權重是原始 V3，都對不上時只說「基座」。
+    pub fn base_label(&self) -> String {
+        let Some(tuning) = self.tuning else {
+            return "V3".into();
+        };
+        let Ok(value) = serde_json::to_value(tuning) else {
+            return "基座".into();
+        };
+        crate::scoring_v3::V3_VARIANTS
+            .iter()
+            .find(|id| {
+                crate::scoring_v3::variant_tuning(id)
+                    .and_then(|v| serde_json::to_value(v).ok())
+                    .as_ref()
+                    == Some(&value)
+            })
+            .map_or_else(|| "基座".into(), |id| id.to_uppercase())
     }
 
     pub fn flip_at(&self) -> f32 {
@@ -431,8 +475,13 @@ impl TemotoModel {
                 }
                 r[RANK_COL] = 1.0 - r[RANK_COL];
             }
-            let [a, b] = enc(input.v3_hand[i]);
-            let [c, d] = enc(input.v3_track[i]);
+            let (hand, track) = if self.uses_base {
+                (input.v3_hand[i], input.v3_track[i])
+            } else {
+                (-1, -1)
+            };
+            let [a, b] = enc(hand);
+            let [c, d] = enc(track);
             r[FEATURES..INPUTS].copy_from_slice(&[a, b, c, d]);
             // 分組特徵左右鏡像不變
             if self.inputs > INPUTS {
@@ -1049,17 +1098,20 @@ fn apply_whole_groups(
     }
 }
 
-/// 放寬次數上限：每次在走不下去的時刻附近拿掉一些限制。
+/// 放寬次數上限：每次在走不下去的時刻附近拿掉一些限制。純模型每顆都照模型、和基座不同的
+/// 地方多很多，24 次常不夠用而整首退回基座，所以給 96 次。
 const MAX_RELAX: usize = 24;
+const MAX_RELAX_PURE: usize = 96;
 
 /// Temoto 求解：V3（或模型附帶的權重）→ 模型修正 → 照修正後的手重新求解。
 /// 照修正走不下去時，在卡住的時刻附近逐步拿掉限制（先拿掉修正的，再拿掉全部）再試；
-/// 仍不行就回傳 V3 的結果並加註。
+/// 仍不行就回傳基座的結果並加註。提醒文字裡的基座名稱照模型附帶的權重（`base_label`）。
 pub fn solve(
     chart: &Chart,
     c: &SolverConfig,
     model: &TemotoModel,
 ) -> Result<Vec<Solution>, Diagnostic> {
+    let base_name = model.base_label();
     let run = || -> Result<Vec<Solution>, Diagnostic> {
         let base = solver::solve(chart, c)?;
         let Some(top) = base.first() else {
@@ -1105,7 +1157,12 @@ pub fn solve(
         }
         let mut last_fail: Option<f64> = None;
         let mut strikes = 0;
-        for _ in 0..=MAX_RELAX {
+        let max_relax = if model.uses_base {
+            MAX_RELAX
+        } else {
+            MAX_RELAX_PURE
+        };
+        for _ in 0..=max_relax {
             match solver::solve_constrained(chart, c, &build_rules(&constraints)) {
                 Ok(mut solutions) => {
                     let applied = constraints.iter().filter(|k| k.active && k.flipped).count();
@@ -1117,7 +1174,7 @@ pub fn solve(
                         (0, 0) => "Temoto-1：檢查過，沒有需要修改的手順。".to_string(),
                         (a, 0) => format!("Temoto-1：修改了 {a} 個手順。"),
                         (a, d) => format!(
-                            "Temoto-1：修改了 {a} 個手順；另有 {d} 個修改動作上做不到，沿用 V3。"
+                            "Temoto-1：修改了 {a} 個手順；另有 {d} 個修改動作上做不到，沿用 {base_name}。"
                         ),
                     };
                     for s in &mut solutions {
@@ -1157,7 +1214,7 @@ pub fn solve(
         for s in &mut base {
             s.warnings.insert(
                 0,
-                "Temoto-1 的修正在這份譜面走不下去，改用 V3 的結果。".into(),
+                format!("Temoto-1 的修正在這份譜面走不下去，改用 {base_name} 的結果。"),
             );
         }
         Ok(base)
@@ -1185,6 +1242,49 @@ mod tests {
         // 和 V3 一致時不看門檻
         assert_eq!(chosen_hand(0.55, 1, 0.9), Hand::R);
         assert_eq!(chosen_hand(0.45, 0, 0.9), Hand::L);
+    }
+
+    /// 模型檔標頭可以帶改動門檻（flipAt），沒寫為 0.5。
+    #[test]
+    fn flip_at_comes_from_header() {
+        let bytes: &[u8] = include_bytes!("../models/temoto-1-ruri.temoto");
+        assert_eq!(TemotoModel::load(bytes).unwrap().flip_at(), 0.5);
+        let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        let mut header: serde_json::Value = serde_json::from_slice(&bytes[12..12 + len]).unwrap();
+        header["flipAt"] = 0.6.into();
+        let header = serde_json::to_vec(&header).unwrap();
+        let mut edited = bytes[..8].to_vec();
+        edited.extend((header.len() as u32).to_le_bytes());
+        edited.extend(&header);
+        edited.extend(&bytes[12 + len..]);
+        assert_eq!(TemotoModel::load(&edited).unwrap().flip_at(), 0.6);
+    }
+
+    /// 標頭 `input` 為 "none" 的純模型不看基座的手：基座的手怎麼換，預測都一樣；
+    /// 一般模型則會跟著變。
+    #[test]
+    fn pure_model_ignores_base_hands() {
+        let bytes: &[u8] = include_bytes!("../models/temoto-1-ruri.temoto");
+        let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        let mut header: serde_json::Value = serde_json::from_slice(&bytes[12..12 + len]).unwrap();
+        header["input"] = "none".into();
+        let header = serde_json::to_vec(&header).unwrap();
+        let mut edited = bytes[..8].to_vec();
+        edited.extend((header.len() as u32).to_le_bytes());
+        edited.extend(&header);
+        edited.extend(&bytes[12 + len..]);
+        let pure = TemotoModel::load(&edited).unwrap();
+        let based = TemotoModel::load(bytes).unwrap();
+        let chart = crate::parse_chart("(150){8}1,2,3,4,5,6,7,8,E", 0.0)
+            .unwrap()
+            .chart;
+        let mut input = features(&chart, None);
+        let (pure_before, based_before) = (pure.predict(&input), based.predict(&input));
+        for hand in input.v3_hand.iter_mut() {
+            *hand = 1;
+        }
+        assert_eq!(pure.predict(&input), pure_before);
+        assert_ne!(based.predict(&input), based_before);
     }
 
     /// 整組套用：只在符合規則的打法裡選，而且要比 V3 原本的手更符合模型才改。

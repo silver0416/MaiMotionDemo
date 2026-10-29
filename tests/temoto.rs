@@ -50,6 +50,35 @@ fn builtin_models_load() {
         serde_json::to_value(ruri.tuning().unwrap()).unwrap(),
         serde_json::to_value(variant_tuning("v3.2").unwrap()).unwrap()
     );
+    // rurikon（ruri 的網路）與 ayame（V4 重訓）：分組架構，附帶 V4 的權重（含 touchPalm），門檻 0.5
+    for id in ["temoto-1-rurikon", "temoto-1-ayame"] {
+        let model = TemotoModel::builtin(id).unwrap();
+        assert!(model.grouped(), "{id}");
+        assert_eq!(model.flip_at(), 0.5, "{id}");
+        assert_eq!(
+            serde_json::to_value(model.tuning().unwrap()).unwrap(),
+            serde_json::to_value(variant_tuning("v4").unwrap()).unwrap(),
+            "{id}"
+        );
+    }
+}
+
+/// 提醒文字裡的基座名稱照模型附帶的權重，不是一律寫 V3。
+#[test]
+fn base_label_follows_model_tuning() {
+    for (id, label) in [
+        ("temoto-1-tokiwa", "V3"),
+        ("temoto-1-akane", "V3.1"),
+        ("temoto-1-ruri", "V3.2"),
+        ("temoto-1-rurikon", "V4"),
+        ("temoto-1-ayame", "V4"),
+    ] {
+        assert_eq!(
+            TemotoModel::builtin(id).unwrap().base_label(),
+            label,
+            "{id}"
+        );
+    }
 }
 
 /// 分組架構（ruri）：參考機率由 J:\MaiMotionML\g1\export_group.py --ref 以同一組 f16 權重算出。

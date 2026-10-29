@@ -53,6 +53,10 @@ pub(super) struct Context<'a> {
     /// Stair or Touch stroke step → the previous step's note and the cost of
     /// changing hands there.
     stair_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 極短間隔的相鄰單顆接觸（sweepBreak）→ 前一顆與換手成本。
+    sweep_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 兩顆按鍵同時的和弦（chordCross）→ 另一顆。
+    chord_pair: BTreeMap<&'a str, &'a str>,
     /// Last note of a repeated shape → its notes and the earlier occurrence's.
     shape_prev: BTreeMap<&'a str, ShapeRepeat<'a>>,
     /// Note of a phrase's last group → the phrase's notes and learned hand pattern.
@@ -163,6 +167,8 @@ impl<'a> Context<'a> {
             nominal,
             lookahead: Lookahead::from_chart(chart),
             stair_prev: stair_steps(chart, c.travel_comfort),
+            sweep_prev: sweep_steps(chart),
+            chord_pair: chord_pairs(chart),
             shape_prev: shape_repeats(chart),
             phrase_end,
             phrase_templates,
@@ -239,6 +245,9 @@ impl<'a> Context<'a> {
             .map(|link| {
                 self.star_switch(link)
                     + self.stair_break(link)
+                    + self.sweep_break(link)
+                    + self.chord_cross(link)
+                    + self.touch_palm(link)
                     + self.shape_mix(link)
                     + self.phrase_template(link)
                     + self.group_pattern(link)
@@ -475,37 +484,133 @@ impl<'a> Context<'a> {
     /// 階梯或 Touch 一筆畫的中途換手：這一步與上一步由不同的手接觸。只看這顆的
     /// 第一筆接觸，往回找上一步的接觸，最多到上一步前 1 秒或 256 筆。
     fn stair_break(&self, link: &Link<Assignment>) -> f64 {
+        self.pair_break(link, &self.stair_prev)
+    }
+
+    /// 極短間隔的相鄰接觸中途換手（sweepBreak），算法同 stair_break。
+    fn sweep_break(&self, link: &Link<Assignment>) -> f64 {
+        self.pair_break(link, &self.sweep_prev)
+    }
+
+    fn pair_break(
+        &self,
+        link: &Link<Assignment>,
+        pairs: &BTreeMap<&'a str, (&'a str, f64)>,
+    ) -> f64 {
         let current = &link.value;
         if !matches!(current.part.as_str(), "contact" | "head") {
             return 0.0;
         }
-        let Some(&(previous, weight)) = self.stair_prev.get(current.note_id.as_str()) else {
+        let Some(&(previous, weight)) = pairs.get(current.note_id.as_str()) else {
             return 0.0;
         };
         if weight == 0.0 {
             return 0.0;
         }
-        let since = self.notes[previous].time_seconds - 1.0;
+        match self.first_contact(link, previous, self.notes[previous].time_seconds - 1.0) {
+            Some(hand) if hand != current.hand => weight,
+            _ => 0.0,
+        }
+    }
+
+    /// 往回找 `note` 的第一筆接觸的手，最多到 `since` 或 256 筆；先遇到目前這顆
+    /// 自己較早的接觸（不是第一筆）就不算。
+    fn first_contact(&self, link: &Link<Assignment>, note: &str, since: f64) -> Option<Hand> {
+        let current = &link.value;
         let mut cursor = &link.prev;
         for _ in 0..256 {
-            let Some(prev) = cursor.head.as_ref() else {
-                break;
-            };
+            let prev = cursor.head.as_ref()?;
             let a = &prev.value;
             if a.end_seconds < since {
-                break;
+                return None;
             }
             if matches!(a.part.as_str(), "contact" | "head") {
                 if a.note_id == current.note_id {
-                    return 0.0;
+                    return None;
                 }
-                if a.note_id == *previous {
-                    return if a.hand == current.hand { 0.0 } else { weight };
+                if a.note_id == note {
+                    return Some(a.hand);
                 }
             }
             cursor = &prev.prev;
         }
+        None
+    }
+
+    /// 兩顆按鍵同時、兩手各一（chordCross）：左手在右手右邊算交叉；兩顆在同一側、
+    /// 左右位置一樣時，從另一側來幫忙的手打上面那顆也算。後接觸的那顆結算。
+    fn chord_cross(&self, link: &Link<Assignment>) -> f64 {
+        let weight = crate::scoring_v3::tuning().chord_cross;
+        let current = &link.value;
+        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&other) = self.chord_pair.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let note = self.notes[current.note_id.as_str()];
+        let Some(hand) = self.first_contact(link, other, note.time_seconds - 1.0) else {
+            return 0.0;
+        };
+        if hand == current.hand {
+            return 0.0;
+        }
+        let (left, right) = match current.hand {
+            Hand::L => (note.position, self.notes[other].position),
+            Hand::R => (self.notes[other].position, note.position),
+        };
+        if left.x > right.x + CHORD_SIDE {
+            return weight;
+        }
+        if (left.x - right.x).abs() <= CHORD_SIDE && left.x.abs() > CHORD_SIDE {
+            // 右側時左手是幫忙的手；y 小＝上面
+            let (helper, owner) = if left.x > 0.0 {
+                (left, right)
+            } else {
+                (right, left)
+            };
+            if helper.y < owner.y - EPS {
+                return weight;
+            }
+        }
         0.0
+    }
+
+    /// 一隻手掌同時蓋住的 Touch 太散（touchPalm）：同一次手掌的接觸在路線上連續、
+    /// 同一隻手、同一個開始時刻；依序加入時，最小包圍圓半徑第一次超過
+    /// touchPalmFree 的那顆結算。
+    fn touch_palm(&self, link: &Link<Assignment>) -> f64 {
+        let t = crate::scoring_v3::tuning();
+        let current = &link.value;
+        let touch = |a: &Assignment| {
+            a.part == "contact"
+                && matches!(
+                    self.notes[a.note_id.as_str()].kind.as_str(),
+                    "touch" | "touchHold"
+                )
+        };
+        if t.touch_palm == 0.0 || !touch(current) {
+            return 0.0;
+        }
+        let mut points = vec![self.notes[current.note_id.as_str()].position];
+        let mut cursor = &link.prev;
+        while let Some(prev) = cursor.head.as_ref() {
+            let a = &prev.value;
+            if a.hand != current.hand
+                || (a.start_seconds - current.start_seconds).abs() > EPS
+                || !touch(a)
+            {
+                break;
+            }
+            points.push(self.notes[a.note_id.as_str()].position);
+            cursor = &prev.prev;
+        }
+        let free = t.touch_palm_free + EPS;
+        if enclosing_radius(&points) > free && enclosing_radius(&points[1..]) <= free {
+            t.touch_palm
+        } else {
+            0.0
+        }
     }
 
     /// One physical action with V3.1 ownership and roles. Only genuine button
@@ -822,6 +927,9 @@ impl<'a> Context<'a> {
         while let Some(link) = cursor.head.as_ref() {
             expected.ownership_switch += self.star_switch(link)
                 + self.stair_break(link)
+                + self.sweep_break(link)
+                + self.chord_cross(link)
+                + self.touch_palm(link)
                 + self.shape_mix(link)
                 + self.phrase_template(link)
                 + self.group_pattern(link);
@@ -936,25 +1044,7 @@ fn fresh_values<'a, T>(old: &Chain<T>, new: &'a Chain<T>) -> Vec<&'a T> {
 /// 回傳每個算進去的步 → 上一步的音符與換手成本。
 fn stair_steps(chart: &Chart, comfort: f64) -> BTreeMap<&str, (&str, f64)> {
     let t = crate::scoring_v3::tuning();
-    let mut contacts: Vec<&Note> = chart
-        .notes
-        .iter()
-        .filter(|n| n.kind != "slide" || n.has_head)
-        .collect();
-    contacts.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
-    let mut singles: Vec<Option<&Note>> = vec![];
-    let mut last_time = f64::NEG_INFINITY;
-    for note in contacts {
-        if (note.time_seconds - last_time).abs() < 0.002 {
-            // 同時的第二顆：這個時刻不是單顆接觸。
-            if let Some(last) = singles.last_mut() {
-                *last = None;
-            }
-        } else {
-            singles.push(Some(note));
-        }
-        last_time = note.time_seconds;
-    }
+    let singles = single_contacts(chart);
     let touch = |n: &Note| n.touch_area.is_some();
     let button_step = |a: &Note, b: &Note| match (b.button + 8 - a.button) % 8 {
         1 => 1,
@@ -1037,6 +1127,98 @@ fn stair_steps(chart: &Chart, comfort: f64) -> BTreeMap<&str, (&str, f64)> {
     }
     flush(&run, weights, &mut result);
     result
+}
+
+/// 單顆接觸（同時刻只有一顆）依時間排序；同時刻有兩顆以上的那個時刻記為 None。
+fn single_contacts(chart: &Chart) -> Vec<Option<&Note>> {
+    let mut contacts: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    contacts.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    let mut singles: Vec<Option<&Note>> = vec![];
+    let mut last_time = f64::NEG_INFINITY;
+    for note in contacts {
+        if (note.time_seconds - last_time).abs() < 0.002 {
+            if let Some(last) = singles.last_mut() {
+                *last = None;
+            }
+        } else {
+            singles.push(Some(note));
+        }
+        last_time = note.time_seconds;
+    }
+    singles
+}
+
+/// sweepBreak：相鄰兩顆單顆接觸（按鍵或 Touch）間隔不超過 sweepWindow、距離不超過
+/// sweepStep 時，後一顆 → (前一顆, 換手成本)。標記者在這種地方幾乎都用同一隻手
+/// （例如 tap 6 → E6 → B5 往內刷）。
+fn sweep_steps(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.sweep_break == 0.0 {
+        return result;
+    }
+    for pair in single_contacts(chart).windows(2) {
+        let (Some(a), Some(b)) = (pair[0], pair[1]) else {
+            continue;
+        };
+        let gap = b.time_seconds - a.time_seconds;
+        if gap <= t.sweep_window && a.position.distance(b.position) <= t.sweep_step {
+            result.insert(b.id.as_str(), (a.id.as_str(), t.sweep_break));
+        }
+    }
+    result
+}
+
+/// 和弦兩顆的左右位置差在這以內算「一樣」；位置離中線在這以內不算哪一側。
+const CHORD_SIDE: f64 = 0.05;
+
+/// chordCross：剛好兩顆按鍵（Tap、Hold、有頭的 Slide）同時的時刻，兩顆互相對應。
+fn chord_pairs(chart: &Chart) -> BTreeMap<&str, &str> {
+    let mut result = BTreeMap::new();
+    if crate::scoring_v3::tuning().chord_cross == 0.0 {
+        return result;
+    }
+    let mut heads: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    heads.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    for group in heads.chunk_by(|a, b| (b.time_seconds - a.time_seconds).abs() < 0.002) {
+        if let [a, b] = group {
+            if a.touch_area.is_none() && b.touch_area.is_none() && a.button != b.button {
+                result.insert(a.id.as_str(), b.id.as_str());
+                result.insert(b.id.as_str(), a.id.as_str());
+            }
+        }
+    }
+    result
+}
+
+/// 點的最小包圍圓半徑（點很少：試每兩點的直徑圓與每三點的外接圓）。
+fn enclosing_radius(points: &[Point]) -> f64 {
+    let reach = |center: Point| {
+        points
+            .iter()
+            .map(|p| p.distance(center))
+            .fold(0.0, f64::max)
+    };
+    let mut best = if points.len() < 2 { 0.0 } else { f64::INFINITY };
+    for (i, &a) in points.iter().enumerate() {
+        for (j, &b) in points.iter().enumerate().skip(i + 1) {
+            best = best.min(reach(a.lerp(b, 0.5)));
+            for &c in &points[j + 1..] {
+                if let Some(center) = circumcenter(a, b, c) {
+                    best = best.min(reach(center));
+                }
+            }
+        }
+    }
+    best
 }
 
 const SHAPE_LENGTH: usize = 4;

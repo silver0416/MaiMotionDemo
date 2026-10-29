@@ -226,7 +226,7 @@ pub struct SolverConfig {
     pub hold_early_release: bool,
     /// V3 限定：以 Temoto 模型（從玩家手元影片學到的打法）修正手順；None 為純 V3。
     pub ml_model: Option<String>,
-    /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`，見 `scoring_v3::V3_VARIANTS`）；None 為出貨的 V3。
+    /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`、`v4`，見 `scoring_v3::V3_VARIANTS`）；None 為原始 V3。
     /// Temoto 模型自帶基座權重，兩者不能同時指定。
     pub v3_variant: Option<String>,
     pub preparation_seconds: f64,

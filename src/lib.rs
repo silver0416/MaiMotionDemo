@@ -24,7 +24,9 @@ pub use solver::with_probes;
 /// 分組認知樣板：樂句切分（學習用）、換樣板表（評估用）、給定分組（研究用）與自動分組
 /// （motion_group_keys 是 app 標註預填分組用的擬人切法）。
 #[doc(hidden)]
-pub use solver::{auto_group_keys, motion_group_keys, phrase_shapes, set_templates, with_groups};
+pub use solver::{
+    auto_group_keys, auto_group_rules, motion_group_keys, phrase_shapes, set_templates, with_groups,
+};
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {

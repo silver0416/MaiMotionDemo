@@ -6,9 +6,12 @@
     CONFIG_RANGE,
     DEFAULT_BASE,
     FIELD_LABEL,
+    MAIN_BASE,
+    MAIN_MODELS,
+    MORE_BASES,
+    MORE_MODELS,
     TEMOTO_LABEL,
-    TEMOTO_MODELS,
-    V3_VARIANTS,
+    type TemotoModel,
   } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import { session } from '../state/session.svelte';
@@ -33,15 +36,28 @@
   const R = CONFIG_RANGE;
 
   /** TemotoAI-1 的卡畫面上只有名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
-  const COLOR_NAME = { ruri: '瑠璃色', akane: '茜色', tokiwa: '常磐色' } as const;
+  const COLOR_NAME = {
+    rurikon: '瑠璃紺',
+    ayame: '菖蒲色',
+    ruri: '瑠璃色',
+    akane: '茜色',
+    tokiwa: '常磐色',
+  } as const;
   /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
   const usingTemoto = $derived(config.mlModel !== null);
 
-  // V3.1、V3.2 收在「顯示更多模型」裡；目前選的是其中之一時自動展開，選中的卡不會藏起來。
+  // 原始 V3、V3.1、V3.2 與舊的三個 TemotoAI-1 收在「顯示更多模型」裡；
+  // 目前選的是其中之一時自動展開，選中的卡不會藏起來。
   let moreOpen = $state(false);
-  const variantLabel = $derived(V3_VARIANTS.find((item) => item.id === config.v3Variant)?.label ?? null);
+  const moreLabel = $derived(
+    MORE_MODELS.some((model) => model.id === config.mlModel)
+      ? TEMOTO_LABEL
+      : config.mlModel === null
+        ? (MORE_BASES.find((item) => item.id === config.v3Variant)?.label ?? null)
+        : null,
+  );
   $effect(() => {
-    if (config.v3Variant) moreOpen = true;
+    if (moreLabel) moreOpen = true;
   });
 
   // 進階區預設收起；裡面有欄位超出範圍時自動展開，避免錯誤藏在看不到的地方。
@@ -65,6 +81,18 @@
   }
 </script>
 
+{#snippet temotoCard(model: TemotoModel)}
+  <button
+    class={`model-card model-card--${model.color}`}
+    role="radio"
+    aria-checked={config.mlModel === model.id}
+    aria-label={`${TEMOTO_LABEL}（${COLOR_NAME[model.color]}）`}
+    onclick={() => session.setMlModel(model.id)}
+  >
+    <span class="model-card-name">{TEMOTO_LABEL}</span>
+  </button>
+{/snippet}
+
 <div class="stack">
   <section class="section">
     <div class="section-title" id="scoring-title">
@@ -77,21 +105,13 @@
       <button
         class="model-card model-card--v3"
         role="radio"
-        aria-checked={config.mlModel === null && config.v3Variant === null}
-        onclick={() => session.setV3Variant(null)}
+        aria-checked={config.mlModel === null && config.v3Variant === MAIN_BASE.id}
+        onclick={() => session.setV3Variant(MAIN_BASE.id)}
       >
-        <span class="model-card-name">V3</span>
+        <span class="model-card-name">{MAIN_BASE.label}</span>
       </button>
-      {#each TEMOTO_MODELS as model (model.id)}
-        <button
-          class={`model-card model-card--${model.color}`}
-          role="radio"
-          aria-checked={config.mlModel === model.id}
-          aria-label={`${TEMOTO_LABEL}（${COLOR_NAME[model.color]}）`}
-          onclick={() => session.setMlModel(model.id)}
-        >
-          <span class="model-card-name">{TEMOTO_LABEL}</span>
-        </button>
+      {#each MAIN_MODELS as model (model.id)}
+        {@render temotoCard(model)}
       {/each}
     </div>
     <div class="more-row">
@@ -103,8 +123,8 @@
         onclick={() => (moreOpen = !moreOpen)}
       >
         {moreOpen ? '收起更多模型' : '顯示更多模型'}
-        {#if !moreOpen && variantLabel}
-          <span class="more-current">（已選 {variantLabel}）</span>
+        {#if !moreOpen && moreLabel}
+          <span class="more-current">（已選 {moreLabel}）</span>
         {/if}
         <span class="chevron"><Icon name="chevron-down" size={14} /></span>
       </button>
@@ -112,22 +132,27 @@
     {#if moreOpen}
       <div id="more-models" class="more-models">
         <div class="models" role="radiogroup" aria-label="更多模型">
-          {#each V3_VARIANTS as variant (variant.id)}
+          {#each MORE_BASES as base (base.id)}
             <button
               class="model-card model-card--v3"
               role="radio"
-              aria-checked={config.v3Variant === variant.id}
-              onclick={() => session.setV3Variant(variant.id)}
+              aria-checked={config.mlModel === null && config.v3Variant === base.id}
+              onclick={() => session.setV3Variant(base.id)}
             >
-              <span class="model-card-name">{variant.label}</span>
+              <span class="model-card-name">{base.label}</span>
             </button>
           {/each}
+          {#each MORE_MODELS as model (model.id)}
+            {@render temotoCard(model)}
+          {/each}
         </div>
-        <p class="field-hint">V3.1、V3.2 和 V3 是同一套規則，只換了打法權重。</p>
+        <p class="field-hint">
+          V4 之前的版本與舊的 {TEMOTO_LABEL}，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮三件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍。
+        </p>
       </div>
     {/if}
     <p class="field-hint" style="margin-top: var(--space-2)">
-      {TEMOTO_LABEL} 要先跑一次 V3 再照模型修正重算，分析時間是 V3 的數倍；結果仍由核心確認可行，不代表官方判定。
+      {TEMOTO_LABEL} 要先跑一次基座（上方兩張是 V4）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
     </p>
   </section>
 
@@ -448,8 +473,9 @@
 </div>
 
 <style>
-  /* 評分方式：V3 卡佔一整列；TemotoAI-1 三張卡兩兩並排（瑠璃、茜一排，常磐第二排同尺寸）。
-     V3.1、V3.2 收在分隔列「顯示更多模型」下面，和 V3 卡同樣式、各佔一整列。 */
+  /* 評分方式：V4 卡佔一整列；TemotoAI-1 主卡（瑠璃紺、菖蒲）兩張並排。
+     分隔列「顯示更多模型」下面同一套規則：V3、V3.1、V3.2 各佔一整列，
+     舊的三張 TemotoAI-1 兩兩並排（瑠璃、茜一排，常磐第二排同尺寸）。 */
   .models {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

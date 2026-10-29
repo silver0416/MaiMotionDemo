@@ -117,6 +117,26 @@ pub struct TuningV3 {
     /// helper strikes above the owner, fading over the window.
     pub split_upper: f64,
     pub split_window: f64,
+    /// Changing hands between two single contacts at most sweep_window apart
+    /// and within sweep_step of each other (a tap swept into the Touch area,
+    /// two neighbouring keys brushed in one motion). Annotators keep one hand
+    /// there almost always; 0 = off.
+    pub sweep_break: f64,
+    pub sweep_window: f64,
+    pub sweep_step: f64,
+    /// Two buttons struck together by different hands with the left hand to
+    /// the right of the right hand, or, when both keys sit at the same
+    /// horizontal position on one side, with the helping hand (the one from
+    /// the other side) on the upper key. The helper takes the key nearer the
+    /// middle, or the lower one; 0 = off.
+    pub chord_cross: f64,
+    /// One palm covering simultaneous Touch whose smallest enclosing circle is
+    /// wider than touch_palm_free. Annotators cover such a chord with one palm
+    /// up to a radius of about 0.35 and split it between both hands from 0.4
+    /// on; the palm radius itself (0.5) stays the reach. Flat cost per palm;
+    /// 0 = off.
+    pub touch_palm: f64,
+    pub touch_palm_free: f64,
 }
 impl Default for TuningV3 {
     fn default() -> Self {
@@ -156,6 +176,12 @@ impl Default for TuningV3 {
             arc_side: 0.0,
             split_upper: 0.0,
             split_window: 0.5,
+            sweep_break: 0.0,
+            sweep_window: 0.06,
+            sweep_step: 0.8,
+            chord_cross: 0.0,
+            touch_palm: 0.0,
+            touch_palm_free: 0.37,
         }
     }
 }
@@ -192,18 +218,23 @@ pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {
     f()
 }
 
-/// 評分方式裡的 V3 變體：架構和 V3 相同，只換權重。
+/// 評分方式裡的 V3 變體：搜尋架構和 V3 相同，只換權重。
 /// V3.1 以手元影片弱標註重新擬合；V3.2 是 V3.1 再把 `starSwitch` 降到 0.1
 /// （標記者一手拍星星、另一手滑的比例比 V3 預設高很多）。
-pub const V3_VARIANTS: [&str; 2] = ["v3.1", "v3.2"];
+/// V4 是 V3.2 再打開三個成本項：`sweepBreak`（極短相鄰同一隻手刷過）、
+/// `chordCross`（雙押不交叉、幫手打下面那顆）與 `touchPalm`（同時的 Touch 散得太開
+/// 不一手包）；App 預設用它。
+pub const V3_VARIANTS: [&str; 3] = ["v3.1", "v3.2", "v4"];
 
 /// V3 變體的權重（第一次使用時解析）。
 pub fn variant_tuning(id: &str) -> Option<&'static TuningV3> {
     static V31: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     static V32: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+    static V4: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     let (cell, text) = match id {
         "v3.1" => (&V31, include_str!("../models/v3.1.tuning.json")),
         "v3.2" => (&V32, include_str!("../models/v3.2.tuning.json")),
+        "v4" => (&V4, include_str!("../models/v4.tuning.json")),
         _ => return None,
     };
     Some(cell.get_or_init(|| serde_json::from_str(text).expect("內建 V3 變體權重")))

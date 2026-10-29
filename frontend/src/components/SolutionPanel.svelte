@@ -37,7 +37,7 @@
   });
   /**
    * 核心把 Temoto 的結果寫在「Temoto-1」開頭的提醒：「Temoto-1：修改了 N 個手順…」，
-   * 或整份退回 V3 時的「Temoto-1 的修正在這份譜面走不下去…」。拉出來放在方案頁上方。
+   * 或整份退回基座時的「Temoto-1 的修正在這份譜面走不下去…」（基座名稱由核心依模型寫入）。拉出來放在方案頁上方。
    */
   /** 核心提醒文字的開頭（Rust 寫死），與介面顯示名稱 TEMOTO_LABEL 無關。 */
   const TEMOTO_PREFIX = 'Temoto-1';
@@ -666,6 +666,18 @@
     height: 80px;
     border-radius: 50%;
     background: var(--model-fill);
+  }
+
+  .temoto-note--rurikon,
+  .model-tag--rurikon {
+    --model: var(--c-rurikon);
+    --model-fill: var(--c-rurikon-deep);
+  }
+
+  .temoto-note--ayame,
+  .model-tag--ayame {
+    --model: var(--c-ayame);
+    --model-fill: var(--c-ayame-deep);
   }
 
   .temoto-note--ruri,

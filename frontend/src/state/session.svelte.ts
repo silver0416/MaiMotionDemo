@@ -29,7 +29,7 @@ import type {
   Solution,
   SolverConfig,
   TouchSensor,
-  V3VariantId,
+  BaseChoice,
 } from '../lib/types';
 import { playback } from './playback.svelte';
 import { toasts } from './toasts.svelte';
@@ -299,13 +299,13 @@ export class Session {
     this.selectedNoteId = noteId;
   }
 
-  /** 切換 Temoto 模型；null 為純 V3。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
+  /** 切換 Temoto 模型；null 回到預設基座。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
   setMlModel(id: MlModelId | null): void {
-    this.config = { ...this.config, mlModel: id, v3Variant: null };
+    this.config = { ...this.config, mlModel: id, v3Variant: id ? null : DEFAULT_DRAFT.v3Variant };
   }
 
-  /** 切換 V3 變體；null 為出貨的 V3 權重。選了變體就不用 Temoto 模型。 */
-  setV3Variant(id: V3VariantId | null): void {
+  /** 切換基座（V4、原始 V3 或 V3.1、V3.2）。選了基座就不用 Temoto 模型。 */
+  setV3Variant(id: BaseChoice): void {
     this.config = { ...this.config, mlModel: null, v3Variant: id };
   }
 

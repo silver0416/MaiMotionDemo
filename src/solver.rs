@@ -34,6 +34,15 @@ pub(crate) fn auto_group_info(chart: &Chart) -> Vec<(Vec<&Note>, u8, Option<u8>)
         .collect()
 }
 
+/// 研究用（訓練 Temoto 分組模型的資料）：[`auto_group_info`] 的音符改成 key。
+#[doc(hidden)]
+pub fn auto_group_rules(chart: &Chart) -> Vec<(Vec<String>, u8, Option<u8>)> {
+    auto_group_info(chart)
+        .into_iter()
+        .map(|(notes, rule, auto)| (notes.iter().map(|n| n.key.clone()).collect(), rule, auto))
+        .collect()
+}
+
 /// Temoto 整組套用：有規則（auto_rules）的自動分組與規則代碼（拍點切法，同 [`auto_group_info`]）。
 pub(crate) fn rule_groups(chart: &Chart) -> Vec<(Vec<&Note>, u8)> {
     v3::phrases::auto_rules(chart, v3::phrases::GroupCut::Beats)
@@ -2230,34 +2239,19 @@ fn is_touch_sweep_group(group: &[Task], chart: &Chart) -> bool {
             .all(|task| task.mode == "tap" && chart.notes[task.note].kind.as_str() == "touch")
 }
 
-/// 從目前手位出發，以最近鄰順序掃過半邊盤面的 Touch。相同距離時以音符索引
-/// 固定順序，讓輸出在不同執行間保持一致。
-fn order_touch_sweep_route(
-    mut route: Vec<usize>,
-    group: &[Task],
-    chart: &Chart,
-    mut point: Point,
-) -> Vec<usize> {
-    let mut ordered = Vec::with_capacity(route.len());
-    while !route.is_empty() {
-        let best = route
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| {
-                let pa = chart.notes[group[**a].note].position;
-                let pb = chart.notes[group[**b].note].position;
-                point
-                    .distance(pa)
-                    .total_cmp(&point.distance(pb))
-                    .then_with(|| group[**a].note.cmp(&group[**b].note))
-            })
-            .map(|(index, _)| index)
-            .unwrap();
-        let task = route.remove(best);
-        point = chart.notes[group[task].note].position;
-        ordered.push(task);
-    }
-    ordered
+/// 半邊盤面的 Touch 由上往下刷（玩家的習慣）：y 小的先，同高度時外側先，再以音符
+/// 索引固定順序，讓輸出在不同執行間保持一致。
+fn order_touch_sweep_route(mut route: Vec<usize>, group: &[Task], chart: &Chart) -> Vec<usize> {
+    let key = |task: usize| {
+        let p = chart.notes[group[task].note].position;
+        (
+            (p.y * 1e6).round() as i64,
+            -(p.x.abs() * 1e6).round() as i64,
+            group[task].note,
+        )
+    };
+    route.sort_by_key(|task| key(*task));
+    route
 }
 
 /// 全盤級的大型同時 Touch 不是兩個固定掌心，而是兩隻手各掃過半邊面板。
@@ -2275,18 +2269,21 @@ fn assign_touch_sweep(
     }
     let judgment = group[0].start;
     let mut routes: [Vec<usize>; 2] = [vec![], vec![]];
+    let mut middle = vec![];
     for (task_index, task) in group.iter().enumerate() {
-        let point = chart.notes[task.note].position;
-        let side = if point.x < -EPS {
-            0
-        } else if point.x > EPS {
-            1
-        } else if routes[0].len() <= routes[1].len() {
-            0
+        let x = chart.notes[task.note].position.x;
+        if x < -EPS {
+            routes[usize::from(reversed)].push(task_index);
+        } else if x > EPS {
+            routes[1 - usize::from(reversed)].push(task_index);
         } else {
-            1
-        };
-        routes[side ^ usize::from(reversed)].push(task_index);
+            middle.push(task_index);
+        }
+    }
+    // 中線上的落點在兩邊分好之後，輪流交給目前比較少的那隻手。
+    for task_index in middle {
+        let side = usize::from(routes[0].len() > routes[1].len());
+        routes[side].push(task_index);
     }
     if routes.iter().any(Vec::is_empty) {
         return None;
@@ -2315,24 +2312,14 @@ fn assign_touch_sweep(
             );
         }
 
-        let route = order_touch_sweep_route(
-            std::mem::take(&mut routes[idx]),
-            group,
-            chart,
-            next.arms[idx].point,
-        );
-        let mut samples = vec![MotionSample::new(route_start, next.arms[idx].point)];
-        let mut hits = Vec::with_capacity(route.len());
-        for (step, task_index) in route.iter().enumerate() {
-            let hit =
-                route_start + (judgment - route_start) * (step + 1) as f64 / route.len() as f64;
-            let note = &chart.notes[group[*task_index].note];
-            samples.push(MotionSample::new(hit, note.position));
-            hits.push((*task_index, hit));
-        }
+        let route = order_touch_sweep_route(std::mem::take(&mut routes[idx]), group, chart);
+        let from = next.arms[idx].point;
+        let window = (route_start, judgment);
+        let (mut samples, hits) = palm_stripe(&route, group, chart, from, window, c.palm_radius)
+            .unwrap_or_else(|| point_route(&route, group, chart, from, window));
         let finish = hits
             .iter()
-            .map(|(task_index, _)| group[*task_index].end)
+            .map(|(task_index, _, _)| group[*task_index].end)
             .fold(judgment, f64::max);
         let last_point = samples.last().unwrap().point();
         if finish > judgment + EPS {
@@ -2349,17 +2336,22 @@ fn assign_touch_sweep(
             c,
         );
         next.arms[idx].last_tap = Some(judgment);
-        for (task_index, hit) in hits {
+        // 同一刻碰到的一排（手掌刷過同一個高度）只算一個動作，每顆仍各有接觸紀錄。
+        let mut row = f64::NEG_INFINITY;
+        for (task_index, hit, point) in hits {
             let note = &chart.notes[group[task_index].note];
-            record_action(
-                &mut next,
-                c,
-                hand,
-                note.position,
-                hit,
-                ActionKind::ContinuousContact,
-                Some(note.id.clone()),
-            );
+            if hit > row + EPS {
+                row = hit;
+                record_action(
+                    &mut next,
+                    c,
+                    hand,
+                    point,
+                    hit,
+                    ActionKind::ContinuousContact,
+                    Some(note.id.clone()),
+                );
+            }
             next.assignments = next.assignments.push(Assignment {
                 note_id: note.id.clone(),
                 part: "contact".into(),
@@ -2371,6 +2363,106 @@ fn assign_touch_sweep(
     }
     next.used_touch_sweep = true;
     Some(next)
+}
+
+/// 掃屏一隻手的軌跡，與每顆 Touch 的接觸時刻和那時的手位。
+type SweepPlan = (Vec<MotionSample>, Vec<(usize, f64, Point)>);
+
+/// 手掌沿半邊的中線由上往下直刷：掌心 x 取這隻手落點左右範圍的中點，刷到哪個高度
+/// 就碰到那個高度的 Touch。先從目前手位移到最上面，所花時間依距離分配，另加四分之一
+/// 刷的長度，手已經在上面時也不會瞬間開始。掌心到任一落點超過手掌半徑（例如手掌
+/// 半徑調小）時回傳 None，改逐顆點過去。`route` 已由上往下排好。
+fn palm_stripe(
+    route: &[usize],
+    group: &[Task],
+    chart: &Chart,
+    from: Point,
+    (start, end): (f64, f64),
+    radius: f64,
+) -> Option<SweepPlan> {
+    let points: Vec<Point> = route
+        .iter()
+        .map(|task| chart.notes[group[*task].note].position)
+        .collect();
+    let (lo, hi) = points
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
+            (lo.min(p.x), hi.max(p.x))
+        });
+    let x = (lo + hi) / 2.0;
+    let limit = (1.0 - x * x).max(0.0).sqrt();
+    let at = |y: f64| Point {
+        x,
+        y: y.clamp(-limit, limit),
+    };
+    if points.iter().any(|p| at(p.y).distance(*p) > radius + EPS) {
+        return None;
+    }
+    let (top, bottom) = (at(points[0].y), at(points[points.len() - 1].y));
+    let sweep = bottom.y - top.y;
+    if sweep <= EPS {
+        return None;
+    }
+    let lead = from.distance(top) + sweep / 4.0;
+    let reach = start + (end - start) * lead / (lead + sweep);
+    let hits = route
+        .iter()
+        .zip(&points)
+        .map(|(task, p)| {
+            let share = (at(p.y).y - top.y) / sweep;
+            let hit = if share >= 1.0 - EPS {
+                end
+            } else {
+                reach + (end - reach) * share
+            };
+            (*task, hit, at(p.y))
+        })
+        .collect();
+    let samples = vec![
+        MotionSample::new(start, from),
+        MotionSample::new(reach, top),
+        MotionSample::new(end, bottom),
+    ];
+    Some((samples, hits))
+}
+
+/// 手掌蓋不住半邊寬度時，手逐顆點過去（仍由上往下）。每一步的時間依「移動距離＋
+/// 平均步長」分配：遠的步不會瞬間跳過去，同位置的兩顆也不會擠在同一刻。
+fn point_route(
+    route: &[usize],
+    group: &[Task],
+    chart: &Chart,
+    from: Point,
+    (start, end): (f64, f64),
+) -> SweepPlan {
+    let mut point = from;
+    let legs: Vec<f64> = route
+        .iter()
+        .map(|task| {
+            let next = chart.notes[group[*task].note].position;
+            let leg = point.distance(next);
+            point = next;
+            leg
+        })
+        .collect();
+    let unit = (legs.iter().sum::<f64>() / legs.len() as f64).max(EPS);
+    let total: f64 = legs.iter().map(|leg| leg + unit).sum();
+    let mut samples = vec![MotionSample::new(start, from)];
+    let mut hits = Vec::with_capacity(route.len());
+    let mut done = 0.0;
+    for (step, (task, leg)) in route.iter().zip(&legs).enumerate() {
+        done += leg + unit;
+        let share = if step + 1 == route.len() {
+            1.0
+        } else {
+            (done / total).min(1.0)
+        };
+        let hit = start + (end - start) * share;
+        let point = chart.notes[group[*task].note].position;
+        samples.push(MotionSample::new(hit, point));
+        hits.push((*task, hit, point));
+    }
+    (samples, hits)
 }
 
 /// 把連續的動作段攤平成單調的取樣序列，供交叉成本以線性掃描計算。
