@@ -1,4 +1,4 @@
-// 手元影片預填的整個流程：參考格校正 → 逐格（鏡頭追蹤＋姿態偵測）→ 機位評估 → 自動對時 → 推每顆音符的手。
+// 手元影片預填的整個流程：參考格校正 → 逐格（鏡頭追蹤＋姿態偵測）→ 機位評估 → 決定左右手 → 自動對時 → 推每顆音符的手。
 
 import {
   cameraStats,
@@ -14,7 +14,8 @@ import {
   type RawStats,
 } from './assign';
 import { openFrames } from './capture';
-import { apply, buttonPoint, fit, multiply, type Mat3, type Vec2 } from './homography';
+import { apply, buttonPoint, fit, invert, multiply, type Mat3, type Vec2 } from './homography';
+import { assignHands, bodyVisibility, type IdentityFrame } from './identity';
 import { LEFT_HAND, PoseRuntime, RIGHT_HAND, type PoseFiles, type PoseResult } from './pose';
 import { CameraTracker } from './track';
 
@@ -24,6 +25,8 @@ const STEP = 1 / 30;
 const HOLD_TRACK = 0.5;
 const PALM = [0, 5, 9, 13, 17];
 const TIPS = [8, 12, 16, 20, 4];
+/** 找不到玩家時直接估手的範圍：盤面中心往外這麼多倍判定環半徑的正方形 */
+const FALLBACK_REACH = 1.3;
 
 export interface RingPoint {
   /** 鍵號 1–8 */
@@ -66,6 +69,8 @@ export interface JobResult {
   /** 微調找到的值落在搜尋範圍邊緣（原本的對齊可能差太多） */
   shiftAtEdge: boolean;
   backend: string;
+  /** 改在盤面範圍直接估手的畫格比例 */
+  fallback: number;
   /** 讀影片的方式 */
   reader: 'webcodecs' | 'video';
   seconds: number;
@@ -93,6 +98,25 @@ function handSample(pose: PoseResult, base: number, toBoard: Mat3 | null): HandS
   const palmPx = weighted(pose.kp, pose.score, base, PALM);
   const tipsPx = weighted(pose.kp, pose.score, base, TIPS);
   return { palm: apply(toBoard, palmPx.x, palmPx.y), tips: apply(toBoard, tipsPx.x, tipsPx.y), score: mean };
+}
+
+/** 盤面在這一格的範圍（正方形框，分析畫面像素）；frameFromBoard 為盤面 → 這格像素。 */
+function boardBox(frameFromBoard: Mat3): [number, number, number, number] | null {
+  const center = apply(frameFromBoard, 0, 0);
+  let radius = 0;
+  for (let k = 0; k < 8; k += 1) {
+    const a = (k / 8) * Math.PI * 2;
+    const p = apply(frameFromBoard, Math.cos(a), Math.sin(a));
+    radius = Math.max(radius, Math.hypot(p.x - center.x, p.y - center.y));
+  }
+  if (!Number.isFinite(radius) || radius <= 0) return null;
+  const r = radius * FALLBACK_REACH;
+  return [center.x - r, center.y - r, center.x + r, center.y + r];
+}
+
+/** 這格肩、肘的可見度（0–1）。 */
+function bodyScore(pose: PoseResult): number {
+  return bodyVisibility(Math.max(pose.score[5], pose.score[6], pose.score[7], pose.score[8]));
 }
 
 /** 由環點求參考格像素 → 盤面的透視；點太少或共線時回傳 null。 */
@@ -127,6 +151,7 @@ export async function runJob(
     onProgress({ phase: 'reference', fraction: 0, framesDone: 0, framesTotal: 0, rate: 0 });
     const reference = await reader.seek(input.referenceTime, signal);
     const tracker = new CameraTracker(reference.frame, boardFromRef);
+    const refFromBoard = invert(boardFromRef);
     check();
 
     const heads = input.notes.map((note) => note.time);
@@ -136,8 +161,10 @@ export async function runJob(
     const to = Math.min(reader.duration, Math.max(...ends) + input.offset + 0.4);
     const total = Math.max(1, Math.ceil((to - from) / STEP));
 
-    const samples: FrameSample[] = [];
+    const people: IdentityFrame[] = [];
+    const usable: boolean[] = [];
     const raw: RawStats[] = [];
+    let fallbackFrames = 0;
     let lastGood: { t: number; h: Mat3 } | null = null;
     let current = await reader.seek(from, signal);
     let done = 0;
@@ -152,11 +179,17 @@ export async function runJob(
       } else if (lastGood && current.time - lastGood.t <= HOLD_TRACK) {
         toBoard = lastGood.h;
       }
-      const pose = await runtime.detect(current.frame);
+      const frameFromBoard = toBoard ? invert(toBoard) : refFromBoard;
+      const pose = await runtime.detect(current.frame, frameFromBoard ? (boardBox(frameFromBoard) ?? undefined) : undefined);
+      usable.push(!!toBoard);
       if (pose) {
-        const left = handSample(pose, LEFT_HAND, toBoard);
-        const right = handSample(pose, RIGHT_HAND, toBoard);
-        samples.push({ t: current.time, ok: !!toBoard, L: left, R: right });
+        if (pose.fallback) fallbackFrames += 1;
+        people.push({
+          t: current.time,
+          a: handSample(pose, LEFT_HAND, toBoard),
+          b: handSample(pose, RIGHT_HAND, toBoard),
+          body: bodyScore(pose),
+        });
         const handScore = (base: number) => {
           let sum = 0;
           for (let k = 0; k < 21; k += 1) sum += pose.score[base + k];
@@ -169,7 +202,7 @@ export async function runJob(
           tracked: !!tracked.toRef,
         });
       } else {
-        samples.push({ t: current.time, ok: !!toBoard, L: null, R: null });
+        people.push({ t: current.time, a: null, b: null, body: 0 });
         raw.push({ hands: [0, 0], shoulders: [0, 0], palmsPx: null, tracked: !!tracked.toRef });
       }
       done += 1;
@@ -188,6 +221,9 @@ export async function runJob(
     }
 
     onProgress({ phase: 'finishing', fraction: 1, framesDone: done, framesTotal: total, rate: 0 });
+    // 決定每格哪組是左手（模型的左右在看不到肩膀時不可靠）；之後的左右都是玩家真正的左右，不再依翻轉對調
+    const hands = assignHands(people, input.mirror, STEP);
+    const samples: FrameSample[] = people.map((frame, k) => ({ t: frame.t, ok: usable[k], L: hands[k].L, R: hands[k].R }));
     const frames = new Frames(samples);
     const stats = cameraStats(raw, reader.width);
     let offsetUsed = input.offset;
@@ -201,7 +237,7 @@ export async function runJob(
         shiftAtEdge = refined.atEdge;
       }
     }
-    const guesses = guessHands(input.notes, frames, offsetUsed, STEP, input.mirror);
+    const guesses = guessHands(input.notes, frames, offsetUsed, STEP);
     return {
       guesses,
       stats,
@@ -211,6 +247,7 @@ export async function runJob(
       shift,
       shiftAtEdge,
       backend: runtime.backend,
+      fallback: done > 0 ? fallbackFrames / done : 0,
       seconds: (performance.now() - started) / 1000,
       frames: done,
     };

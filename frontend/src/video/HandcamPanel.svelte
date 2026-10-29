@@ -82,7 +82,7 @@
   <div class="section-title" id="hc-intro">從手元影片預填左右手</div>
   <p class="small muted">
     偵測影片裡玩家的雙手，推出每顆音符是哪隻手打的，填成「預填」草稿；確認之後才算真人資料，已經標過的不會被改。
-    推估只適合看得到玩家肩膀和手臂的機位。
+    看得到玩家肩膀和手臂的機位最準；拍不到肩膀時會改用手在盤面上的位置分左右，錯誤會多一些。
   </p>
   {#if handcam.gpu === false}
     <div class="alert alert--warn small">這台電腦的顯示卡無法使用 WebGPU，分析會非常慢。</div>
@@ -237,6 +237,10 @@
       {/if}
       <dt>雙手同時入鏡</dt>
       <dd>{pct(r.stats.bothHands)}</dd>
+      {#if r.fallback >= 0.01}
+        <dt>直接在盤面找手</dt>
+        <dd>{pct(r.fallback)} 的畫格（找不到完整的玩家時）</dd>
+      {/if}
       <dt>盤面追蹤</dt>
       <dd>{pct(r.stats.tracked)}</dd>
       <dt>對齊偏移</dt>

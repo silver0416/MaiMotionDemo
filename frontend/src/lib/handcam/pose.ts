@@ -20,6 +20,8 @@ const MEAN = [123.675, 116.28, 103.53];
 const STD = [58.395, 57.12, 57.375];
 const DET_SCORE = 0.3;
 const MAX_PEOPLE = 3;
+/** 兩隻手都至少這個分數時，不另外在盤面框裡找手 */
+const HAND_OK = 0.3;
 
 export interface PoseFiles {
   det: ArrayBuffer;
@@ -33,6 +35,8 @@ export interface PoseResult {
   kp: Float32Array;
   score: Float32Array;
   box: [number, number, number, number];
+  /** 這格是在盤面框裡估的（沒有可用的人框） */
+  fallback?: boolean;
 }
 
 export interface RgbaFrame {
@@ -233,8 +237,12 @@ export class PoseRuntime {
     return { kp, score, box };
   }
 
-  /** 偵測畫面中的玩家（手臂與雙手平均分數最高的人）；沒有人時回傳 null。 */
-  async detect(frame: RgbaFrame): Promise<PoseResult | null> {
+  /**
+   * 偵測畫面中的玩家（手臂與雙手平均分數最高的人）；沒有人時回傳 null。
+   * 給了 fallback（盤面附近的框）時：找人找不到、或兩隻手有一隻很弱（機位拍不到肩膀時常見），
+   * 改在這個框裡直接估手，取兩手中較弱那隻分數較高的結果。
+   */
+  async detect(frame: RgbaFrame, fallback?: [number, number, number, number]): Promise<PoseResult | null> {
     const boxes = await this.#boxes(frame);
     let best: PoseResult | null = null;
     let bestScore = -Infinity;
@@ -248,6 +256,19 @@ export class PoseRuntime {
         best = result;
       }
     }
-    return best;
+    if (!fallback || (best && weakerHand(best) >= HAND_OK)) return best;
+    const board = await this.#keypoints(frame, fallback);
+    return !best || weakerHand(board) > weakerHand(best) ? { ...board, fallback: true } : best;
   }
+}
+
+/** 兩隻手平均分數中較低的那個。 */
+function weakerHand(result: PoseResult): number {
+  let left = 0;
+  let right = 0;
+  for (let k = 0; k < 21; k += 1) {
+    left += result.score[LEFT_HAND + k];
+    right += result.score[RIGHT_HAND + k];
+  }
+  return Math.min(left, right) / 21;
 }

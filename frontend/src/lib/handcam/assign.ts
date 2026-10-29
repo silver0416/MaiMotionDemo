@@ -21,6 +21,7 @@ export interface FrameSample {
   t: number;
   /** 校正失敗的格為 false，該格不提供手的位置 */
   ok: boolean;
+  /** 玩家真正的左右手（已由 identity.ts 決定，含影片翻轉） */
   L: HandSample | null;
   R: HandSample | null;
 }
@@ -197,12 +198,8 @@ function slideTrack(frames: Frames, note: HandcamNote, offset: number, step: num
   return { hand: m[0] < m[1] ? 'L' : 'R', conf: Math.max(m[0], m[1]) >= MISSING ? Math.min(conf, TRACK_HIGH * 0.99) : conf };
 }
 
-/**
- * 推每顆音符的左右手。offset：影片時間 − 譜面時間；step：取樣間隔（秒）；
- * mirror：分析的畫面是左右翻轉的影片（翻轉後模型看到的左右手要對調）。
- */
-export function guessHands(notes: HandcamNote[], frames: Frames, offset: number, step: number, mirror: boolean): NoteGuess[] {
-  const swap = (hand: 'L' | 'R'): 'L' | 'R' => (mirror ? (hand === 'L' ? 'R' : 'L') : hand);
+/** 推每顆音符的左右手。offset：影片時間 − 譜面時間；step：取樣間隔（秒）。 */
+export function guessHands(notes: HandcamNote[], frames: Frames, offset: number, step: number): NoteGuess[] {
   const heads = notes.filter((note) => note.hasHead);
   const distances = new Map<string, [number, number]>();
   for (const note of heads) distances.set(note.key, windowDistances(frames, note, offset));
@@ -240,10 +237,10 @@ export function guessHands(notes: HandcamNote[], frames: Frames, offset: number,
     const track = note.kind === 'slide' ? slideTrack(frames, note, offset, step) : null;
     return {
       key: note.key,
-      hand: head ? swap(head.hand) : null,
+      hand: head ? head.hand : null,
       confidence: head?.conf ?? 0,
       tier: headTier,
-      track: track ? swap(track.hand) : null,
+      track: track ? track.hand : null,
       trackConfidence: track?.conf ?? 0,
       trackTier: track ? tier(track.conf, TRACK_HIGH, TRACK_MID) : null,
     };
@@ -333,7 +330,8 @@ export function cameraWarnings(stats: CameraStats): string[] {
   const out: string[] = [];
   if (stats.tracked < 0.85) out.push(`只有 ${Math.round(stats.tracked * 100)}% 的畫格對得上盤面，鏡頭晃動太大或盤面被擋住。`);
   if (stats.bothHands < 0.75) out.push(`只有 ${Math.round(stats.bothHands * 100)}% 的畫格同時看到兩隻手。`);
-  if (Math.max(stats.shoulders[0], stats.shoulders[1]) < 0.35) out.push('幾乎看不到玩家的肩膀與手臂，左右手很可能判斷錯誤。');
-  if (stats.swaps > 0.01) out.push('左右手身分在相鄰畫格間常互換，左右判斷較不穩。');
+  if (Math.max(stats.shoulders[0], stats.shoulders[1]) < 0.35) {
+    out.push('幾乎看不到玩家的肩膀，左右手改用手在盤面上的位置判斷；兩手交叉的地方容易判斷錯。');
+  }
   return out;
 }
