@@ -304,7 +304,7 @@ export class Session {
     this.config = { ...this.config, mlModel: id, v3Variant: id ? null : DEFAULT_DRAFT.v3Variant };
   }
 
-  /** 切換基座（V4、原始 V3 或 V3.1、V3.2）。選了基座就不用 Temoto 模型。 */
+  /** 切換基座（V4.1、原始 V3 或 V3.1、V3.2、V4）。選了基座就不用 Temoto 模型。 */
   setV3Variant(id: BaseChoice): void {
     this.config = { ...this.config, mlModel: null, v3Variant: id };
   }

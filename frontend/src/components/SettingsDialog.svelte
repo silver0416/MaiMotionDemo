@@ -187,7 +187,7 @@
 
   /** 目前參數頁選的評分方式；null 為純 V3。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
   const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
-  /** 沒選 Temoto 時選的基座（v4、v3、v3.1、v3.2）直接當版本號；選了 Temoto 時一律為 null。 */
+  /** 沒選 Temoto 時選的基座（v4.1、v4、v3、v3.1、v3.2）直接當版本號；選了 Temoto 時一律為 null。 */
   const scoringVersion = $derived((!temoto && session.config.v3Variant) || SCORING_VERSION);
 
   function versionText(): string {
@@ -1041,6 +1041,14 @@
     height: 9px;
     border-radius: var(--radius-pill);
     background: var(--dot);
+  }
+
+  .scoring-model--konruri {
+    --dot: var(--c-konruri-deep);
+  }
+
+  .scoring-model--shoubu {
+    --dot: var(--c-shoubu-deep);
   }
 
   .scoring-model--rurikon {

@@ -3,6 +3,7 @@ use super::*;
 use crate::scoring_v3::{
     HandHistory, RoleState, ScoreBreakdownV3 as ScoreBreakdown, ScoreV3 as Score, ScoringV3,
 };
+use std::collections::BTreeSet;
 pub(super) mod lookahead;
 pub(super) mod phrases;
 use lookahead::{FutureParts, Lookahead};
@@ -53,10 +54,22 @@ pub(super) struct Context<'a> {
     /// Stair or Touch stroke step → the previous step's note and the cost of
     /// changing hands there.
     stair_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 該交互的快速同鍵連打（jackAlt）→ 前一下與同手成本。
+    jack_prev: BTreeMap<&'a str, (&'a str, f64)>,
     /// 極短間隔的相鄰單顆接觸（sweepBreak）→ 前一顆與換手成本。
     sweep_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 快速階梯一組（stairUnit）的第二顆起 → 上一步與換手成本。
+    unit_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 同鍵兩顆後換鍵的那顆（jackExit）→ 那兩顆、成本，以及兩顆間隔是否夠慢、不該拆給兩手。
+    exit_prev: BTreeMap<&'a str, ([&'a str; 2], f64, bool)>,
     /// 兩顆按鍵同時的和弦（chordCross）→ 另一顆。
     chord_pair: BTreeMap<&'a str, &'a str>,
+    /// 長押開始的和弦（holdCross）→ 同時的其他接觸。
+    hold_chord: BTreeMap<&'a str, Vec<&'a str>>,
+    /// 三顆一組（tripletAlt）的第三顆 → 前兩顆、成本，以及是不是頭尾同鍵（不交互就收）。
+    triplet_prev: BTreeMap<&'a str, ([&'a str; 2], f64, bool)>,
+    /// 同時刻只有一顆的接觸（sideRest 只看這些）。
+    singles: BTreeSet<&'a str>,
     /// Last note of a repeated shape → its notes and the earlier occurrence's.
     shape_prev: BTreeMap<&'a str, ShapeRepeat<'a>>,
     /// Note of a phrase's last group → the phrase's notes and learned hand pattern.
@@ -168,7 +181,17 @@ impl<'a> Context<'a> {
             lookahead: Lookahead::from_chart(chart),
             stair_prev: stair_steps(chart, c.travel_comfort),
             sweep_prev: sweep_steps(chart),
+            unit_prev: stair_units(chart),
+            exit_prev: jack_exits(chart),
+            jack_prev: jack_runs(chart),
             chord_pair: chord_pairs(chart),
+            hold_chord: hold_chords(chart),
+            triplet_prev: triplets(chart),
+            singles: single_contacts(chart)
+                .into_iter()
+                .flatten()
+                .map(|n| n.id.as_str())
+                .collect(),
             shape_prev: shape_repeats(chart),
             phrase_end,
             phrase_templates,
@@ -246,8 +269,14 @@ impl<'a> Context<'a> {
                 self.star_switch(link)
                     + self.stair_break(link)
                     + self.sweep_break(link)
+                    + self.jack_alt(link)
+                    + self.stair_unit(link)
+                    + self.jack_exit(link)
                     + self.chord_cross(link)
+                    + self.hold_cross(link)
                     + self.touch_palm(link)
+                    + self.triplet_alt(link)
+                    + self.side_rest(link)
                     + self.shape_mix(link)
                     + self.phrase_template(link)
                     + self.group_pattern(link)
@@ -492,10 +521,50 @@ impl<'a> Context<'a> {
         self.pair_break(link, &self.sweep_prev)
     }
 
+    /// 該交互的快速同鍵連打，和前一下同一隻手（jackAlt）。
+    fn jack_alt(&self, link: &Link<Assignment>) -> f64 {
+        self.pair_cost(link, &self.jack_prev, true)
+    }
+
+    /// 快速階梯一組的中途換手（stairUnit），算法同 stair_break。
+    fn stair_unit(&self, link: &Link<Assignment>) -> f64 {
+        self.pair_break(link, &self.unit_prev)
+    }
+
+    /// 同鍵兩顆和接著換鍵的那顆不是「兩顆同手、這顆換手」（jackExit）：三顆同一隻手，
+    /// 或夠慢的兩顆被拆給兩手時收。往回找那兩顆的第一筆接觸。
+    fn jack_exit(&self, link: &Link<Assignment>) -> f64 {
+        let current = &link.value;
+        if !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&(pair, weight, slow)) = self.exit_prev.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let since = self.notes[pair[0]].time_seconds - 1.0;
+        match (
+            self.first_contact(link, pair[0], since),
+            self.first_contact(link, pair[1], since),
+        ) {
+            (Some(a), Some(b)) if (a == b && b == current.hand) || (a != b && slow) => weight,
+            _ => 0.0,
+        }
+    }
+
     fn pair_break(
         &self,
         link: &Link<Assignment>,
         pairs: &BTreeMap<&'a str, (&'a str, f64)>,
+    ) -> f64 {
+        self.pair_cost(link, pairs, false)
+    }
+
+    /// 和成對的前一顆比手：`same` 為真時同手收成本，否則換手收。
+    fn pair_cost(
+        &self,
+        link: &Link<Assignment>,
+        pairs: &BTreeMap<&'a str, (&'a str, f64)>,
+        same: bool,
     ) -> f64 {
         let current = &link.value;
         if !matches!(current.part.as_str(), "contact" | "head") {
@@ -508,7 +577,7 @@ impl<'a> Context<'a> {
             return 0.0;
         }
         match self.first_contact(link, previous, self.notes[previous].time_seconds - 1.0) {
-            Some(hand) if hand != current.hand => weight,
+            Some(hand) if (hand == current.hand) == same => weight,
             _ => 0.0,
         }
     }
@@ -576,6 +645,44 @@ impl<'a> Context<'a> {
         0.0
     }
 
+    /// 長押開始的和弦兩手交叉（holdCross）：左手最右的接觸在右手最左的右邊，或整個和弦
+    /// 一隻手、散得比 touchPalmFree 還開（長押的手不會順便包下另一側）。和弦裡最後
+    /// 接觸的那顆結算（其他顆還沒指派時不算）。
+    fn hold_cross(&self, link: &Link<Assignment>) -> f64 {
+        let weight = crate::scoring_v3::tuning().hold_cross;
+        let current = &link.value;
+        if weight == 0.0 || !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(others) = self.hold_chord.get(current.note_id.as_str()) else {
+            return 0.0;
+        };
+        let note = self.notes[current.note_id.as_str()];
+        let mut left = f64::NEG_INFINITY;
+        let mut right = f64::INFINITY;
+        let mut points = vec![note.position];
+        let mut place = |hand: Hand, x: f64| match hand {
+            Hand::L => left = left.max(x),
+            Hand::R => right = right.min(x),
+        };
+        place(current.hand, note.position.x);
+        for other in others {
+            let Some(hand) = self.first_contact(link, other, note.time_seconds - 1.0) else {
+                return 0.0;
+            };
+            let position = self.notes[other].position;
+            place(hand, position.x);
+            points.push(position);
+        }
+        let one_hand = left == f64::NEG_INFINITY || right == f64::INFINITY;
+        let spread = enclosing_radius(&points) > crate::scoring_v3::tuning().touch_palm_free + EPS;
+        if left > right + CHORD_SIDE || (one_hand && spread) {
+            weight
+        } else {
+            0.0
+        }
+    }
+
     /// 一隻手掌同時蓋住的 Touch 太散（touchPalm）：同一次手掌的接觸在路線上連續、
     /// 同一隻手、同一個開始時刻；依序加入時，最小包圍圓半徑第一次超過
     /// touchPalmFree 的那顆結算。
@@ -611,6 +718,80 @@ impl<'a> Context<'a> {
         } else {
             0.0
         }
+    }
+
+    /// 三顆一組整組同一隻手（tripletAlt）：第三顆接觸時，往回找前兩顆的第一筆接觸。
+    fn triplet_alt(&self, link: &Link<Assignment>) -> f64 {
+        let current = &link.value;
+        if !matches!(current.part.as_str(), "contact" | "head") {
+            return 0.0;
+        }
+        let Some(&(before, weight, strict)) = self.triplet_prev.get(current.note_id.as_str())
+        else {
+            return 0.0;
+        };
+        let since = self.notes[before[0]].time_seconds - 1.0;
+        let (Some(first), Some(second)) = (
+            self.first_contact(link, before[0], since),
+            self.first_contact(link, before[1], since),
+        ) else {
+            return 0.0;
+        };
+        let alternate = first == current.hand && second != first;
+        let one_hand = first == second && second == current.hand;
+        if one_hand || (strict && !alternate) {
+            weight
+        } else {
+            0.0
+        }
+    }
+
+    /// 兩手都空了 sideRestWindow 以上，卻用手打另一半的單顆（sideRest）。
+    fn side_rest(&self, link: &Link<Assignment>) -> f64 {
+        let t = crate::scoring_v3::tuning();
+        let current = &link.value;
+        if t.side_rest == 0.0
+            || !matches!(current.part.as_str(), "contact" | "head")
+            || !self.singles.contains(current.note_id.as_str())
+        {
+            return 0.0;
+        }
+        let note = self.notes[current.note_id.as_str()];
+        let margin = crate::scoring_v3::HOME_NEUTRAL_MARGIN;
+        let away = match current.hand {
+            Hand::L => note.position.x > margin,
+            Hand::R => note.position.x < -margin,
+        };
+        if !away {
+            return 0.0;
+        }
+        let now = note.time_seconds;
+        let busy = self.busy_until(link, now);
+        if now - busy[0].max(busy[1]) >= t.side_rest_window {
+            t.side_rest
+        } else {
+            0.0
+        }
+    }
+
+    /// 往回找兩手在 `now` 之前最後一次接觸、長押或滑行結束的時刻（沒有是負無限大），
+    /// 最多 64 筆；目前這顆自己的其他部分不算。
+    fn busy_until(&self, link: &Link<Assignment>, now: f64) -> [f64; 2] {
+        let current = &link.value;
+        let mut busy = [f64::NEG_INFINITY; 2];
+        let mut cursor = &link.prev;
+        for _ in 0..64 {
+            let Some(prev) = cursor.head.as_ref() else {
+                break;
+            };
+            let a = &prev.value;
+            if a.note_id != current.note_id && a.part != "group" && a.start_seconds <= now + EPS {
+                let i = a.hand.index();
+                busy[i] = busy[i].max(a.end_seconds);
+            }
+            cursor = &prev.prev;
+        }
+        busy
     }
 
     /// One physical action with V3.1 ownership and roles. Only genuine button
@@ -928,8 +1109,14 @@ impl<'a> Context<'a> {
             expected.ownership_switch += self.star_switch(link)
                 + self.stair_break(link)
                 + self.sweep_break(link)
+                + self.jack_alt(link)
+                + self.stair_unit(link)
+                + self.jack_exit(link)
                 + self.chord_cross(link)
+                + self.hold_cross(link)
                 + self.touch_palm(link)
+                + self.triplet_alt(link)
+                + self.side_rest(link)
                 + self.shape_mix(link)
                 + self.phrase_template(link)
                 + self.group_pattern(link);
@@ -1173,6 +1360,154 @@ fn sweep_steps(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
     result
 }
 
+/// 快速同鍵連打相鄰兩下的最長間隔（jackAlt）。
+const JACK_ALT_WINDOW: f64 = 0.13;
+
+/// jackAlt：同一鍵的單顆 Tap 連打、每下間隔都不到 JACK_ALT_WINDOW，整串有 jackAltRun 下
+/// 以上或每下都不到 jackAltFast 時，每一下 → (前一下, 同手成本)。標記者這種串一律兩手交互，
+/// 較短又較慢的雙押留在同一隻手。
+fn jack_runs(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.jack_alt == 0.0 {
+        return result;
+    }
+    fn tap(n: Option<&Note>) -> Option<&Note> {
+        n.filter(|n| n.kind == "tap" && n.touch_area.is_none())
+    }
+    let singles = single_contacts(chart);
+    let mut i = 0;
+    while i < singles.len() {
+        let mut j = i;
+        while let (Some(a), Some(b)) = (tap(singles[j]), singles.get(j + 1).and_then(|n| tap(*n))) {
+            if b.button != a.button || b.time_seconds - a.time_seconds >= JACK_ALT_WINDOW {
+                break;
+            }
+            j += 1;
+        }
+        let run: Vec<&Note> = singles[i..=j].iter().flatten().copied().collect();
+        let fast = run
+            .windows(2)
+            .all(|p| p[1].time_seconds - p[0].time_seconds < t.jack_alt_fast);
+        if run.len() >= 2 && (run.len() as f64 >= t.jack_alt_run - EPS || fast) {
+            for pair in run.windows(2) {
+                result.insert(pair[1].id.as_str(), (pair[0].id.as_str(), t.jack_alt));
+            }
+        }
+        i = j + 1;
+    }
+    result
+}
+
+/// stairUnit 一組最多幾顆（繞超過一圈的長階梯，標記者照左右半邊分手，例如言ノ葉カルマ）。
+const STAIR_UNIT_MAX: usize = 9;
+
+/// stairUnit：單顆按鍵往同方向走相鄰鍵的快速一串（每步不超過 stairUnitGap、和第一步差 25%
+/// 內）是一組時，第二顆起每一步 → (上一步, 換手成本)。一組是：六到 STAIR_UNIT_MAX 顆；
+/// 四、五顆而前後緊接的單顆按鍵（不超過 stairUnitLink 倍的步距）都是跳鍵；或剛好三顆而
+/// 前後都緊接著跳鍵（同鍵或相鄰接著的是顫音、來回，不是一組）。標記者把一組一隻手刷完：
+/// 前後相接的四顆一組整組同手 97%（V4.1 85%），六顆以上 68–80%（V4.1 30–65%）；
+/// 單獨的三顆反而常分兩手。
+fn stair_units(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.stair_unit == 0.0 {
+        return result;
+    }
+    let seq: Vec<Option<&Note>> = single_contacts(chart)
+        .into_iter()
+        .map(|n| n.filter(|n| n.touch_area.is_none()))
+        .collect();
+    let gap = |a: &Note, b: &Note| b.time_seconds - a.time_seconds;
+    let mut i = 0;
+    while i < seq.len() {
+        let mut j = i;
+        let mut direction = None;
+        while let (Some(a), Some(Some(b))) = (seq[j], seq.get(j + 1)) {
+            let d = (b.button + 8 - a.button) % 8;
+            let g = gap(a, b);
+            if !matches!(d, 1 | 7)
+                || g > t.stair_unit_gap + EPS
+                || direction.is_some_and(|x| x != d)
+                || (j > i && (g - gap(seq[i].unwrap(), seq[i + 1].unwrap())).abs() > 0.25 * g)
+            {
+                break;
+            }
+            direction = Some(d);
+            j += 1;
+        }
+        if j < i + 2 {
+            i += 1;
+            continue;
+        }
+        let run: Vec<&Note> = seq[i..=j].iter().flatten().copied().collect();
+        let reach = t.stair_unit_link * gap(run[0], run[1]) + 0.01;
+        // 前後緊接的單顆按鍵：Some(是不是跳鍵)。
+        let neighbour = |n: Option<&Note>, end: &Note, gap: f64| {
+            n.filter(|_| gap <= reach).map(|n| {
+                let d = (n.button + 8 - end.button) % 8;
+                d.min(8 - d) >= 2
+            })
+        };
+        let before = i.checked_sub(1).and_then(|k| seq[k]);
+        let before = neighbour(
+            before,
+            run[0],
+            before.map_or(f64::INFINITY, |p| gap(p, run[0])),
+        );
+        let last = run[run.len() - 1];
+        let after = seq.get(j + 1).copied().flatten();
+        let after = neighbour(after, last, after.map_or(f64::INFINITY, |n| gap(last, n)));
+        let bounded = before != Some(false) && after != Some(false);
+        let unit = match run.len() {
+            3 => before == Some(true) && after == Some(true),
+            4 | 5 => bounded,
+            n => n <= STAIR_UNIT_MAX,
+        };
+        if unit {
+            for pair in run.windows(2) {
+                result.insert(pair[1].id.as_str(), (pair[0].id.as_str(), t.stair_unit));
+            }
+        }
+        i = j + 1;
+    }
+    result
+}
+
+/// jackExit 的同鍵兩顆最長間隔（秒）。
+const JACK_EXIT_PAIR: f64 = 0.5;
+/// 同鍵兩顆間隔至少這麼長時，拆給兩手也收 jackExit（標記者 3 / 451；更快的兩顆 31% 交互）。
+const JACK_EXIT_SPLIT: f64 = 0.10;
+
+/// jackExit：同一顆按鍵連續兩顆單顆接觸、間隔不超過 JACK_EXIT_PAIR，
+/// 下一顆換到別的按鍵、在 jackExitWindow 內落下時，這顆 → (那兩顆, 成本, 兩顆間隔 ≥
+/// JACK_EXIT_SPLIT)。標記者這種地方 89% 是兩顆同手、這顆換手。
+fn jack_exits(chart: &Chart) -> BTreeMap<&str, ([&str; 2], f64, bool)> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.jack_exit == 0.0 {
+        return result;
+    }
+    for w in single_contacts(chart).windows(3) {
+        let [Some(p), Some(a), Some(b)] = [w[0], w[1], w[2]] else {
+            continue;
+        };
+        if [p, a, b].iter().all(|n| n.touch_area.is_none())
+            && p.button == a.button
+            && a.button != b.button
+            && a.time_seconds - p.time_seconds <= JACK_EXIT_PAIR + EPS
+            && b.time_seconds - a.time_seconds <= t.jack_exit_window + EPS
+        {
+            let slow = a.time_seconds - p.time_seconds >= JACK_EXIT_SPLIT - EPS;
+            result.insert(
+                b.id.as_str(),
+                ([p.id.as_str(), a.id.as_str()], t.jack_exit, slow),
+            );
+        }
+    }
+    result
+}
+
 /// 和弦兩顆的左右位置差在這以內算「一樣」；位置離中線在這以內不算哪一側。
 const CHORD_SIDE: f64 = 0.05;
 
@@ -1195,6 +1530,89 @@ fn chord_pairs(chart: &Chart) -> BTreeMap<&str, &str> {
                 result.insert(b.id.as_str(), a.id.as_str());
             }
         }
+    }
+    result
+}
+
+/// holdCross：同一時刻 2–4 個接觸（按鍵、Touch、星星頭），其中有長押或 Touch 長押至少
+/// holdCrossMin 秒時，每一顆 → 同時的其他顆。標記者在這種和弦從不交叉（開始長押的手就是
+/// 那一側的手），V4.1 在 25 個 Touch 和弦裡交叉 5 次。
+fn hold_chords(chart: &Chart) -> BTreeMap<&str, Vec<&str>> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.hold_cross == 0.0 {
+        return result;
+    }
+    let mut heads: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind != "slide" || n.has_head)
+        .collect();
+    heads.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    for group in heads.chunk_by(|a, b| (b.time_seconds - a.time_seconds).abs() < 0.002) {
+        let long = |n: &&Note| {
+            matches!(n.kind.as_str(), "hold" | "touchHold")
+                && n.end_seconds - n.time_seconds >= t.hold_cross_min - EPS
+        };
+        if !(2..=4).contains(&group.len()) || !group.iter().any(long) {
+            continue;
+        }
+        for note in group {
+            result.insert(
+                note.id.as_str(),
+                group
+                    .iter()
+                    .filter(|o| o.id != note.id)
+                    .map(|o| o.id.as_str())
+                    .collect(),
+            );
+        }
+    }
+    result
+}
+
+/// tripletAlt：自動分組剛好三顆單顆按鍵、等間隔（差 20 毫秒內）且間隔不超過
+/// tripletWindow 時，第三顆 → (前兩顆, 成本, 頭尾同鍵)。同一鍵連打（1-1-1）不算：
+/// 標記者常一手打完。頭尾同鍵、中間不同鍵（6-5-6）的組標記者全部交互，不交互就收；
+/// 其他組只在整組同手時收。tripletReturn 開啟時只算頭尾同鍵的組。
+fn triplets(chart: &Chart) -> BTreeMap<&str, ([&str; 2], f64, bool)> {
+    let t = crate::scoring_v3::tuning();
+    let mut result = BTreeMap::new();
+    if t.triplet_alt == 0.0 {
+        return result;
+    }
+    let singles: std::collections::BTreeSet<&str> = single_contacts(chart)
+        .into_iter()
+        .flatten()
+        .map(|n| n.id.as_str())
+        .collect();
+    for mut group in phrases::auto_groups(chart, phrases::GroupCut::of(t)) {
+        if group.len() != 3
+            || group
+                .iter()
+                .any(|n| n.touch_area.is_some() || !singles.contains(n.id.as_str()))
+        {
+            continue;
+        }
+        group.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+        let [a, b, c] = [group[0], group[1], group[2]];
+        let (first, second) = (
+            b.time_seconds - a.time_seconds,
+            c.time_seconds - b.time_seconds,
+        );
+        let jack = a.button == b.button && b.button == c.button;
+        let returns = a.button == c.button && !jack;
+        if (first - second).abs() > 0.02
+            || first > t.triplet_window + EPS
+            || jack
+            || (t.triplet_return > 0.0 && !returns)
+        {
+            continue;
+        }
+        result.insert(
+            c.id.as_str(),
+            ([a.id.as_str(), b.id.as_str()], t.triplet_alt, returns),
+        );
     }
     result
 }

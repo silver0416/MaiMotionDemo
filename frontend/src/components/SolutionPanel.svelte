@@ -668,6 +668,18 @@
     background: var(--model-fill);
   }
 
+  .temoto-note--konruri,
+  .model-tag--konruri {
+    --model: var(--c-konruri);
+    --model-fill: var(--c-konruri-deep);
+  }
+
+  .temoto-note--shoubu,
+  .model-tag--shoubu {
+    --model: var(--c-shoubu);
+    --model-fill: var(--c-shoubu-deep);
+  }
+
   .temoto-note--rurikon,
   .model-tag--rurikon {
     --model: var(--c-rurikon);

@@ -26,14 +26,18 @@ const X_COLS: [usize; 6] = [7, 17, 18, 20, 22, 24];
 /// 群內由左到右的排名，鏡像時變成 1 − rank。
 const RANK_COL: usize = 15;
 
-/// 內建模型。rurikon（瑠璃紺）是 ruri 的網路配 V4 權重，ayame（菖蒲）是以 V4 基座重訓的分組架構
+/// 內建模型。rurikon（瑠璃紺）是 ruri 的網路配 V4 權重，ayame（菖蒲，あやめ）是以 V4 基座重訓的分組架構
 /// （2026-10-30 使用者選入 App；tokiwa、akane、ruri 收進前端的「顯示更多模型」）。
-pub const MODEL_IDS: [&str; 5] = [
+/// konruri（紺瑠璃）、shoubu（菖蒲，しょうぶ）是同樣兩個網路改配 V4.1 權重，不重訓
+/// （2026-11-05 使用者定名並換成主卡；rurikon、ayame 收進「顯示更多模型」）。
+pub const MODEL_IDS: [&str; 7] = [
     "temoto-1-tokiwa",
     "temoto-1-akane",
     "temoto-1-ruri",
     "temoto-1-rurikon",
     "temoto-1-ayame",
+    "temoto-1-konruri",
+    "temoto-1-shoubu",
 ];
 
 /// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
@@ -323,13 +327,19 @@ impl TemotoModel {
     ///
     /// 改動門檻依四份真人標註的掃描決定：tokiwa 在 0.6 時合計多對最多，把握不到 0.6 的修改
     /// 改對與改錯差不多；akane 在 0.5 時最多。ruri（分組架構，基座 V3.2）沿用 0.5，
-    /// rurikon、ayame（分組架構，基座 V4）也是 0.5。
+    /// rurikon、ayame（分組架構，基座 V4）與 konruri、shoubu（基座 V4.1）也是 0.5。
+    ///
+    /// konruri、shoubu 和 rurikon、ayame 共用模型檔，只把附帶的權重換成 V4.1（不另存一份網路）。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
+        const RURIKON_FILE: &[u8] = include_bytes!("../models/temoto-1-rurikon.temoto");
+        const AYAME_FILE: &[u8] = include_bytes!("../models/temoto-1-ayame.temoto");
         static TOKIWA: OnceLock<TemotoModel> = OnceLock::new();
         static AKANE: OnceLock<TemotoModel> = OnceLock::new();
         static RURI: OnceLock<TemotoModel> = OnceLock::new();
         static RURIKON: OnceLock<TemotoModel> = OnceLock::new();
         static AYAME: OnceLock<TemotoModel> = OnceLock::new();
+        static KONRURI: OnceLock<TemotoModel> = OnceLock::new();
+        static SHOUBU: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
                 Self {
@@ -345,13 +355,21 @@ impl TemotoModel {
             "temoto-1-ruri" => Some(RURI.get_or_init(|| {
                 Self::load(include_bytes!("../models/temoto-1-ruri.temoto")).expect("內建模型 ruri")
             })),
-            "temoto-1-rurikon" => Some(RURIKON.get_or_init(|| {
-                Self::load(include_bytes!("../models/temoto-1-rurikon.temoto"))
-                    .expect("內建模型 rurikon")
+            "temoto-1-rurikon" => {
+                Some(RURIKON.get_or_init(|| Self::load(RURIKON_FILE).expect("內建模型 rurikon")))
+            }
+            "temoto-1-ayame" => {
+                Some(AYAME.get_or_init(|| Self::load(AYAME_FILE).expect("內建模型 ayame")))
+            }
+            "temoto-1-konruri" => Some(KONRURI.get_or_init(|| Self {
+                name: id.into(),
+                tuning: crate::scoring_v3::variant_tuning("v4.1"),
+                ..Self::load(RURIKON_FILE).expect("內建模型 rurikon")
             })),
-            "temoto-1-ayame" => Some(AYAME.get_or_init(|| {
-                Self::load(include_bytes!("../models/temoto-1-ayame.temoto"))
-                    .expect("內建模型 ayame")
+            "temoto-1-shoubu" => Some(SHOUBU.get_or_init(|| Self {
+                name: id.into(),
+                tuning: crate::scoring_v3::variant_tuning("v4.1"),
+                ..Self::load(AYAME_FILE).expect("內建模型 ayame")
             })),
             _ => None,
         }
@@ -366,7 +384,7 @@ impl TemotoModel {
         self.tuning
     }
 
-    /// 基座在提醒文字裡的名稱：附帶的權重和哪個 V3 變體相同就用它的名字（V3.1、V3.2、V4），
+    /// 基座在提醒文字裡的名稱：附帶的權重和哪個 V3 變體相同就用它的名字（V3.1、V3.2、V4、V4.1），
     /// 沒附權重是原始 V3，都對不上時只說「基座」。
     pub fn base_label(&self) -> String {
         let Some(tuning) = self.tuning else {

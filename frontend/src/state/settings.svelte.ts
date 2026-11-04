@@ -1,4 +1,4 @@
-import { migrateDraft } from '../lib/contract';
+import { MAIN_LINEUP, migrateDraft, promoteMainCards } from '../lib/contract';
 import { STORE_SETTINGS, dbGet, dbPut } from '../lib/db';
 import type { ConfigDraft } from '../lib/types';
 import { session } from './session.svelte';
@@ -36,6 +36,8 @@ interface StoredSettings {
   view: Partial<Record<ViewKey, unknown>>;
   config: Partial<ConfigDraft>;
   firstSeconds: number;
+  /** 存檔時的主卡版號（contract.ts 的 MAIN_LINEUP）；2026-11-05 之前的存檔沒有，視為 1。 */
+  lineup?: number;
 }
 
 function sameShape(value: unknown, reference: unknown): boolean {
@@ -57,6 +59,7 @@ function snapshot(): StoredSettings {
     view: stored,
     config: $state.snapshot(session.config) as ConfigDraft,
     firstSeconds: session.firstSeconds,
+    lineup: MAIN_LINEUP,
   };
 }
 
@@ -69,7 +72,9 @@ function apply(stored: StoredSettings): void {
   }
   if (stored.config && typeof stored.config === 'object') {
     // 逐欄合併並補上加入 V3 前沒有的 v3 欄位；已選的評分方式與各版數值原樣保留。
-    session.config = migrateDraft(stored.config, session.config);
+    const draft = migrateDraft(stored.config, session.config);
+    // 主卡換代前的存檔選的是當時的主卡：換成這一代對應的主卡（只在讀到舊版號時做一次）。
+    session.config = (stored.lineup ?? 1) < MAIN_LINEUP ? promoteMainCards(draft) : draft;
   }
   if (typeof stored.firstSeconds === 'number' && Number.isFinite(stored.firstSeconds)) {
     session.firstSeconds = stored.firstSeconds;

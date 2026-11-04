@@ -51,8 +51,8 @@ fn new_terms_default_off() {
     }
 }
 
-/// V4 就是 V3.2 再打開 sweepBreak 2、chordCross 1、touchPalm 0.25（門檻 0.37），
-/// 其他權重完全相同。
+/// V4 就是 V3.2 再打開 sweepBreak 2、chordCross 1、touchPalm 0.25（門檻 0.37）與
+/// tripletAlt 1（只算頭尾同鍵，見 tests/triplet.rs），其他權重完全相同。
 #[test]
 fn v4_is_v32_with_new_terms() {
     let v4 = variant_tuning("v4").unwrap();
@@ -60,10 +60,20 @@ fn v4_is_v32_with_new_terms() {
     assert_eq!((v4.touch_palm, v4.touch_palm_free), (0.25, 0.37));
     let mut a = serde_json::to_value(v4).unwrap();
     let b = serde_json::to_value(variant_tuning("v3.2").unwrap()).unwrap();
-    for k in ["sweepBreak", "chordCross", "touchPalm", "touchPalmFree"] {
+    for k in [
+        "sweepBreak",
+        "chordCross",
+        "touchPalm",
+        "touchPalmFree",
+        "tripletAlt",
+        "tripletReturn",
+    ] {
         a[k] = b[k].clone();
     }
-    assert_eq!(a, b, "V4 和 V3.2 只差 sweepBreak、chordCross、touchPalm");
+    assert_eq!(
+        a, b,
+        "V4 和 V3.2 只差 sweepBreak、chordCross、touchPalm、tripletAlt"
+    );
 }
 
 /// tap 6 之後 32 分接 E6、B5（往內刷）：V3.2 讓 Touch 換給右手；開 sweepBreak 後整筆同一隻手。

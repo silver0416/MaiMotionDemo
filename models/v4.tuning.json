@@ -32,6 +32,9 @@
   "touchPalm": 0.25,
   "touchPalmFree": 0.37,
   "travel": 0.0,
+  "tripletAlt": 1.0,
+  "tripletReturn": 1.0,
+  "tripletWindow": 0.13,
   "workload": 0.0,
   "workloadFree": 1.25,
   "workloadTau": 0.72

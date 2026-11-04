@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 
 pub const SCORING_MODEL_V3: &str = "human-motion-v3";
 const RANK_PRECISION: f64 = 1e-6;
-const HOME_NEUTRAL_MARGIN: f64 = 0.15;
+pub(crate) const HOME_NEUTRAL_MARGIN: f64 = 0.15;
 const REVERSAL_WINDOW: f64 = 0.60;
 const REVERSAL_MIN_DISTANCE: f64 = 0.12;
 const REVERSAL_FULL_DISTANCE: f64 = 0.75;
@@ -137,6 +137,59 @@ pub struct TuningV3 {
     /// 0 = off.
     pub touch_palm: f64,
     pub touch_palm_free: f64,
+    /// Three single button contacts cut as one automatic group, evenly spaced
+    /// at most triplet_window apart. Groups that return to their first key
+    /// (6-5-6) cost unless the hands alternate (annotators always do); other
+    /// groups cost when one hand strikes all three. Repeated single keys
+    /// (1-1-1) never count. With triplet_return at 1 only returning groups
+    /// count. Flat cost per group; 0 = off.
+    pub triplet_alt: f64,
+    pub triplet_window: f64,
+    pub triplet_return: f64,
+    /// A single contact on the other hand's half (beyond the neutral margin)
+    /// while both hands have been free (no contact, hold or slide) for at
+    /// least side_rest_window. In slow passages annotators keep each half to
+    /// its own hand (about 94% of such contacts); V4 crossed far more often,
+    /// mostly on the keys near the middle (1, 4, 5, 8) where homeEntry is
+    /// shallow. Flat cost per contact; 0 = off.
+    pub side_rest: f64,
+    pub side_rest_window: f64,
+    /// Two strikes in a row by one hand inside a fast run of single taps on
+    /// one key (each gap under 0.13 s) that is jack_alt_run strikes or
+    /// longer, or whose gaps are all under jack_alt_fast. Annotators
+    /// alternate such runs; shorter, slower doubles stay with one hand.
+    /// Flat cost per pair; 0 = off.
+    pub jack_alt: f64,
+    pub jack_alt_run: f64,
+    pub jack_alt_fast: f64,
+    /// Changing hands inside a fast stair unit: single buttons stepping to the
+    /// neighbour in one direction, every gap at most stair_unit_gap and within
+    /// 25% of the first; six to nine long, or four or five set off by jumps
+    /// on both sides, or three with jumps following on both sides within
+    /// stair_unit_link times the step. The annotator plays such a unit with
+    /// one hand ("four by four") even when the next unit has to cross over;
+    /// V4.1 broke them where the other hand sat closer. Longer rotations are
+    /// split by halves. Flat cost per step; 0 = off.
+    pub stair_unit: f64,
+    pub stair_unit_gap: f64,
+    pub stair_unit_link: f64,
+    /// A key struck twice in a row and then, within jack_exit_window, a
+    /// different key, unless the pair is one hand and the next key the other.
+    /// The annotator treats the repeated pair as one unit and starts the next
+    /// unit with the other hand (89% where the pair is at least 0.1 s apart;
+    /// faster pairs may alternate, so only all three on one hand counts
+    /// there). Flat cost per exit; 0 = off.
+    pub jack_exit: f64,
+    pub jack_exit_window: f64,
+    /// Two to four contacts struck together (buttons, Touch, star heads),
+    /// one of them a hold or Touch hold lasting at least hold_cross_min,
+    /// split between the hands with the left hand's rightmost contact to
+    /// the right of the right hand's leftmost. The hand that starts a long
+    /// hold is the one on that side of the chord; the annotator never
+    /// crossed there, V4.1 did on 5 of 25 Touch chords. Flat cost per
+    /// chord; 0 = off.
+    pub hold_cross: f64,
+    pub hold_cross_min: f64,
 }
 impl Default for TuningV3 {
     fn default() -> Self {
@@ -182,6 +235,21 @@ impl Default for TuningV3 {
             chord_cross: 0.0,
             touch_palm: 0.0,
             touch_palm_free: 0.37,
+            triplet_alt: 0.0,
+            triplet_window: 0.13,
+            triplet_return: 0.0,
+            side_rest: 0.0,
+            side_rest_window: 0.26,
+            jack_alt: 0.0,
+            jack_alt_run: 4.0,
+            jack_alt_fast: 0.08,
+            stair_unit: 0.0,
+            stair_unit_gap: 0.10,
+            stair_unit_link: 1.5,
+            jack_exit: 0.0,
+            jack_exit_window: 0.17,
+            hold_cross: 0.0,
+            hold_cross_min: 0.3,
         }
     }
 }
@@ -221,20 +289,24 @@ pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {
 /// 評分方式裡的 V3 變體：搜尋架構和 V3 相同，只換權重。
 /// V3.1 以手元影片弱標註重新擬合；V3.2 是 V3.1 再把 `starSwitch` 降到 0.1
 /// （標記者一手拍星星、另一手滑的比例比 V3 預設高很多）。
-/// V4 是 V3.2 再打開三個成本項：`sweepBreak`（極短相鄰同一隻手刷過）、
-/// `chordCross`（雙押不交叉、幫手打下面那顆）與 `touchPalm`（同時的 Touch 散得太開
-/// 不一手包）；App 預設用它。
-pub const V3_VARIANTS: [&str; 3] = ["v3.1", "v3.2", "v4"];
+/// V4 是 V3.2 再打開四個成本項：`sweepBreak`（極短相鄰同一隻手刷過）、
+/// `chordCross`（雙押不交叉、幫手打下面那顆）、`touchPalm`（同時的 Touch 散得太開
+/// 不一手包）與 `tripletAlt`（頭尾同鍵的快速三顆一組兩手交互）；App 預設用它。
+/// V4.1 是 V4 再打開 `sideRest`（兩手都空著時，各打自己那一半）與 `holdCross`
+/// （長押開始的和弦不交叉，也不一手包下散開的和弦）。
+pub const V3_VARIANTS: [&str; 4] = ["v3.1", "v3.2", "v4", "v4.1"];
 
 /// V3 變體的權重（第一次使用時解析）。
 pub fn variant_tuning(id: &str) -> Option<&'static TuningV3> {
     static V31: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     static V32: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     static V4: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+    static V41: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     let (cell, text) = match id {
         "v3.1" => (&V31, include_str!("../models/v3.1.tuning.json")),
         "v3.2" => (&V32, include_str!("../models/v3.2.tuning.json")),
         "v4" => (&V4, include_str!("../models/v4.tuning.json")),
+        "v4.1" => (&V41, include_str!("../models/v4.1.tuning.json")),
         _ => return None,
     };
     Some(cell.get_or_init(|| serde_json::from_str(text).expect("內建 V3 變體權重")))

@@ -50,7 +50,7 @@ fn builtin_models_load() {
         serde_json::to_value(ruri.tuning().unwrap()).unwrap(),
         serde_json::to_value(variant_tuning("v3.2").unwrap()).unwrap()
     );
-    // rurikon（ruri 的網路）與 ayame（V4 重訓）：分組架構，附帶 V4 的權重（含 touchPalm），門檻 0.5
+    // rurikon（ruri 的網路）與 ayame（V4 重訓）：分組架構，附帶 V4 的權重（含 touchPalm、tripletAlt），門檻 0.5
     for id in ["temoto-1-rurikon", "temoto-1-ayame"] {
         let model = TemotoModel::builtin(id).unwrap();
         assert!(model.grouped(), "{id}");
@@ -58,6 +58,17 @@ fn builtin_models_load() {
         assert_eq!(
             serde_json::to_value(model.tuning().unwrap()).unwrap(),
             serde_json::to_value(variant_tuning("v4").unwrap()).unwrap(),
+            "{id}"
+        );
+    }
+    // konruri（紺瑠璃）與 shoubu（菖蒲，しょうぶ）：同樣兩個網路（共用模型檔）改配 V4.1 的權重，門檻 0.5
+    for id in ["temoto-1-konruri", "temoto-1-shoubu"] {
+        let model = TemotoModel::builtin(id).unwrap();
+        assert!(model.grouped(), "{id}");
+        assert_eq!(model.flip_at(), 0.5, "{id}");
+        assert_eq!(
+            serde_json::to_value(model.tuning().unwrap()).unwrap(),
+            serde_json::to_value(variant_tuning("v4.1").unwrap()).unwrap(),
             "{id}"
         );
     }
@@ -72,6 +83,8 @@ fn base_label_follows_model_tuning() {
         ("temoto-1-ruri", "V3.2"),
         ("temoto-1-rurikon", "V4"),
         ("temoto-1-ayame", "V4"),
+        ("temoto-1-konruri", "V4.1"),
+        ("temoto-1-shoubu", "V4.1"),
     ] {
         assert_eq!(
             TemotoModel::builtin(id).unwrap().base_label(),
