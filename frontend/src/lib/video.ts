@@ -347,13 +347,15 @@ export interface HandcamNoteData {
   motionStart: number | null;
   motionEnd: number | null;
   path: { u: number; x: number; y: number }[] | null;
+  /** WiFi 的兩條側線（格式同 path）；其他音符為空陣列 */
+  branches: { u: number; x: number; y: number }[][];
 }
 
-/** 影片推估的一顆音符（影片視窗 → 主視窗）；Unsure 為中信心。 */
+/** 影片推估的一顆音符（影片視窗 → 主視窗）；Unsure 為中信心。track 的 LR 為 WiFi 兩手一起（2+1）。 */
 export interface HandcamMark {
   key: string;
   hand?: 'L' | 'R';
-  track?: 'L' | 'R';
+  track?: 'L' | 'R' | 'LR';
   handUnsure?: boolean;
   trackUnsure?: boolean;
 }

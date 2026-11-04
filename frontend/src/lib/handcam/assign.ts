@@ -3,7 +3,7 @@
 // - 接觸：判定前 0.10 秒到判定時刻，每隻手（掌心或指尖取較近者）到目標的平均距離，較近者為該手；
 //   同時兩顆以總距離最小的方式各分一隻手。
 // - 信心：兩手距離差 ×「最近那隻手真的在目標附近」的折扣；≥ 0.54 為高、≥ 0.091 為中，其餘不填。
-// - Slide 滑行：滑行期間（時間提前 0.1 秒）哪隻手較貼近星星的預期位置。
+// - Slide 滑行：滑行期間（時間提前 0.1 秒）哪隻手較貼近星星的預期位置。WiFi 另看結束時兩手是否各停在終點（見 wifiTrack）。
 // 目標：按鍵是該鍵方向上盤面半徑 0.7–1.3 的線段（螢幕 A 區或實體鍵都算）；Touch 是感應區代表點。
 
 import { buttonAngle, type Vec2 } from './homography';
@@ -37,7 +37,15 @@ export interface HandcamNote {
   motionStart: number | null;
   motionEnd: number | null;
   /** Slide 路徑（弧長參數 u 與盤面座標）；其他音符為 null */
-  path: { u: number; x: number; y: number }[] | null;
+  path: PathPoint[] | null;
+  /** WiFi 的兩條側線（格式同 path）；其他音符為空陣列 */
+  branches: PathPoint[][];
+}
+
+interface PathPoint {
+  u: number;
+  x: number;
+  y: number;
 }
 
 export type Tier = 'high' | 'mid' | 'low';
@@ -47,7 +55,8 @@ export interface NoteGuess {
   hand: 'L' | 'R' | null;
   confidence: number;
   tier: Tier;
-  track: 'L' | 'R' | null;
+  /** Slide 滑行的手；LR 為 WiFi 兩手一起（2+1） */
+  track: 'L' | 'R' | 'LR' | null;
   trackConfidence: number;
   trackTier: Tier | null;
 }
@@ -60,6 +69,14 @@ export const MID = 0.091;
 export const TRACK_HIGH = 0.563;
 export const TRACK_MID = 0.061;
 const MISSING = 9;
+/**
+ * WiFi：滑行結束時手到某條線終點在這以內算「停在終點」；另一手超過 WIFI_AWAY 才算沒來幫忙。
+ * 2+1 時管中央＋側線的那隻手停在兩個終點中間，離最近終點約 0.38，所以門檻要比它寬。
+ */
+const WIFI_END = 0.45;
+const WIFI_AWAY = 1.0;
+/** WiFi 結束位置取前後這麼多秒的平均 */
+const WIFI_HALF = 0.05;
 
 function segmentDistance(p: Vec2, angle: number, r0 = 0.7, r1 = 1.3): number {
   const ax = Math.cos(angle);
@@ -160,11 +177,61 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function slideTrack(frames: Frames, note: HandcamNote, offset: number, step: number): { hand: 'L' | 'R'; conf: number } | null {
+interface TrackGuess {
+  hand: 'L' | 'R' | 'LR';
+  conf: number;
+  tier: Tier;
+}
+
+/**
+ * WiFi：看滑行結束時（同樣提前 0.1 秒、前後 0.05 秒平均）兩隻手離三條線終點多近。
+ * 資料集 238 支影片 582 顆 WiFi（兩手都看得到的）：兩手各停在不同終點（都在 WIFI_END 內）46%，
+ * 一般直線 Slide（終點左右各算一鍵）對照只有 13%；「一手在終點、另一手在 WIFI_AWAY 外」只有 3%（對照 23%）。玩家幾乎都是兩手 2+1，
+ * 所以看得出兩手就照填 LR；只看到一手在掃、另一手很遠才給單手（中信心）；其餘仍給 LR 並標不確定。
+ * WiFi 很短（中位 0.19 秒），逐格追星星的距離太吵，不用那套。
+ */
+function wifiTrack(frames: Frames, note: HandcamNote, offset: number): TrackGuess | null {
+  if (!note.path || note.motionEnd === null) return null;
+  const ends = [note.path, ...note.branches].map((line) => line[line.length - 1]);
+  const at = note.motionEnd + offset + SLIDE_SHIFT;
+  const list = frames.between(at - WIFI_HALF, at + WIFI_HALF).filter((frame) => frame.ok);
+  const nearestFrame = frames.nearest(at);
+  const usable = list.length > 0 ? list : nearestFrame?.ok ? [nearestFrame] : [];
+  // 每隻手：掌心、指尖各自平均後，取離哪個終點最近
+  const reach = (['L', 'R'] as const).map((side) => {
+    const seen = usable.map((frame) => frame[side]).filter((hand): hand is HandSample => !!hand);
+    if (seen.length === 0) return null;
+    const mean = (pick: (hand: HandSample) => Vec2): Vec2 => ({
+      x: seen.reduce((sum, hand) => sum + pick(hand).x, 0) / seen.length,
+      y: seen.reduce((sum, hand) => sum + pick(hand).y, 0) / seen.length,
+    });
+    const points = [mean((hand) => hand.palm), mean((hand) => hand.tips)];
+    let best = { d: Number.POSITIVE_INFINITY, end: 0 };
+    ends.forEach((end, index) => {
+      for (const p of points) {
+        const d = Math.hypot(p.x - end.x, p.y - end.y);
+        if (d < best.d) best = { d, end: index };
+      }
+    });
+    return best;
+  });
+  const [left, right] = reach;
+  if (!left && !right) return null;
+  if (left && right) {
+    const far = Math.max(left.d, right.d);
+    const near = Math.min(left.d, right.d);
+    if (far <= WIFI_END && left.end !== right.end) return { hand: 'LR', conf: WIFI_END - far, tier: 'high' };
+    if (near <= WIFI_END && far >= WIFI_AWAY) return { hand: left.d < right.d ? 'L' : 'R', conf: far - near, tier: 'mid' };
+  }
+  return { hand: 'LR', conf: 0, tier: 'mid' };
+}
+
+function slideTrack(frames: Frames, note: HandcamNote, offset: number, step: number): TrackGuess | null {
   if (!note.path || note.path.length < 2 || note.motionStart === null || note.motionEnd === null) return null;
   const t0 = note.motionStart + offset + SLIDE_SHIFT;
   const t1 = note.motionEnd + offset + SLIDE_SHIFT;
   if (t1 <= t0) return null;
+  if (note.branches.length === 2) return wifiTrack(frames, note, offset);
   const path = note.path;
   const star = (u: number): Vec2 => {
     if (u <= path[0].u) return path[0];
@@ -194,8 +261,9 @@ function slideTrack(frames: Frames, note: HandcamNote, offset: number, step: num
   const m = acc.map((values) => (values.length >= need ? median(values) : MISSING));
   if (Math.min(m[0], m[1]) >= MISSING) return null;
   const min = Math.min(m[0], m[1]);
-  const conf = Math.abs(m[0] - m[1]) * Math.min(1, Math.max(0, 1 - Math.max(min - 0.3, 0) / 0.5));
-  return { hand: m[0] < m[1] ? 'L' : 'R', conf: Math.max(m[0], m[1]) >= MISSING ? Math.min(conf, TRACK_HIGH * 0.99) : conf };
+  let conf = Math.abs(m[0] - m[1]) * Math.min(1, Math.max(0, 1 - Math.max(min - 0.3, 0) / 0.5));
+  if (Math.max(m[0], m[1]) >= MISSING) conf = Math.min(conf, TRACK_HIGH * 0.99);
+  return { hand: m[0] < m[1] ? 'L' : 'R', conf, tier: tier(conf, TRACK_HIGH, TRACK_MID) };
 }
 
 /** 推每顆音符的左右手。offset：影片時間 − 譜面時間；step：取樣間隔（秒）。 */
@@ -242,7 +310,7 @@ export function guessHands(notes: HandcamNote[], frames: Frames, offset: number,
       tier: headTier,
       track: track ? track.hand : null,
       trackConfidence: track?.conf ?? 0,
-      trackTier: track ? tier(track.conf, TRACK_HIGH, TRACK_MID) : null,
+      trackTier: track ? track.tier : null,
     };
   });
 }

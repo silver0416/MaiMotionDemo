@@ -235,6 +235,7 @@ class VideoSync {
           motionStart: note.motionStart,
           motionEnd: note.motionEnd,
           path: path ? path.samples.map((sample) => ({ u: sample.u, x: sample.x, y: sample.y })) : null,
+          branches: path ? path.branches.map((line) => line.map((sample) => ({ u: sample.u, x: sample.x, y: sample.y }))) : [],
         };
       });
   }
