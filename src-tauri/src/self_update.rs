@@ -36,6 +36,15 @@ pub struct DownloadProgress {
     pub total: u64,
 }
 
+/// 這次是從哪個舊版更新過來的。
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviousVersion {
+    pub path: String,
+    /// 舊版的版本號（`1.1.0`）；讀不到時是 null，更新內容就只列目前這一版。
+    pub version: Option<String>,
+}
+
 pub struct SelfUpdateState {
     client: reqwest::Client,
     busy: AtomicBool,
@@ -266,6 +275,63 @@ fn is_this_app(path: &Path) -> bool {
         })
 }
 
+/// 舊版的版本號：先看執行檔的版本資源，讀不到再看檔名（`MaiMotionDemo-v1.1.0-windows-x64.exe`）。
+/// 舊版會在新版啟動後刪掉，所以要在刪除前讀。
+pub fn previous_version(path: &Path) -> Option<String> {
+    let from_resource = std::fs::metadata(path)
+        .is_ok_and(|meta| meta.len() <= DOWNLOAD_LIMIT_BYTES)
+        .then(|| std::fs::read(path).ok())
+        .flatten()
+        .and_then(|bytes| version_resource(&bytes));
+    from_resource.or_else(|| version_in_name(path))
+}
+
+/// Windows 執行檔的版本資源：鍵名「VS_VERSION_INFO」（UTF-16）後面補零對齊，
+/// 接著是 VS_FIXEDFILEINFO（簽章 0xFEEF04BD、結構版本 0x00010000）。
+/// 每一版建置時都用 Cargo 的版本號填這裡，取產品版本的前三段。
+fn version_resource(bytes: &[u8]) -> Option<String> {
+    const KEY: &[u8] = b"V\0S\0_\0V\0E\0R\0S\0I\0O\0N\0_\0I\0N\0F\0O\0\0\0";
+    let dword = |at: usize| -> Option<u32> {
+        let slice = bytes.get(at..at.checked_add(4)?)?;
+        Some(u32::from_le_bytes(slice.try_into().ok()?))
+    };
+    let mut from = 0;
+    while let Some(found) = bytes
+        .get(from..)?
+        .windows(KEY.len())
+        .position(|window| window == KEY)
+    {
+        let end = from + found + KEY.len();
+        for start in end..end + 4 {
+            if dword(start) == Some(0xFEEF_04BD) && dword(start + 4) == Some(0x0001_0000) {
+                let major_minor = dword(start + 16)?;
+                let patch_build = dword(start + 20)?;
+                return Some(format!(
+                    "{}.{}.{}",
+                    major_minor >> 16,
+                    major_minor & 0xFFFF,
+                    patch_build >> 16
+                ));
+            }
+        }
+        from = end;
+    }
+    None
+}
+
+/// 檔名裡的 `v1.2.3`。
+fn version_in_name(path: &Path) -> Option<String> {
+    let name = path.file_stem()?.to_str()?;
+    name.match_indices(['v', 'V']).find_map(|(at, _)| {
+        let digits: String = name[at + 1..]
+            .chars()
+            .take_while(|char| char.is_ascii_digit() || *char == '.')
+            .collect();
+        let parts: Vec<&str> = digits.split('.').take(3).collect();
+        (parts.len() == 3 && parts.iter().all(|part| !part.is_empty())).then(|| parts.join("."))
+    })
+}
+
 /// 刪除舊版；舊程式可能還在結束中，最多等幾秒。
 pub fn remove_previous(previous: &Path) -> Result<(), String> {
     let mut last = String::new();
@@ -351,12 +417,24 @@ pub mod commands {
         Ok(())
     }
 
-    /// 這次是從哪個舊版更新過來的（還在、可以刪的才回傳）。
+    /// 這次是從哪個舊版更新過來的（還在、可以刪的才回傳），連同舊版的版本號。
+    /// 要讀整個舊版執行檔，放到背景執行緒，不卡住畫面。
     #[tauri::command]
-    pub fn update_previous(state: tauri::State<'_, SelfUpdateState>) -> Option<String> {
-        let previous = state.previous.lock().ok()?.clone()?;
-        let exe = current_exe().ok()?;
-        removable_previous(&previous, &exe).then(|| previous.to_string_lossy().into_owned())
+    pub async fn update_previous(
+        state: tauri::State<'_, SelfUpdateState>,
+    ) -> Result<Option<PreviousVersion>, String> {
+        let Some(previous) = state.previous.lock().ok().and_then(|slot| slot.clone()) else {
+            return Ok(None);
+        };
+        let exe = current_exe()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            removable_previous(&previous, &exe).then(|| PreviousVersion {
+                version: previous_version(&previous),
+                path: previous.to_string_lossy().into_owned(),
+            })
+        })
+        .await
+        .map_err(|error| format!("讀取舊版資訊失敗：{error}"))
     }
 
     /// 刪除舊版（新版啟動後自動呼叫）；remove 為 false 時只放棄這次的舊版記錄。
@@ -443,6 +521,81 @@ mod tests {
         assert!(!old.exists());
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&elsewhere);
+    }
+
+    /// 模擬版本資源：VS_VERSIONINFO 開頭（長度、值長度、型別）、鍵名、對齊補零、VS_FIXEDFILEINFO。
+    fn version_info(major: u16, minor: u16, patch: u16, padding: usize) -> Vec<u8> {
+        let mut bytes = b"MZ\x90\0garbage \xBD\x04\xEF\xFE not the resource".to_vec();
+        bytes.extend_from_slice(&[0x5C, 0x03, 0x34, 0x00, 0x00, 0x00]);
+        bytes.extend_from_slice(
+            &"VS_VERSION_INFO\0"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<u8>>(),
+        );
+        bytes.extend(std::iter::repeat_n(0u8, padding));
+        let ms = (u32::from(major) << 16) | u32::from(minor);
+        let ls = u32::from(patch) << 16;
+        for dword in [0xFEEF_04BDu32, 0x0001_0000, ms, ls, ms, ls] {
+            bytes.extend_from_slice(&dword.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0; 28]);
+        bytes
+    }
+
+    #[test]
+    fn reads_the_version_resource() {
+        assert_eq!(
+            version_resource(&version_info(1, 1, 0, 0)).as_deref(),
+            Some("1.1.0")
+        );
+        assert_eq!(
+            version_resource(&version_info(0, 12, 3, 2)).as_deref(),
+            Some("0.12.3")
+        );
+        // 只有簽章、沒有鍵名的位元組不算。
+        assert_eq!(version_resource(b"\xBD\x04\xEF\xFE\0\0\x01\0"), None);
+        let mut cut = version_info(1, 1, 0, 0);
+        cut.truncate(cut.len() - 40);
+        assert_eq!(version_resource(&cut), None);
+    }
+
+    #[test]
+    fn reads_the_version_in_the_file_name() {
+        let name = |name: &str| version_in_name(Path::new(name));
+        assert_eq!(
+            name("C:/apps/MaiMotionDemo-v1.1.0-windows-x64.exe").as_deref(),
+            Some("1.1.0")
+        );
+        assert_eq!(name("MaiMotionDemo-V0.4.12.exe").as_deref(), Some("0.4.12"));
+        assert_eq!(name("mai-motion-demo.exe"), None);
+        assert_eq!(name("MaiMotionDemo-v1.1.exe"), None);
+    }
+
+    #[test]
+    fn previous_version_prefers_the_resource() {
+        let dir = temp_dir("previous-version");
+        let named = dir.join("MaiMotionDemo-v1.0.9-windows-x64.exe");
+        std::fs::write(&named, version_info(1, 1, 0, 0)).unwrap();
+        assert_eq!(previous_version(&named).as_deref(), Some("1.1.0"));
+        std::fs::write(&named, app_bytes()).unwrap();
+        assert_eq!(previous_version(&named).as_deref(), Some("1.0.9"));
+        let plain = dir.join("old.exe");
+        std::fs::write(&plain, app_bytes()).unwrap();
+        assert_eq!(previous_version(&plain), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 讀實際建置的執行檔：`cargo build --release` 之後
+    /// `cargo test -- --ignored reads_the_built_exe_version`。
+    #[test]
+    #[ignore]
+    fn reads_the_built_exe_version() {
+        let exe = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/release/mai-motion-demo.exe");
+        assert_eq!(
+            previous_version(&exe).as_deref(),
+            Some(env!("CARGO_PKG_VERSION"))
+        );
     }
 
     #[test]

@@ -14,6 +14,7 @@
   import { copyText } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
   import { FAILURE_KIND_LABEL, errorLog } from '../state/errorLog.svelte';
+  import { releaseNotes } from '../state/releaseNotes.svelte';
   import { DISTRIBUTION_LABEL, updateState } from '../state/update.svelte';
   import { cacheEvents } from '../state/cacheEvents.svelte';
   import { records } from '../state/records.svelte';
@@ -212,6 +213,12 @@
     });
   }
 
+  /** 查看更新內容：這一版的發布說明；這一版是程式內更新來的，就連同中間跳過的版本一起列（同更新完成的提醒）。 */
+  function showReleaseNotes() {
+    if (!version) return;
+    releaseNotes.show(releaseNotes.rememberedFrom(version), version);
+  }
+
   /** 設定頁手動檢查更新；結果直接顯示在更新區塊，不用 toast。 */
   async function checkUpdateManually() {
     await updateState.init();
@@ -357,7 +364,14 @@
     <section class="block" aria-labelledby="settings-version">
       <div class="block-head">
         <h3 id="settings-version">版本資訊</h3>
-        <button class="btn" onclick={copyVersion}><Icon name="copy" />複製</button>
+        <div class="head-actions">
+          {#if session.desktop}
+            <button class="btn" onclick={showReleaseNotes} disabled={!version}>
+              <Icon name="file-text" />查看更新內容
+            </button>
+          {/if}
+          <button class="btn" onclick={copyVersion}><Icon name="copy" />複製</button>
+        </div>
       </div>
       <dl class="kv info">
         <dt>App 版本</dt>
@@ -1012,6 +1026,13 @@
   .block-head h3 {
     display: flex;
     align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: var(--space-2);
   }
 

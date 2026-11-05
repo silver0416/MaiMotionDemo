@@ -15,6 +15,7 @@
   import ResizeHandle from './components/ResizeHandle.svelte';
   import Toaster from './components/Toaster.svelte';
   import ImportDialog from './components/ImportDialog.svelte';
+  import ReleaseNotesDialog from './components/ReleaseNotesDialog.svelte';
   import DropOverlay from './components/DropOverlay.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
   import SkeletonList from './components/SkeletonList.svelte';
@@ -484,6 +485,7 @@
   <SearchDialog bind:open={searchOpen} />
   <SettingsDialog bind:open={settingsOpen} />
   <ImportDialog />
+  <ReleaseNotesDialog />
   <Toaster />
   <DropOverlay />
 </div>

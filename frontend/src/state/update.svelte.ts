@@ -4,13 +4,14 @@ import {
   downloadUpdate,
   isDesktop,
   openExternalUrl,
-  previousVersionPath,
+  previousVersion,
   restartToUpdate,
   settlePreviousVersion,
 } from '../lib/api';
 import type { AppDistribution, DownloadedUpdate, UpdateInfo } from '../lib/types';
 import { formatBytes, listenEvent } from '../lib/video';
-import { toasts } from './toasts.svelte';
+import { releaseNotes } from './releaseNotes.svelte';
+import { toasts, type ToastAction } from './toasts.svelte';
 
 const STORAGE_KEY = 'maimotion.update-check.v1';
 export const RELEASES_URL = 'https://github.com/silver0416/MaiMotionDemo/releases';
@@ -171,16 +172,36 @@ class UpdateState {
     }
   }
 
-  /** 透過程式內更新重新啟動後，自動刪除舊版執行檔。 */
+  /**
+   * 透過程式內更新重新啟動後，自動刪除舊版執行檔。
+   * 完成提醒帶「查看更新內容」：列出舊版（不含）到這一版（含）之間每一版的發布說明。
+   */
   async removePrevious(): Promise<void> {
     if (!isDesktop()) return;
-    const path = await previousVersionPath().catch(() => null);
-    if (!path) return;
+    const previous = await previousVersion().catch(() => null);
+    if (!previous) return;
+    const { path } = previous;
     const name = path.split(/[\\/]/).pop() ?? path;
     const version = await import('../lib/api').then(({ appVersion }) => appVersion());
+    releaseNotes.remember(previous.version, version);
+    const notes: ToastAction = {
+      label: '查看更新內容',
+      icon: 'file-text',
+      run: () => {
+        toasts.dismiss('update-previous');
+        releaseNotes.show(previous.version, version);
+      },
+    };
     try {
       await settlePreviousVersion(true);
-      toasts.show({ id: 'update-previous', tone: 'ok', title: `已更新到 v${version}`, body: `已移除舊版 ${name}。` });
+      toasts.show({
+        id: 'update-previous',
+        tone: 'ok',
+        title: `已更新到 v${version}`,
+        body: `已移除舊版 ${name}。`,
+        sticky: true,
+        action: notes,
+      });
     } catch (error) {
       toasts.show({
         id: 'update-previous',
@@ -188,6 +209,7 @@ class UpdateState {
         title: `已更新到 v${version}，但舊版沒有移除`,
         body: `${typeof error === 'string' ? error : String(error)}。可以之後自己刪除 ${path}。`,
         sticky: true,
+        action: notes,
       });
     }
   }

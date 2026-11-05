@@ -290,6 +290,16 @@ async fn check_update(
     update::check(&client.0).await
 }
 
+/// 「查看更新內容」：從舊版（不含）到目前這一版（含）的 GitHub 發布說明，新版在前。
+/// 不知道舊版時只回傳目前這一版。
+#[tauri::command]
+async fn release_notes(
+    client: tauri::State<'_, UpdateClient>,
+    from: Option<String>,
+) -> Result<Vec<update::ReleaseNote>, String> {
+    update::release_notes(&client.0, from.as_deref(), env!("CARGO_PKG_VERSION")).await
+}
+
 /// 譜面網站（simai Wiki＋adxdls）磁碟快取的用量。
 #[tauri::command]
 fn wiki_cache_info(app: tauri::AppHandle) -> wiki::WikiCacheInfo {
@@ -393,6 +403,7 @@ fn main() {
             save_text_in_dir,
             app_distribution,
             check_update,
+            release_notes,
             search_majdata_charts,
             fetch_majdata_chart,
             wiki_refresh_index,

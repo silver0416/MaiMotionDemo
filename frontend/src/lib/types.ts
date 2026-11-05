@@ -498,6 +498,23 @@ export interface DownloadedUpdate {
   fallback: boolean;
 }
 
+/** 這次是從哪個舊版更新過來的（Rust update_previous）。 */
+export interface PreviousVersion {
+  path: string;
+  /** 舊版的版本號（1.1.0）；讀不到時是 null，更新內容只列目前這一版 */
+  version: string | null;
+}
+
+/** 一版的發布說明（Rust release_notes），內容與 GitHub Release 頁相同的 Markdown。 */
+export interface ReleaseNote {
+  /** 1.1.2（沒有前導 v） */
+  version: string;
+  name: string;
+  body: string;
+  url: string;
+  publishedAt: string;
+}
+
 
 // ---- 真人手順標註（maimotion-hand-annotation 第 1 版，見 docs/CONTRACT.md） ----
 

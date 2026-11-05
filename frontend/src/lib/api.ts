@@ -8,6 +8,8 @@ import type {
   AppDistribution,
   ChartSearchPayload,
   DownloadedUpdate,
+  PreviousVersion,
+  ReleaseNote,
   MajdataChartSummary,
   UpdateAsset,
   UpdateInfo,
@@ -203,10 +205,20 @@ export async function restartToUpdate(): Promise<void> {
   await invoke('update_restart');
 }
 
-/** 這次是從哪個舊版更新過來的；沒有或已不存在時回傳 null。 */
-export async function previousVersionPath(): Promise<string | null> {
+/** 這次是從哪個舊版更新過來的（連同舊版的版本號）；沒有或已不存在時回傳 null。 */
+export async function previousVersion(): Promise<PreviousVersion | null> {
   const { invoke } = await import('@tauri-apps/api/core');
-  return await invoke<string | null>('update_previous');
+  return await invoke<PreviousVersion | null>('update_previous');
+}
+
+/**
+ * 從 from（不含）到目前這一版（含）的 GitHub 發布說明，新版在前；from 為 null 時只有目前這一版。
+ * 只有桌面版可用；離線或限流時 reject 可讀字串。
+ */
+export async function fetchReleaseNotes(from: string | null): Promise<ReleaseNote[]> {
+  if (!isDesktop()) throw '瀏覽器預覽讀不到更新內容，請用桌面版查看。';
+  const { invoke } = await import('@tauri-apps/api/core');
+  return await invoke<ReleaseNote[]>('release_notes', { from });
 }
 
 /** 刪除（remove=true）或保留舊版；之後不再詢問。 */
