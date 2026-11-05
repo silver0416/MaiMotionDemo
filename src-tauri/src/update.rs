@@ -184,7 +184,9 @@ pub async fn release_notes(
     to: &str,
 ) -> Result<Vec<ReleaseNote>, String> {
     const ACTION: &str = "讀取更新內容";
-    let lowest = release_range(from, to).0.unwrap_or_else(|| normalize_version(to));
+    let lowest = release_range(from, to)
+        .0
+        .unwrap_or_else(|| normalize_version(to));
     let mut releases: Vec<serde_json::Value> = Vec::new();
     for page in 1..=RELEASE_PAGES {
         let response = client
@@ -478,9 +480,7 @@ mod tests {
         serde_json::json!({
             "tag_name": tag,
             "name": format!("MaiMotionDemo {tag}"),
-            "body": format!("## 新功能
-
-- {tag}"),
+            "body": format!("## 新功能\r\n\r\n- {tag}"),
             "html_url": format!("https://github.com/silver0416/MaiMotionDemo/releases/tag/{tag}"),
             "published_at": "2026-11-06T00:00:00Z",
             "draft": false,
@@ -518,14 +518,18 @@ mod tests {
             ["1.1.2", "1.1.1", "1.1.0", "1.0.9"]
         );
         // 不知道舊版、同一版、降版或看不懂的版本號：只列目前這一版。
-        for from in [None, Some("1.1.2"), Some("1.3.0"), Some("unknown"), Some("")] {
+        for from in [
+            None,
+            Some("1.1.2"),
+            Some("1.3.0"),
+            Some("unknown"),
+            Some(""),
+        ] {
             assert_eq!(versions(&pick(from)), ["1.1.2"], "{from:?}");
         }
         let notes = pick(Some("1.1.1"));
         assert_eq!(notes[0].name, "MaiMotionDemo v1.1.2");
-        assert_eq!(notes[0].body, "## 新功能
-
-- v1.1.2");
+        assert_eq!(notes[0].body, "## 新功能\r\n\r\n- v1.1.2");
         assert_eq!(
             notes[0].url,
             "https://github.com/silver0416/MaiMotionDemo/releases/tag/v1.1.2"
@@ -544,7 +548,10 @@ mod tests {
         odd["html_url"] = "https://example.com/releases/tag/v1.1.2".into();
         odd["name"] = "  ".into();
         let notes = pick_release_notes(&[odd], None, "1.1.2");
-        assert_eq!(notes[0].url, "https://github.com/silver0416/MaiMotionDemo/releases");
+        assert_eq!(
+            notes[0].url,
+            "https://github.com/silver0416/MaiMotionDemo/releases"
+        );
         assert_eq!(notes[0].name, "v1.1.2");
     }
 
