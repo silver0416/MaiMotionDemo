@@ -111,7 +111,8 @@ fn solve_hand(source: &str, index: usize) -> &'static str {
 
 #[test]
 fn impossible_annotation_reports_where_it_breaks() {
-    let source = "(120){4}1/8,E";
+    // 隔一鍵的兩鍵一隻手搆不到（相鄰的見 adjacent_pair_labeled_with_one_hand_is_pressed_together）。
+    let source = "(120){4}1/7,E";
     let r = evaluate(
         source,
         json!([
@@ -120,14 +121,150 @@ fn impossible_annotation_reports_where_it_breaks() {
         ]),
     );
     assert_eq!(r.status, "human_infeasible");
-    let d = r
+    // 走不下去的那一刻擱著其中一顆的標記、照模型的手接下去，所以仍有照標註的解。
+    let skipped: Vec<_> = r
         .diagnostics
         .iter()
-        .find(|d| d.code == "annotation_infeasible")
+        .filter(|d| d.code == "annotation_skipped")
+        .collect();
+    assert_eq!(skipped.len(), 1, "{:?}", r.diagnostics);
+    assert_eq!(skipped[0].severity, "warning");
+    assert_eq!(skipped[0].time_seconds, Some(0.0));
+    assert_eq!(skipped[0].note_ids.len(), 1);
+    assert!(r.model.is_some() && r.human.is_some());
+    let c = chart(source);
+    let kept = c
+        .notes
+        .iter()
+        .find(|n| n.id != skipped[0].note_ids[0])
         .unwrap();
-    assert!(d.time_seconds.is_some());
-    assert!(!d.note_ids.is_empty());
-    assert!(r.model.is_some() && r.human.is_none());
+    let s = r.human_solution.as_ref().unwrap();
+    assert!(s
+        .assignments
+        .iter()
+        .any(|a| a.note_id == kept.id && a.hand == Hand::L));
+}
+
+/// 標了換手時間、右手卻要去按住長押：右手放開 Slide 暫停時還照標註，到最後才接不回來。
+/// 卡住的那一刻沒有展開被標註擋掉，要退回最近一處違反標註的岔路、擱著那裡的標記才接得下去。
+/// 模型本身也做不到的地方（兩手都按住 Hold 時又來一顆）照舊回報錯誤，不列出擱置。
+#[test]
+fn set_aside_reaches_back_when_the_conflict_shows_up_later() {
+    let source = "(120){4}3-7[1:1],,,2h[1:1],E";
+    let c = chart(source);
+    let slide = c.notes.iter().find(|n| n.kind == "slide").unwrap();
+    let hold = c.notes.iter().find(|n| n.kind == "hold").unwrap();
+    let r = evaluate(
+        source,
+        json!([
+            {"key": slide.key, "hand": "R", "track": "L", "handovers": [{"at": 1.0, "to": "R"}]},
+            {"key": hold.key, "hand": "R"},
+        ]),
+    );
+    assert_eq!(r.status, "human_infeasible");
+    let skipped: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "annotation_skipped")
+        .collect();
+    assert_eq!(skipped.len(), 1, "{:?}", r.diagnostics);
+    assert_eq!(skipped[0].note_ids, std::slice::from_ref(&slide.id));
+    let s = r.human_solution.as_ref().unwrap();
+    assert!(s
+        .assignments
+        .iter()
+        .any(|a| a.note_id == hold.id && a.hand == Hand::R));
+}
+
+/// 模型本身走不下去（兩手都按著 Hold 時來了 Tap）不是標註的問題：比對用部分解，模型略過的
+/// 那顆照標註時也略過、不比對（列成 model_skipped），其餘照常比，不擱置任何標記。
+#[test]
+fn notes_the_model_cannot_play_are_left_out_on_both_sides() {
+    let source = "(120){4}1h[1:1]/7h[1:1],,5,,E";
+    let tap = chart(source)
+        .notes
+        .into_iter()
+        .find(|n| n.key == "1.000|tap|5")
+        .unwrap();
+    let r = evaluate(
+        source,
+        json!([
+            {"key": "0.000|hold|1", "hand": "R"},
+            {"key": "0.000|hold|7", "hand": "L"},
+            {"key": "1.000|tap|5", "hand": "L"},
+        ]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert!(r.diagnostics.iter().all(|d| d.code != "annotation_skipped"));
+    let skipped: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "model_skipped")
+        .collect();
+    assert_eq!(skipped.len(), 1, "{:?}", r.diagnostics);
+    assert_eq!(skipped[0].severity, "warning");
+    assert_eq!(skipped[0].time_seconds, Some(1.0));
+    assert_eq!(skipped[0].note_ids, std::slice::from_ref(&tap.id));
+    // 兩個 Hold 照常比；Tap 沒有模型的手，不算進比對。
+    assert_eq!(r.compared, 2);
+    let s = r.human_solution.as_ref().unwrap();
+    assert!(s.assignments.iter().all(|a| a.note_id != tap.id));
+    assert_eq!(s.skipped.len(), 1);
+    assert_eq!(s.skipped[0].note_id, tap.id);
+}
+
+/// 擱著標記之後照常往後解：後面再走不下去的地方另外列出，其餘的標記照舊遵守。
+#[test]
+fn every_place_the_annotation_breaks_is_listed_and_the_rest_is_followed() {
+    let source = "(120){4}1/7,3,1/7,5,E";
+    let r = evaluate(
+        source,
+        json!([
+            {"key": "0.000|tap|1", "hand": "L"},
+            {"key": "0.000|tap|7", "hand": "L"},
+            {"key": "0.500|tap|3", "hand": "R"},
+            {"key": "1.000|tap|1", "hand": "L"},
+            {"key": "1.000|tap|7", "hand": "L"},
+            {"key": "1.500|tap|5", "hand": "L"},
+        ]),
+    );
+    assert_eq!(r.status, "human_infeasible");
+    let skipped: Vec<_> = r
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "annotation_skipped")
+        .collect();
+    let times: Vec<_> = skipped.iter().map(|d| d.time_seconds).collect();
+    assert_eq!(times, [Some(0.0), Some(1.0)], "{:?}", r.diagnostics);
+    assert!(skipped.iter().all(|d| d.note_ids.len() == 1));
+    let c = chart(source);
+    let s = r.human_solution.as_ref().unwrap();
+    let hand = |key: &str| {
+        let id = &c.notes.iter().find(|n| n.key == key).unwrap().id;
+        s.assignments
+            .iter()
+            .find(|a| &a.note_id == id)
+            .unwrap()
+            .hand
+    };
+    assert_eq!(hand("0.500|tap|3"), Hand::R);
+    assert_eq!(hand("1.500|tap|5"), Hand::L);
+    for (d, pair) in skipped.iter().zip([
+        ["0.000|tap|1", "0.000|tap|7"],
+        ["1.000|tap|1", "1.000|tap|7"],
+    ]) {
+        let ids: Vec<_> = pair
+            .iter()
+            .map(|key| &c.notes.iter().find(|n| &n.key == key).unwrap().id)
+            .collect();
+        assert!(ids.contains(&&d.note_ids[0]));
+        let kept = pair[ids.iter().position(|id| **id != d.note_ids[0]).unwrap()];
+        assert_eq!(hand(kept), Hand::L);
+    }
+    assert!(s
+        .warnings
+        .iter()
+        .any(|w| w.contains("照標註有 2 處走不下去")));
 }
 
 /// 四月の雨 開頭：右手按住的 Hold 3 結束的同一瞬間，同一隻手從 2 開始滑 2q7。
@@ -411,4 +548,72 @@ fn supplied_model_solution_gives_the_same_evaluation() {
     assert_eq!(solved.status, "ok", "{:?}", solved.diagnostics);
     assert!(solved.compared > 0);
     assert_eq!(summary(&supplied), summary(&solved));
+}
+
+/// Comet Panto Men! 111.529：同時的相鄰兩鍵都標同一隻手，那隻手張開、落在兩鍵中間一起按。
+/// 模型自己會兩手各按一顆，不這樣分。
+#[test]
+fn adjacent_pair_labeled_with_one_hand_is_pressed_together() {
+    let source = "(120){4}1/8,E";
+    let r = evaluate(
+        source,
+        json!([
+            {"key": key(source, 0), "hand": "L"},
+            {"key": key(source, 1), "hand": "L"},
+        ]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let s = r.human_solution.as_ref().unwrap();
+    assert!(s.assignments.iter().all(|a| a.hand == Hand::L));
+    assert!(s.warnings.iter().any(|w| w.contains("相鄰兩鍵")));
+    let c = chart(source);
+    let middle = c.notes[0].position.lerp(c.notes[1].position, 0.5);
+    let press = s.left_segments.iter().find(|g| g.mode == "tap").unwrap();
+    assert!(press
+        .samples
+        .iter()
+        .all(|p| p.point().distance(middle) < 1e-9));
+    assert_ne!(solve_hand(source, 0), solve_hand(source, 1));
+}
+
+/// Luminaria 114～117 秒：滑行只標了開始滑的右手、沒標換手時間，右手中途卻要去按住長押。
+/// 照整條同一隻手走不下去，這條改成只限定開始滑的手，由左手補完。做得到的照舊整條同一隻手
+/// （見 slide_handover_and_track_hand_are_followed 最後一段）。
+#[test]
+fn unmarked_handover_is_allowed_only_where_one_hand_cannot_finish() {
+    let source = "(120){4}3-7[1:1],,,2h[1:1],E";
+    let c = chart(source);
+    let slide = c.notes.iter().find(|n| n.kind == "slide").unwrap();
+    let hold = c.notes.iter().find(|n| n.kind == "hold").unwrap();
+    assert!(
+        hold.time_seconds < slide.motion_end.unwrap()
+            && hold.end_seconds > slide.motion_end.unwrap()
+    );
+    let r = evaluate(
+        source,
+        json!([
+            {"key": slide.key, "hand": "R", "track": "R"},
+            {"key": hold.key, "hand": "R"},
+        ]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let s = r.human_solution.as_ref().unwrap();
+    assert!(s.warnings.iter().any(|w| w.contains("只限定開始滑的手")));
+    let mut parts: Vec<_> = s
+        .assignments
+        .iter()
+        .filter(|a| a.note_id == slide.id && a.part == "slide")
+        .collect();
+    parts.sort_by(|a, b| a.start_seconds.total_cmp(&b.start_seconds));
+    assert_eq!(parts[0].hand, Hand::R);
+    assert!(parts.iter().any(|a| a.hand == Hand::L));
+    // 標了換手時間的照時間表，不另外放寬：左手開始、1 秒換右手畫完，右手就按不到長押。
+    let r = evaluate(
+        source,
+        json!([
+            {"key": slide.key, "hand": "R", "track": "L", "handovers": [{"at": 1.0, "to": "R"}]},
+            {"key": hold.key, "hand": "R"},
+        ]),
+    );
+    assert_eq!(r.status, "human_infeasible");
 }

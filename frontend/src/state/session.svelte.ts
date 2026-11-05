@@ -13,6 +13,7 @@ import {
 } from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
 import { palmByNote } from '../lib/palm';
+import { skippedSpots } from '../lib/skipped';
 import { isFireworkTouch, isTouchNote, sensorKey } from '../lib/touch';
 import type {
   AnalyzeRequest,
@@ -495,11 +496,16 @@ export class Session {
     if (status === 'ok') {
       const notes = response.chart?.notes.length ?? 0;
       const candidates = response.solutions.length;
+      // 部分解：模型有幾處走不下去、先略過（位置列在「方案」分頁）。
+      const skipped = skippedSpots(response.solutions[0]?.skipped).length;
       toasts.show({
         id: ANALYSIS_TOAST,
-        tone: 'ok',
+        tone: skipped > 0 ? 'warn' : 'ok',
         title: fromCache ? '已載入先前的分析' : label,
-        body: `${notes} 個音符・${candidates} 個候選方案`,
+        body:
+          skipped > 0
+            ? `${notes} 個音符・${candidates} 個候選方案；有 ${skipped} 處模型走不下去，先略過，位置見「方案」分頁。`
+            : `${notes} 個音符・${candidates} 個候選方案`,
       });
       return;
     }

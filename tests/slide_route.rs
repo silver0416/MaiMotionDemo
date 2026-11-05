@@ -382,6 +382,47 @@ fn v3_default_hand_draws_the_whole_star_path() {
     }
 }
 
+/// 星星重疊的 Slide 由同一隻手一起畫：全部 Slide 都由同一隻手、最後一條畫到自己的終點。
+fn drawn_by_one_hand(source: &str) {
+    let r = run(source, SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{source}: {:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    let last = chart
+        .notes
+        .iter()
+        .filter(|n| n.kind == "slide")
+        .max_by(|a, b| a.motion_end.unwrap().total_cmp(&b.motion_end.unwrap()))
+        .unwrap();
+    for s in &r.solutions {
+        continuity(&s.left_segments);
+        continuity(&s.right_segments);
+        let slides: Vec<_> = s.assignments.iter().filter(|a| a.part == "slide").collect();
+        assert!(slides.iter().all(|a| a.hand == slides[0].hand), "{source}");
+        let end = slides
+            .iter()
+            .filter(|a| a.note_id == last.id)
+            .map(|a| a.end_seconds)
+            .fold(0.0, f64::max);
+        assert!((end - last.motion_end.unwrap()).abs() < 1e-9);
+        assert!(s.warnings.iter().any(|w| w.contains("星星重疊")));
+    }
+}
+
+#[test]
+fn v3_one_hand_draws_slides_whose_stars_overlap() {
+    // 另一手按住中央 C。8<8 晚 1/16 小節出發，正好是 1<1 的星星走到 8 的時刻，之後兩顆重合
+    // （System “Z” 那種每條晚 45° 的連鎖）；追 1<1 的手順著畫，1<1 結束後再補完 8<8 最後 45°。
+    drawn_by_one_hand("(120){16}1<1[2:1]/Ch[1:1],8<8[2:1],E");
+    // 5>7 繞 270°；2<7 晚 1/8 小節從 2 出發時 5>7 的星星正好經過 2，之後疊在一起到 7
+    // （Comet Panto Men! 的寫法）。另一手打完 2 的星星就去按住 C。
+    drawn_by_one_hand("(120){8}5>7[4:1],2<7[8:1],Ch[4:3],E");
+    // 晚 1/8 小節出發的 8<8 與 1<1 的星星差 45°，不重合，一隻手仍然畫不了兩條。
+    assert_eq!(
+        run("(120){8}1<1[2:1]/Ch[1:1],8<8[2:1],E", SolverConfig::v3()).status,
+        "no_solution"
+    );
+}
+
 #[test]
 fn v3_default_palm_covers_two_close_slides_along_both_stars() {
     // 同 v3_one_spread_hand_covers_two_close_simultaneous_slides 的譜面：預設下掌心沿兩顆星星
@@ -417,4 +458,40 @@ fn v3_default_palm_covers_two_close_slides_along_both_stars() {
             }
         }
     }
+}
+
+/// 星詠みとデスペラード 25～27.5 秒：慢 8-4 畫到一半放開，同一隻手回 8 打第二條 8-4 的星星，
+/// 再一筆畫完快 8-4。兩條判定佇列相同、同時結束，這一筆依序碰到慢的那條剩下的判定區，
+/// 在它的正解區間內完成。另一手整段按住 2，只有一隻手處理兩條 Slide。
+#[test]
+fn v3_slide_left_partway_is_finished_by_a_later_one_on_the_same_line() {
+    let source = "(120){4}8-4[1:1]/2h[2:3],,,8-4[4:1],E";
+    let r = run(source, SolverConfig::v3());
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    let chart = r.chart.as_ref().unwrap();
+    let slides: Vec<&Note> = chart.notes.iter().filter(|n| n.kind == "slide").collect();
+    let (slow, fast) = (slides[0], slides[1]);
+    assert!((slow.motion_end.unwrap() - fast.motion_end.unwrap()).abs() < 1e-9);
+    for s in &r.solutions {
+        continuity(&s.left_segments);
+        continuity(&s.right_segments);
+        let drawn: Vec<&Assignment> = s
+            .assignments
+            .iter()
+            .filter(|a| a.part == "slide" || a.note_id == fast.id)
+            .collect();
+        assert!(drawn.iter().all(|a| a.hand == drawn[0].hand));
+        let left_at = drawn
+            .iter()
+            .filter(|a| a.note_id == slow.id)
+            .map(|a| a.end_seconds)
+            .fold(0.0, f64::max);
+        assert!(left_at > slow.motion_start.unwrap() && left_at < fast.time_seconds);
+        assert!(s.warnings.iter().any(|w| w.contains("一筆畫過")));
+    }
+    // 第二條換成判定佇列不同的 8-5，這一筆碰不到慢的那條最後的 B4、A4，一隻手做不到。
+    assert_eq!(
+        run("(120){4}8-4[1:1]/2h[2:3],,,8-5[4:1],E", SolverConfig::v3()).status,
+        "no_solution"
+    );
 }

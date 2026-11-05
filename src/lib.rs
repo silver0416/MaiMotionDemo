@@ -29,6 +29,16 @@ pub use solver::{
 };
 
 pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
+    analyze(request, false)
+}
+
+/// App 用的分析：模型本身走不下去時不整份放棄，略過做不到的音符、其餘照常求解（部分解）。
+/// 略過的部分列在每個方案的 skipped，狀態仍是 ok。
+pub fn analyze_chart_partial(request: AnalyzeRequest) -> AnalyzeResponse {
+    analyze(request, true)
+}
+
+fn analyze(request: AnalyzeRequest, partial: bool) -> AnalyzeResponse {
     let mut response = AnalyzeResponse {
         schema_version: if request.solver_config.is_v3() {
             4
@@ -68,10 +78,17 @@ pub fn analyze_chart(request: AnalyzeRequest) -> AnalyzeResponse {
                 .as_deref()
                 .and_then(temoto::TemotoModel::builtin)
             {
+                Some(model) if partial => {
+                    temoto::solve_partial(&chart, &request.solver_config, model)
+                }
                 Some(model) => temoto::solve(&chart, &request.solver_config, model),
                 None => {
                     scoring_v3::with_variant(request.solver_config.v3_variant.as_deref(), || {
-                        solver::solve(&chart, &request.solver_config)
+                        if partial {
+                            solver::solve_partial(&chart, &request.solver_config)
+                        } else {
+                            solver::solve(&chart, &request.solver_config)
+                        }
                     })
                 }
             };

@@ -56,7 +56,7 @@ use crate::geometry::button;
 use crate::scoring_v3::{ActionEvent, ActionKind};
 use crate::*;
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -98,6 +98,9 @@ const MAX_TASKS: usize = 50_000;
 /// 兩條 Slide 要多近才算「碰頭」。必須近到可以視為同一點，兩手才能原地互換目的地
 /// 而不產生軌跡跳動；只是空間交叉、時間錯開的不算。
 const MEET_TOLERANCE: f64 = 1e-6;
+/// 兩條 Slide 的星星要多近才算重疊、可由同一隻手一起畫（盤面半徑 1）。同一圈上同方向等速的
+/// 星星只差路徑取樣的折線誤差；這個距離遠小於感應區，是 Demo 假設。
+const CARRY_TOLERANCE: f64 = 0.05;
 const MAX_EXPANSIONS: u64 = 120_000_000;
 const MAX_GROUP_STATES: usize = 500_000;
 const BUDGET: Duration = Duration::from_secs(20);
@@ -131,8 +134,15 @@ const SCREEN_EDGE: f64 = 0.95;
 /// V3 暫停 Slide：剩下的滑行時間至少這麼長才考慮放開（長 Slide 期間去打別的音符）；
 /// 短 Slide 放開再接回只是規避追蹤成本的捷徑，不是真人打法。
 const SUSPEND_MIN_REMAINING: f64 = 1.0;
+/// Slide 交給後一條一筆畫完時，手畫到下一個要接觸的音符前這麼多秒內才放開，
+/// 不為了少畫一段提早離手。
+const SWEEP_LEAD: f64 = 0.5;
 /// 接回暫停的 Slide 時，剩下的路徑最快能以這個速度掃完（盤面半徑為 1，每秒；約為 speedReference 預設的 3 倍）。
 const RESUME_MAX_SPEED: f64 = 12.0;
+/// 照標註略過模式的退路：只記這麼多秒內、最多這麼多個岔路，整首最多退回這麼多次。
+const FORK_WINDOW: f64 = 4.0;
+const MAX_FORKS: usize = 64;
+const MAX_BACKTRACKS: usize = 32;
 
 /// 不可變的單向串列。Beam Search 每展開一步就要複製一份狀態；用結構共享把
 /// 複製成本壓到 O(1)，整體搜尋才會隨音符數線性成長，而不是平方成長。
@@ -268,6 +278,18 @@ struct State {
     bundled: BTreeMap<usize, usize>,
     bundle_lead: BTreeMap<usize, usize>,
     used_bundle: bool,
+    /// V3：星星重疊、由追著另一條的手一起畫的 Slide → 帶著它的 Slide。帶它的那條結束前，
+    /// 被帶著的這條沒有自己的 checkpoint 接觸；之後由同一隻手接著畫自己的路徑。
+    carried: BTreeMap<usize, usize>,
+    /// 必須由目前的手繼續追到這個時刻的 Slide：正帶著重疊的 Slide，或已預先靠它順帶碰 Touch。
+    /// 期間不交接、不互換、不暫停、不提早離手。
+    committed: BTreeMap<usize, f64>,
+    used_carry: bool,
+    /// V3：畫到一半放開、剩下的判定區交給較晚出發的另一條 Slide 一筆畫完 → 那一條
+    /// （見 tracking::sweeping）。之後沒有自己的 checkpoint 接觸。
+    swept: BTreeMap<usize, usize>,
+    used_sweep: bool,
+    used_pair_press: bool,
     /// 這一組開始時的指派數；標註限制只檢查之後新增的指派。
     assign_mark: usize,
     /// 真人標註指定要換手的 Slide（音符 id）。V3 平常只在另一手有需求時才考慮交接，
@@ -278,6 +300,17 @@ struct State {
     single_track: Arc<std::collections::HashSet<String>>,
     used_early_slide: bool,
     used_touch_group: bool,
+    /// 部分解：走不下去時略過、不指派手的音符部分（最新的在前）。
+    dropped: Chain<Dropped>,
+}
+/// 部分解在求解途中略過的音符部分（見 solve_partial）。
+#[derive(Clone)]
+struct Dropped {
+    note: usize,
+    /// true 是 Slide 的滑行，false 是接觸（Tap／Hold／Touch 與星星頭）。
+    slide: bool,
+    /// 走不下去的那一組的時刻。
+    time: f64,
 }
 struct PalmCandidate {
     covered: Vec<usize>,
@@ -760,6 +793,25 @@ fn tasks(chart: &Chart, c: &SolverConfig) -> Result<Vec<Task>, Diagnostic> {
             schedule[j].push(t);
         }
     }
+    // 被帶著畫的 Slide 在帶它的那條結束時接回自己的路徑，這一刻要切開。
+    for (i, n) in chart.notes.iter().enumerate() {
+        let (Some(start), Some(end)) = (n.motion_start, n.motion_end) else {
+            continue;
+        };
+        let Some(path) = chart
+            .paths
+            .iter()
+            .find(|p| Some(&p.id) == n.path_id.as_ref())
+        else {
+            continue;
+        };
+        for &lead in &path.hand_routes.carriers {
+            let until = chart.notes[lead].motion_end.unwrap();
+            if until > start + EPS && until < end - EPS {
+                schedule[i].push(until);
+            }
+        }
+    }
     for times in schedule.iter_mut() {
         times.sort_by(f64::total_cmp);
         times.dedup_by(|a, b| (*a - *b).abs() < EPS);
@@ -932,6 +984,88 @@ fn arm_point_at(arm: &Arm, time: f64) -> Point {
         .lerp(b.point(), ((time - a.time_seconds) / dt).clamp(0.0, 1.0))
 }
 
+/// 手在 time 之前一幀內從 point 出發追 Slide。秒數寫法的等待時間會取整，Slide 出發和同一鍵上的
+/// Tap 或星星可能差幾十微秒而被拆成兩個時刻；仍在 Tap 的 Critical Perfect（±1 幀）內，同一次按下就算數。
+fn pressed_within_frame(arm: &Arm, point: Point, time: f64) -> bool {
+    let mut cursor = arm.segments.head.as_ref();
+    while let Some(link) = cursor {
+        let segment = &link.value;
+        if segment.end_seconds < time - JUDGE_FRAME - EPS {
+            break;
+        }
+        let first = &segment.samples[0];
+        if segment.mode == "slide"
+            && first.time_seconds >= time - JUDGE_FRAME - EPS
+            && first.time_seconds <= time + EPS
+            && first.point().distance(point) <= EPS
+        {
+            return true;
+        }
+        cursor = link.prev.head.as_ref();
+    }
+    false
+}
+
+/// 這條 Slide 在 time 之前要由目前的手繼續追（見 State::committed）。
+fn locked(state: &State, note: usize, time: f64) -> bool {
+    state
+        .committed
+        .get(&note)
+        .is_some_and(|until| time < until - EPS)
+}
+
+/// 被帶著畫的 Slide 在帶它的那條結束前，沒有自己的 checkpoint 接觸。
+fn riding(state: &State, task: &Task, chart: &Chart) -> bool {
+    state.carried.get(&task.note).is_some_and(|&lead| {
+        chart.notes[lead]
+            .motion_end
+            .is_some_and(|end| task.end <= end + EPS)
+    })
+}
+
+/// V3：這隻手正準時追著 lead，lead 的星星與這條 Slide 重疊（見 HandRoutes::carriers）。
+/// 手順著 lead 畫下去就同時畫過這條，兩條在重疊結束前都由這隻手負責。
+fn carry(state: &State, task: &Task, hand: Hand, lead: usize, chart: &Chart) -> Option<State> {
+    let n = &chart.notes[task.note];
+    let a = &chart.notes[lead];
+    // 晚接上時手沿壓縮過的時程走，不在星星上；張開覆蓋兩條時走的是兩顆星星的中點。
+    let on_star = state
+        .engaged
+        .get(&lead)
+        .is_some_and(|pickup| (pickup - a.motion_start.unwrap()).abs() < EPS);
+    if state.owners.get(&lead) != Some(&hand)
+        || !on_star
+        || state.finished.contains(&lead)
+        || state.bundled.contains_key(&lead)
+        || state.bundle_lead.contains_key(&lead)
+    {
+        return None;
+    }
+    let start = n.motion_start?;
+    let until = a.motion_end?.min(n.motion_end?);
+    if task.start >= until - EPS {
+        return None;
+    }
+    let mut next = state.clone();
+    next.owners.insert(task.note, hand);
+    // 兩顆星星從這條出發起就重合：手經過這條的每個判定區，等同準時接上。
+    if next.engaged.insert(task.note, start).is_none() {
+        next.pending -= next.deposit.remove(&task.note).unwrap_or(0.0);
+    }
+    next.carried.insert(task.note, lead);
+    let lock = next.committed.entry(lead).or_insert(until);
+    *lock = lock.max(until);
+    next.used_carry = true;
+    next.assignments = next.assignments.push(Assignment {
+        note_id: n.id.clone(),
+        part: "slide".into(),
+        hand,
+        start_seconds: start,
+        end_seconds: until,
+    });
+    Some(next)
+}
+
 /// 兩手在同一點碰頭時，原地互換各自要追的 Slide。兩手位置相同，交換之後軌跡仍然連續，
 /// 因此不需要任何移動 —— 這正是玩家在對穿的 Slide 上避免手臂交叉的作法。
 fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<State> {
@@ -965,7 +1099,7 @@ fn swap_at(state: &State, time: f64, chart: &Chart, c: &SolverConfig) -> Option<
     }
     for note in [first, second] {
         let n = &chart.notes[note];
-        if time >= n.motion_end? - EPS {
+        if time >= n.motion_end? - EPS || locked(state, note, time) {
             return None;
         }
         if state
@@ -1041,6 +1175,9 @@ fn assign(
             return out;
         }
         let reliefs = relieve(state, idx, hand, task.start, None, false, false, chart, c);
+        for &lead in &chart.paths[task.path].hand_routes.carriers {
+            out.extend(carry(state, task, hand, lead, chart));
+        }
         // 同時出發的另一條 Slide 可由這隻手張開一起覆蓋。
         for (partner, _) in &chart.paths[task.path].hand_routes.bundles {
             if state.engaged.contains_key(partner)
@@ -1409,7 +1546,7 @@ fn assign_once(
     if shifted && task_end <= begin + EPS {
         return None;
     }
-    let samples = if task.mode == "slide" && !task.samples.is_empty() {
+    let mut samples = if task.mode == "slide" && !task.samples.is_empty() {
         task.samples.clone()
     } else {
         match (pickup, early_finish) {
@@ -1432,12 +1569,24 @@ fn assign_once(
             (None, _) => task.samples.clone(),
         }
     };
+    // 被帶著畫的 Slide 在帶它的那條結束時接回自己的路徑：兩顆星星只差取樣誤差，從手的位置接下去。
+    if task.mode == "slide"
+        && state.carried.contains_key(&task.note)
+        && state.owners.get(&task.note) == Some(&hand)
+        && (state.arms[idx].free - begin).abs() <= EPS
+        && state.arms[idx].point.distance(samples[0].point()) <= CARRY_TOLERANCE
+    {
+        samples[0] = MotionSample::new(begin, state.arms[idx].point);
+    }
     let start = samples[0].point();
 
     if state.arms[idx].free > begin + EPS {
         // 手上已有任務，但接觸點就在同一個位置：同一隻手一次接觸即可滿足兩者
         // （例如 Slide 起點上的 Break Tap）。不另外產生軌跡段，也不另外計成本。
-        if task.mode == "tap" && arm_point_at(&state.arms[idx], task.start).distance(start) <= EPS {
+        if task.mode == "tap"
+            && (arm_point_at(&state.arms[idx], task.start).distance(start) <= EPS
+                || pressed_within_frame(&state.arms[idx], start, task.start))
+        {
             let mut next = state.clone();
             next.arms[idx].last_tap = Some(task.start);
             next.assignments = next.assignments.push(Assignment {
@@ -1457,6 +1606,9 @@ fn assign_once(
     let old = state.owners.get(&task.note).copied();
     let switching = engaged.is_some() && old != Some(hand);
     if switching {
+        if locked(state, task.note, task.start) {
+            return None;
+        }
         // V3 keeps ownership unless another contact is due before this slide ends.
         // Look ahead so the hand can overlap and travel before the actual conflict.
         if c.is_v3()
@@ -1813,6 +1965,155 @@ fn palm_once(
     Some(next)
 }
 
+/// 同一組裡相鄰兩鍵的 Tap（含星星起點）配對，回傳組內索引。
+fn adjacent_pairs(group: &[Task], chart: &Chart) -> Vec<[usize; 2]> {
+    let button = |task: &Task| {
+        let n = &chart.notes[task.note];
+        (task.mode == "tap" && matches!(n.kind.as_str(), "tap" | "slide")).then_some(n.button)
+    };
+    let mut out = vec![];
+    for (i, a) in group.iter().enumerate() {
+        let Some(x) = button(a) else {
+            continue;
+        };
+        for (j, b) in group.iter().enumerate().skip(i + 1) {
+            if button(b).is_some_and(|y| matches!((x + 8 - y) % 8, 1 | 7)) {
+                out.push([i, j]);
+            }
+        }
+    }
+    out
+}
+
+/// 一隻手張開同時按下相鄰兩鍵（相距約 0.77 個盤面半徑；隔一鍵以上就搆不到）：手落在兩鍵
+/// 中點，兩顆都算這隻手。真人很少這樣按（標記裡約千分之一），所以只在標記者這樣標，或整首
+/// 最後的放寬重試裡這一組兩手怎麼分都走不下去時才展開。
+fn pair_press(
+    state: &State,
+    pair: [usize; 2],
+    group: &[Task],
+    hand: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Vec<State> {
+    let time = group[pair[0]].start;
+    let [a, b] = pair.map(|i| chart.notes[group[i].note].position);
+    let center = a.lerp(b, 0.5);
+    let mut out: Vec<State> = pair_once(state, pair, center, group, hand, chart, c, time, false)
+        .into_iter()
+        .collect();
+    for relief in relieve(
+        state,
+        hand.index(),
+        hand,
+        time,
+        Some(center),
+        false,
+        false,
+        chart,
+        c,
+    ) {
+        out.extend(pair_once(
+            &relief.state,
+            pair,
+            center,
+            group,
+            hand,
+            chart,
+            c,
+            relief.begin,
+            relief.glided,
+        ));
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pair_once(
+    state: &State,
+    pair: [usize; 2],
+    center: Point,
+    group: &[Task],
+    hand: Hand,
+    chart: &Chart,
+    c: &SolverConfig,
+    start: f64,
+    glided: bool,
+) -> Option<State> {
+    let idx = hand.index();
+    let arm = &state.arms[idx];
+    if arm.free > start + EPS || (start - arm.free <= EPS && arm.point.distance(center) > EPS) {
+        return None;
+    }
+    let end = pair.iter().map(|i| group[*i].end).fold(start, f64::max);
+    let first = chart.notes[group[pair[0]].note].id.clone();
+    let mut next = state.clone();
+    let a = &mut next.arms[idx];
+    if start > a.free + EPS {
+        let mode = if a.point.distance(center) < EPS {
+            "idle"
+        } else {
+            "travel"
+        };
+        add_segment(
+            a,
+            hand,
+            vec![
+                MotionSample::new(a.free, a.point),
+                MotionSample::new(start, center),
+            ],
+            mode,
+            None,
+            &mut next.cost,
+            c,
+        );
+    }
+    if let (Some(last), false) = (a.last_tap, glided) {
+        next.cost.repetition += c.repetition_weight
+            * (1.0 - (start - last) / c.repetition_seconds)
+                .max(0.0)
+                .powi(2);
+    }
+    a.last_tap = Some(start);
+    add_segment(
+        a,
+        hand,
+        vec![
+            MotionSample::new(start, center),
+            MotionSample::new(end, center),
+        ],
+        "tap",
+        Some(first.clone()),
+        &mut next.cost,
+        c,
+    );
+    record_action(
+        &mut next,
+        c,
+        hand,
+        center,
+        start,
+        if glided {
+            ActionKind::ContinuousContact
+        } else {
+            ActionKind::Palm
+        },
+        Some(first),
+    );
+    for i in pair {
+        let n = &chart.notes[group[i].note];
+        next.assignments = next.assignments.push(Assignment {
+            note_id: n.id.clone(),
+            part: if n.kind == "slide" { "head" } else { "contact" }.into(),
+            hand,
+            start_seconds: start,
+            end_seconds: group[i].end,
+        });
+    }
+    next.used_pair_press = true;
+    Some(next)
+}
+
 /// 已按住中央／內圈 Touch Hold 時，後續落在同一掌範圍內的 Touch 可以由同一隻手掌
 /// 繼續覆蓋。這讓 C 先出現、B 區稍後依序出現的配置不必虛構第三隻手。
 fn extend_palm_to_touch(
@@ -1904,9 +2205,51 @@ fn extend_palm_to_touch(
     Some(next)
 }
 
+/// 這隻手正在追、之後會沿路徑畫下去的 Slide，以及手從目前排定的終點畫到 until 的位置取樣。
+/// 張開覆蓋兩條的路線與 WiFi 不在這裡預看（手走的不是這條的星星）。
+fn ahead_track(
+    state: &State,
+    hand: Hand,
+    chart: &Chart,
+    until: f64,
+) -> Option<(usize, Vec<MotionSample>)> {
+    let arm = &state.arms[hand.index()];
+    let last = arm.segments.last()?;
+    if last.mode != "slide" {
+        return None;
+    }
+    let (&note, _) = state
+        .owners
+        .iter()
+        .find(|(n, h)| **h == hand && Some(&chart.notes[**n].id) == last.note_id.as_ref())?;
+    let n = &chart.notes[note];
+    let path = chart
+        .paths
+        .iter()
+        .position(|p| Some(&p.id) == n.path_id.as_ref())?;
+    if chart.paths[path].branches.len() == 2
+        || state.bundle_lead.contains_key(&note)
+        || state.bundled.contains_key(&note)
+        || state.finished.contains(&note)
+    {
+        return None;
+    }
+    let pickup = *state.engaged.get(&note)?;
+    let end = n.motion_end?;
+    let to = end.min(until);
+    if to <= arm.free + EPS {
+        return None;
+    }
+    Some((
+        note,
+        path_samples(&chart.paths[path], pickup, end, arm.free, to),
+    ))
+}
+
 /// Touch 沒有 Fast 判定，且只看感應區是否被按著。手若在 Critical Perfect 區間內
 /// 貼著面板經過落點附近（追 Slide、滑移、按住 Hold 或停留的 Tap），這個 Touch
-/// 就順帶完成，不另外產生動作段。只檢查已經排定的動作，不預測之後的軌跡。
+/// 就順帶完成，不另外產生動作段。除了已經排定的動作，V3 也預看追 Slide 的手接下來的路徑：
+/// 譜面常把 Touch 放在 Slide 路徑上，讓滑過去的手一起碰掉。
 fn brush_touch(
     state: &State,
     task: &Task,
@@ -1932,28 +2275,11 @@ fn brush_touch(
     } else {
         note.position
     };
-    let mut best: Option<(f64, f64)> = None;
-    let mut cursor = state.arms[hand.index()].segments.head.as_ref();
-    while let Some(link) = cursor {
-        let segment = &link.value;
-        cursor = link.prev.head.as_ref();
-        if segment.end_seconds < lo - EPS {
-            break;
-        }
-        if segment.start_seconds > hi + EPS
-            || !matches!(
-                segment.mode.as_str(),
-                "slide" | "handover" | "glide" | "hold" | "tap"
-            )
-        {
-            continue;
-        }
-        // 外圈按鍵在螢幕外；按住或滑過按鍵的手不會碰到螢幕上的感應區。
-        let on_screen = |p: Point| p.x.hypot(p.y) < SCREEN_EDGE;
-        let tracking = matches!(segment.mode.as_str(), "slide" | "handover");
-        if tap && !tracking {
-            continue;
-        }
+    // 外圈按鍵在螢幕外；按住或滑過按鍵的手不會碰到螢幕上的感應區。
+    let on_screen = |p: Point| p.x.hypot(p.y) < SCREEN_EDGE;
+    // (距離, 時刻, 靠預看才碰到時的那條 Slide)
+    let mut best: Option<(f64, f64, Option<usize>)> = None;
+    let mut consider = |samples: &[MotionSample], tracking: bool, ahead: Option<usize>| {
         // 追 Slide 的手是張開貼在螢幕上的：手掌範圍內的 A 區都碰得到（至少指尖可及）。
         let radius = if tap {
             crate::judge::finger_reach('A').max(c.palm_radius)
@@ -1962,7 +2288,7 @@ fn brush_touch(
         } else {
             TOUCH_BRUSH_RADIUS.min(c.palm_radius)
         };
-        for pair in segment.samples.windows(2) {
+        for pair in samples.windows(2) {
             let (t0, t1) = (pair[0].time_seconds, pair[1].time_seconds);
             let (a, b) = (pair[0].point(), pair[1].point());
             if !(tracking || on_screen(a) && on_screen(b)) {
@@ -2018,18 +2344,49 @@ fn brush_touch(
                 continue;
             }
             if distance <= radius + EPS
-                && best.is_none_or(|(d, t)| {
+                && best.is_none_or(|(d, t, _)| {
                     (time - task.start).abs() < (t - task.start).abs() - EPS
                         || ((time - task.start).abs() - (t - task.start).abs()).abs() <= EPS
                             && distance < d - EPS
                 })
             {
-                best = Some((distance, time));
+                best = Some((distance, time, ahead));
             }
         }
+    };
+    let mut cursor = state.arms[hand.index()].segments.head.as_ref();
+    while let Some(link) = cursor {
+        let segment = &link.value;
+        cursor = link.prev.head.as_ref();
+        if segment.end_seconds < lo - EPS {
+            break;
+        }
+        if segment.start_seconds > hi + EPS
+            || !matches!(
+                segment.mode.as_str(),
+                "slide" | "handover" | "glide" | "hold" | "tap"
+            )
+        {
+            continue;
+        }
+        let tracking = matches!(segment.mode.as_str(), "slide" | "handover");
+        if tap && !tracking {
+            continue;
+        }
+        consider(&segment.samples, tracking, None);
     }
-    let (_, time) = best?;
+    // 預看只用在 Touch：接下來要畫的路徑在判定區間內經過的話，這條 Slide 就得追到那一刻。
+    if !tap && c.is_v3() {
+        if let Some((slide, samples)) = ahead_track(state, hand, chart, hi) {
+            consider(&samples, true, Some(slide));
+        }
+    }
+    let (_, time, ahead) = best?;
     let mut next = state.clone();
+    if let Some(slide) = ahead {
+        let lock = next.committed.entry(slide).or_insert(time);
+        *lock = lock.max(time);
+    }
     next.assignments = next.assignments.push(Assignment {
         note_id: note.id.clone(),
         part: "contact".into(),
@@ -2182,6 +2539,71 @@ fn touch_groups(group: &[Task], chart: &Chart) -> Vec<Vec<usize>> {
     out
 }
 
+/// 這個狀態在 time 那一組略過了幾個音符部分（略過依時間先後記，這一組的在最前面）。
+fn drops_at(state: &State, time: f64) -> usize {
+    let mut count = 0;
+    let mut cursor = state.dropped.head.as_ref();
+    while let Some(link) = cursor {
+        if (link.value.time - time).abs() > EPS {
+            break;
+        }
+        count += 1;
+        cursor = link.prev.head.as_ref();
+    }
+    count
+}
+
+/// 這顆音符的接觸是不是在 time 那一組略過了。
+fn dropped_at(state: &State, note: usize, time: f64) -> bool {
+    let mut cursor = state.dropped.head.as_ref();
+    while let Some(link) = cursor {
+        if (link.value.time - time).abs() > EPS {
+            return false;
+        }
+        if link.value.note == note && !link.value.slide {
+            return true;
+        }
+        cursor = link.prev.head.as_ref();
+    }
+    false
+}
+
+/// 部分解：略過這個任務的音符部分。接觸就是不指派；Slide 當成已完成、放開手（同提早離手），
+/// 之後的 checkpoint 不再需要手。帶著別條一起畫（重疊星星、張開覆蓋）的 Slide 放掉時，
+/// 被帶著的那條也沒有手畫，一起略過。
+fn drop_part(state: &State, task: &Task, time: f64) -> State {
+    let mut s = state.clone();
+    let slide = task.mode == "slide";
+    let mut notes = vec![task.note];
+    if slide {
+        notes.extend(
+            s.carried
+                .iter()
+                .filter(|(_, lead)| **lead == task.note)
+                .map(|(note, _)| *note),
+        );
+        notes.extend(s.bundle_lead.get(&task.note).copied());
+    }
+    for note in notes {
+        if slide {
+            s.finished.insert(note);
+            s.owners.remove(&note);
+            s.engaged.remove(&note);
+            s.suspended.remove(&note);
+            s.wifi_pairs.remove(&note);
+            s.committed.remove(&note);
+            s.carried.remove(&note);
+            s.bundled.remove(&note);
+            s.bundle_lead.remove(&note);
+            if let Some(held) = s.deposit.remove(&note) {
+                s.pending -= held;
+            }
+        }
+        s.dropped = s.dropped.push(Dropped { note, slide, time });
+    }
+    s
+}
+
 /// 整組指派完成時驗證 Touch Group：實際接觸必須超過半數，其餘才可連帶判定。
 /// 連帶判定的 Touch 以最後一個實際接觸者的手記錄，part 為 "group"，不產生動作。
 fn settle_touch_groups(
@@ -2198,7 +2620,12 @@ fn settle_touch_groups(
         if !members.iter().any(|i| auto[*i]) {
             continue;
         }
-        let contacted: Vec<usize> = members.iter().copied().filter(|i| !auto[*i]).collect();
+        // 部分解略過的 Touch 沒有接觸，不算進過半。
+        let contacted: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|i| !auto[*i] && !dropped_at(&state, group[*i].note, group[*i].start))
+            .collect();
         if contacted.len() * 2 <= members.len() {
             return None;
         }
@@ -2606,15 +3033,36 @@ pub struct HandRules {
     pub contact: std::collections::HashMap<String, Hand>,
     /// Slide 的追蹤手：依時間排序的 (起始秒數, 手)；第一筆從 −∞ 起算。空的表示兩手皆可（WiFi 2+1）。
     pub track: std::collections::HashMap<String, Vec<(f64, Hand)>>,
+    /// 滑行標記沒有換手時間的 Slide → 最晚接上的時間。標註格式的 track 是「開始滑行的手」，
+    /// 真人中途換手、放開後由另一手補完常不另外標；solve_constrained 先當成整條同一隻手，
+    /// 走不下去時才把卡住的這類 Slide 放進 track_open。Temoto 的限制是整條同一隻手，不設。
+    pub track_start: std::collections::HashMap<String, f64>,
+    /// 只限定開始滑的手的 Slide：這個時刻之後開始的滑行兩手皆可。
+    pub track_open: std::collections::HashMap<String, f64>,
+    /// 同一時刻相鄰兩鍵的 Tap（含星星起點）都標成同一隻手時，允許那隻手張開一起按下。
+    pub pair_press: bool,
+    /// 不求解的音符部分（模型部分解略過的，見 solve_partial）：沒有任務、不指派手，
+    /// 結果的 skipped 照列。
+    pub skip: Vec<SkippedPart>,
 }
 
 /// 標註的換手時刻與模型 checkpoint 對不齊，前後這段時間內兩手都算符合。
 pub const HANDOVER_TOLERANCE: f64 = 0.1;
 
-/// 照標註求解走不下去時的說明。
-pub const ANNOTATION_INFEASIBLE_MESSAGE: &str = "依標註的手順，模型在此時找不到能完成的動作（手被佔用、來不及移動，或 Slide 換手與模型的交接規則不合）。長 Slide 若是放開後由另一手補完，請在滑行標上換手時間。";
+/// 照標註求解走不下去時的說明。沒標換手時間的 Slide 走不下去時，solve_constrained 會自己
+/// 放寬成只限定開始滑的手，所以不再請標記者補標換手時間。
+pub const ANNOTATION_INFEASIBLE_MESSAGE: &str = "依標註的手順，模型在此時找不到能完成的動作（手被佔用、來不及移動，或 Slide 換手與模型的交接規則不合）。";
 
 impl HandRules {
+    /// 只略過這些部分、不限制手順：pair_press 打開，其餘與不帶限制的求解相同。
+    pub fn skipping(skip: Vec<SkippedPart>) -> Self {
+        Self {
+            pair_press: true,
+            skip,
+            ..Self::default()
+        }
+    }
+
     fn allows(&self, a: &Assignment) -> bool {
         if a.part == "slide" {
             let Some(schedule) = self.track.get(&a.note_id) else {
@@ -2625,6 +3073,10 @@ impl HandRules {
                     *at >= a.start_seconds - HANDOVER_TOLERANCE
                         && *at <= a.end_seconds + HANDOVER_TOLERANCE
                 })
+                || self
+                    .track_open
+                    .get(&a.note_id)
+                    .is_some_and(|open| a.start_seconds > open + EPS)
             {
                 return true;
             }
@@ -2641,30 +3093,356 @@ impl HandRules {
             .is_none_or(|hand| *hand == a.hand)
     }
 
-    /// 這一組新增的指派是否都符合標註。
-    fn satisfied(&self, state: &State) -> bool {
+    /// 這一組新增的指派裡不符合標註的音符（不重複）；擱著的標記（aside）不算。
+    fn violations(&self, state: &State, aside: &BTreeSet<String>) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
         let mut cursor = state.assignments.head.as_ref();
         for _ in 0..state.assignments.len.saturating_sub(state.assign_mark) {
             let Some(link) = cursor else {
                 break;
             };
-            if !self.allows(&link.value) {
-                return false;
+            let a = &link.value;
+            if !aside.contains(&a.note_id) && !self.allows(a) && !out.contains(&a.note_id) {
+                out.push(a.note_id.clone());
             }
             cursor = link.prev.head.as_ref();
         }
-        true
+        out
     }
+}
+
+/// 照標註略過模式（solve_constrained_skipping）：某一組只剩違反標註的展開時，擱著違反最少、
+/// 目前最好的那一個所違反的標記，從這一組起照模型的手接下去。
+#[derive(Default)]
+struct Skipping {
+    /// 擱著的標記（音符 id）。
+    aside: BTreeSet<String>,
+    /// 每一處擱置（code=annotation_skipped）。
+    skipped: Vec<Diagnostic>,
+}
+
+/// 照標註略過時每一處的說明。
+pub const ANNOTATION_SKIPPED_MESSAGE: &str = "依標註的手順，模型在此時找不到能完成的動作；這幾顆的標記先擱著、照模型的手接下去，後面的標註照常求解。";
+
+/// 略過模式的退路：照標註走得下去的某一組裡，只違反標註的那些展開。
+struct Fork {
+    time: f64,
+    /// 下一組的開頭。
+    limit: usize,
+    violators: Vec<(State, Vec<String>)>,
+}
+
+/// 擱著最好的那個展開所違反的標記並記下這一處，回傳只違反擱著標記的展開。
+fn set_aside(
+    skip: &mut Skipping,
+    violators: Vec<(State, Vec<String>)>,
+    time: f64,
+    chart: &Chart,
+    c: &SolverConfig,
+) -> Vec<State> {
+    let best = violators
+        .iter()
+        .min_by(|a, b| compare_states(&a.0, &b.0, c, false))
+        .expect("只在有違反標註的展開時擱置");
+    let mut ids = best.1.clone();
+    ids.sort();
+    skip.aside.extend(ids.iter().cloned());
+    let mut d = Diagnostic::plain("annotation_skipped", ANNOTATION_SKIPPED_MESSAGE.into());
+    d.severity = "warning".into();
+    d.time_seconds = Some(time);
+    d.source_span = chart
+        .notes
+        .iter()
+        .find(|n| n.id == ids[0])
+        .map(|n| Box::new(n.source_span.clone()));
+    d.note_ids = ids;
+    skip.skipped.push(d);
+    violators
+        .into_iter()
+        .filter(|(_, v)| v.iter().all(|id| skip.aside.contains(id)))
+        .map(|(state, _)| state)
+        .collect()
 }
 
 /// 依真人標註限制手順求解。找不到符合的動作時回傳 code=annotation_infeasible 的診斷，
 /// 標出第一個走不下去的時刻與音符。
+///
+/// 只標開始滑的手（track_start）的 Slide 先當成整條同一隻手；走不下去時，卡住那一組裡的這類
+/// Slide 改成只限定開始滑的手、中途換手由模型決定，再試。卡住的地方沒有這類 Slide 就不放寬：
+/// 每一輪都要整首重解，放寬不相干的 Slide 只會讓走不下去的譜面算更久。
 pub fn solve_constrained(
     chart: &Chart,
     c: &SolverConfig,
     rules: &HandRules,
 ) -> Result<Vec<Solution>, Diagnostic> {
-    solve_traced(chart, c, None, Some(rules))
+    constrained(chart, c, rules).0
+}
+
+/// solve_constrained 的本體；另外回傳最後用的限制（放寬過的滑行記在 track_open）。
+fn constrained<'a>(
+    chart: &Chart,
+    c: &SolverConfig,
+    rules: &'a HandRules,
+) -> (
+    Result<Vec<Solution>, Diagnostic>,
+    std::borrow::Cow<'a, HandRules>,
+) {
+    const TARGETED_ROUNDS: usize = 3;
+    let mut rules = std::borrow::Cow::Borrowed(rules);
+    for round in 0.. {
+        // 標註擋掉的往往是更早的接法（例如另一手接回）；那時還有「先等」的狀態撐著，
+        // 真正走不下去的那一組沒有狀態被標註剔除，回報的就是 no_solution。
+        let e = match solve_traced(chart, c, None, Some(&rules)) {
+            Err(e) if matches!(e.code.as_str(), "annotation_infeasible" | "no_solution") => e,
+            Ok(mut solutions) => {
+                for solution in &mut solutions {
+                    solution.warnings.extend(opened_warning(&rules));
+                }
+                return (Ok(solutions), rules);
+            }
+            other => return (other, rules),
+        };
+        let closed =
+            |id: &String| rules.track_start.contains_key(id) && !rules.track_open.contains_key(id);
+        let stuck: Vec<String> = if round < TARGETED_ROUNDS {
+            e.note_ids.iter().filter(|id| closed(id)).cloned().collect()
+        } else {
+            vec![]
+        };
+        if stuck.is_empty() {
+            return (Err(e), rules);
+        }
+        let rules = rules.to_mut();
+        for id in stuck {
+            let open = rules.track_start[&id];
+            rules.track_open.insert(id, open);
+        }
+    }
+    unreachable!()
+}
+
+fn opened_warning(rules: &HandRules) -> Option<String> {
+    let opened = rules.track_open.len();
+    (opened > 0).then(|| {
+        format!(
+            "有 {opened} 條 Slide 的滑行標記沒標換手時間，照整條同一隻手走不下去，改成只限定開始滑的手，中途換手由模型決定。"
+        )
+    })
+}
+
+/// 照標註求解，走不下去的地方不停下：那一刻違反的標記先擱著、照模型的手接下去，讓標記者
+/// 看得到後面的標註。回傳結果與每一處擱置（code=annotation_skipped、severity=warning）；
+/// 擱著以後仍走不下去（兩手都被佔用等模型本身的限制）時，結果是那一處的錯誤。
+///
+/// 照標註第一遍走得通就和 solve_constrained 相同，不擱置任何標記。走不通時整條放寬鏈都卡在
+/// 同一處，所以直接用最後一輪的設定（Touch 可晚接、Slide 進最後判定區可離手、Hold 可提早
+/// 放手）從頭解一遍，不重跑前面幾輪。
+pub fn solve_constrained_skipping(
+    chart: &Chart,
+    c: &SolverConfig,
+    rules: &HandRules,
+) -> (Result<Vec<Solution>, Diagnostic>, Vec<Diagnostic>) {
+    let (result, rules) = constrained(chart, c, rules);
+    match &result {
+        Err(e) if matches!(e.code.as_str(), "annotation_infeasible" | "no_solution") => {}
+        _ => return (result, vec![]),
+    }
+    let last = SolverConfig {
+        hold_early_release: true,
+        ..c.clone()
+    };
+    let tracking;
+    let chart = if c.is_v3() {
+        tracking = tracking::tracking_chart(chart, c);
+        &tracking
+    } else {
+        chart
+    };
+    let run = |config: &SolverConfig| {
+        let mut skip = Skipping::default();
+        let result = solve_with(
+            chart,
+            config,
+            true,
+            true,
+            None,
+            Some(&rules),
+            Some(&mut skip),
+            false,
+        );
+        (result, skip.skipped)
+    };
+    let (mut result, mut skipped) = run(&last);
+    // 手掌半徑同 solve_traced：平常的大小走不下去時，才改用備用半徑。
+    let mut wide = false;
+    if matches!(&result, Err(e) if matches!(e.code.as_str(), "annotation_infeasible" | "no_solution"))
+        && c.palm_radius > 0.0
+        && c.palm_fallback_radius > c.palm_radius
+    {
+        let wider = SolverConfig {
+            palm_radius: c.palm_fallback_radius,
+            ..last.clone()
+        };
+        if let (Ok(solutions), list) = run(&wider) {
+            (result, skipped, wide) = (Ok(solutions), list, true);
+        }
+    }
+    let result = result.map(|mut solutions| {
+        for solution in &mut solutions {
+            if wide {
+                solution.warnings.push(format!(
+                    "手掌半徑 {} 找不到可行方案，此方案改用備用手掌半徑 {}。",
+                    c.palm_radius, c.palm_fallback_radius
+                ));
+            }
+            solution.warnings.extend(opened_warning(&rules));
+            if !skipped.is_empty() {
+                solution.warnings.push(format!(
+                    "照標註有 {} 處走不下去，那幾顆的標記先擱著、照模型的手接下去；這個方案也允許 Touch 在判定區間內晚接、Slide 進最後判定區就離手、Hold 在結尾不檢查的區間內提早放手。",
+                    skipped.len()
+                ));
+            }
+        }
+        solutions
+    });
+    (result, skipped)
+}
+
+/// 部分解每一處的說明（比對結果的 model_skipped）。
+pub const MODEL_SKIPPED_MESSAGE: &str =
+    "模型在此時走不下去（手被佔用、來不及移動等），這幾顆先略過、不指派手，其餘照常求解。";
+
+/// 模型本身走不下去時的部分解：略過做不到的音符部分，其餘照常求解；略過的部分列在每個方案的
+/// skipped。整首解得出來時與 solve 相同；只有計算預算、取消之類的錯誤才回傳錯誤。
+///
+/// 第一遍直接用放寬鏈最後一輪的設定（Touch 可晚接、Slide 進最後判定區可離手、Hold 可提早放手）
+/// 從頭解：走不下去的那一組從原本的 beam 重來，允許略過音符，先只略過新的接觸，再含還沒接上
+/// 的 Slide，最後才放掉進行中的 Slide，略過數由少到多，留略過最少的狀態接下去。第二遍把找到
+/// 的部分當成不存在，照平常的放寬鏈重解，其餘部分和完整譜面一樣從最嚴格的設定開始；第二遍
+/// 仍走不下去時，改用第一遍的結果（拿掉略過部分已有的指派）。
+pub fn solve_partial(chart: &Chart, c: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
+    let error = match solve(chart, c) {
+        Err(e) if e.code == "no_solution" => e,
+        other => return other,
+    };
+    let count = |found: &[Solution]| found.first().map_or(usize::MAX, |s| s.skipped.len());
+    let mut found = discover(chart, c, c.palm_radius)?;
+    // 手掌半徑同 solve_traced：平常的大小要略過時也試備用半徑，取略過較少的。
+    if count(&found) > 0 && c.palm_radius > 0.0 && c.palm_fallback_radius > c.palm_radius {
+        if let Ok(wide) = discover(chart, c, c.palm_fallback_radius) {
+            if count(&wide) < count(&found) {
+                found = wide;
+            }
+        }
+    }
+    let Some(skipped) = found.first().map(|s| s.skipped.clone()) else {
+        return Err(error);
+    };
+    if skipped.is_empty() {
+        return Ok(found);
+    }
+    let mut solutions = match solve_traced(chart, c, None, Some(&HandRules::skipping(skipped.clone()))) {
+        Ok(solutions) => solutions,
+        Err(e) if e.code == "no_solution" => found
+            .into_iter()
+            .map(|mut solution| {
+                without_skipped(&mut solution);
+                solution.warnings.push(
+                    "這個方案允許 Touch 在判定區間內晚接、Slide 進最後判定區就離手、Hold 在結尾不檢查的區間內提早放手。".into(),
+                );
+                solution
+            })
+            .collect(),
+        Err(e) => return Err(e),
+    };
+    let warning = partial_warning(&skipped);
+    for solution in &mut solutions {
+        solution.warnings.extend(warning.clone());
+    }
+    Ok(solutions)
+}
+
+/// 部分解的第一遍：放寬鏈最後一輪的設定，整組走不下去時略過音符接下去。
+fn discover(
+    chart: &Chart,
+    c: &SolverConfig,
+    palm_radius: f64,
+) -> Result<Vec<Solution>, Diagnostic> {
+    let last = SolverConfig {
+        hold_early_release: true,
+        palm_radius,
+        ..c.clone()
+    };
+    let tracking;
+    let chart = if c.is_v3() {
+        tracking = tracking::tracking_chart(chart, c);
+        &tracking
+    } else {
+        chart
+    };
+    solve_with(chart, &last, true, true, None, None, None, true)
+}
+
+/// 拿掉略過部分已有的指派與交接（第一遍中途放掉的 Slide 前半段）。
+fn without_skipped(solution: &mut Solution) {
+    let skipped = std::mem::take(&mut solution.skipped);
+    let gone = |note: &str, slide: bool| {
+        skipped
+            .iter()
+            .any(|p| p.note_id == note && (p.part == "slide") == slide)
+    };
+    solution
+        .assignments
+        .retain(|a| !gone(&a.note_id, a.part == "slide"));
+    solution.handovers.retain(|h| !gone(&h.note_id, true));
+    solution.skipped = skipped;
+}
+
+/// 依走不下去的時刻分成幾處：每處的時刻與音符 id（不重複，依時間、再依 id）。
+fn skipped_spots(skipped: &[SkippedPart]) -> Vec<(f64, Vec<String>)> {
+    let mut parts: Vec<&SkippedPart> = skipped.iter().collect();
+    parts.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    let mut out: Vec<(f64, Vec<String>)> = vec![];
+    for part in parts {
+        match out.last_mut() {
+            Some((time, ids)) if (part.time_seconds - *time).abs() < 1e-6 => {
+                if !ids.contains(&part.note_id) {
+                    ids.push(part.note_id.clone());
+                }
+            }
+            _ => out.push((part.time_seconds, vec![part.note_id.clone()])),
+        }
+    }
+    out
+}
+
+/// 部分解的提醒：有幾處走不下去、先略過。完整的方案沒有。
+pub fn partial_warning(skipped: &[SkippedPart]) -> Option<String> {
+    let spots = skipped_spots(skipped).len();
+    (spots > 0).then(|| {
+        format!(
+            "模型有 {spots} 處走不下去（手被佔用、來不及移動等），那幾顆先略過、不指派手，其餘照常求解。"
+        )
+    })
+}
+
+/// 部分解略過的每一處（code=model_skipped、severity=warning）：時刻、音符與第一顆的原文位置。
+pub fn skipped_diagnostics(chart: &Chart, skipped: &[SkippedPart]) -> Vec<Diagnostic> {
+    skipped_spots(skipped)
+        .into_iter()
+        .map(|(time, ids)| {
+            let mut d = Diagnostic::plain("model_skipped", MODEL_SKIPPED_MESSAGE.into());
+            d.severity = "warning".into();
+            d.time_seconds = Some(time);
+            d.source_span = chart
+                .notes
+                .iter()
+                .find(|n| n.id == ids[0])
+                .map(|n| Box::new(n.source_span.clone()));
+            d.note_ids = ids;
+            d
+        })
+        .collect()
 }
 
 /// V3 debug: replay ownership, roles and lookahead parts of the Top-1 candidate.
@@ -2765,14 +3543,32 @@ fn solve_chain(
         chart
     };
     let retry = |e: &Diagnostic| e.code == "no_solution" || e.code == "annotation_infeasible";
-    match solve_with(chart, c, false, false, trace.as_deref_mut(), rules) {
+    match solve_with(
+        chart,
+        c,
+        false,
+        false,
+        trace.as_deref_mut(),
+        rules,
+        None,
+        false,
+    ) {
         Err(e) if retry(&e) => {}
         other => return other,
     }
     // V3 預設畫完：放寬時先只允許 Touch 晚接，仍然無解才允許 Slide 進最後判定區就離手。
     let draw = c.is_v3() && !c.slide_shortcut;
-    let mut solutions = match solve_with(chart, c, true, !draw, trace.as_deref_mut(), rules) {
-        Err(e) if draw && retry(&e) => solve_with(chart, c, true, true, trace, rules),
+    let mut solutions = match solve_with(
+        chart,
+        c,
+        true,
+        !draw,
+        trace.as_deref_mut(),
+        rules,
+        None,
+        false,
+    ) {
+        Err(e) if draw && retry(&e) => solve_with(chart, c, true, true, trace, rules, None, false),
         other => other,
     }?;
     for solution in &mut solutions {
@@ -2783,6 +3579,8 @@ fn solve_chain(
     Ok(solutions)
 }
 
+// 放寬鏈的兩個開關、兩種走不下去時的處理（擱著標記、略過音符）各自獨立，分開傳比較清楚。
+#[allow(clippy::too_many_arguments)]
 fn solve_with(
     chart: &Chart,
     c: &SolverConfig,
@@ -2791,6 +3589,10 @@ fn solve_with(
     leave: bool,
     trace: Option<&mut Vec<String>>,
     rules: Option<&HandRules>,
+    // 照標註略過模式：只違反標註的那一組不停下，擱著標記接下去。
+    mut skip: Option<&mut Skipping>,
+    // 部分解的第一遍（solve_partial）：整組走不下去時略過音符接下去。
+    drop: bool,
 ) -> Result<Vec<Solution>, Diagnostic> {
     let start = chart
         .notes
@@ -2848,6 +3650,12 @@ fn solve_with(
         bundled: BTreeMap::new(),
         bundle_lead: BTreeMap::new(),
         used_bundle: false,
+        carried: BTreeMap::new(),
+        committed: BTreeMap::new(),
+        used_carry: false,
+        swept: BTreeMap::new(),
+        used_sweep: false,
+        used_pair_press: false,
         assign_mark: 0,
         forced_handovers: Arc::new(
             rules
@@ -2873,6 +3681,7 @@ fn solve_with(
         ),
         used_early_slide: false,
         used_touch_group: false,
+        dropped: Chain::default(),
     }];
     if let Some(context) = &v2_context {
         context.refresh(&mut beam[0])?;
@@ -2880,25 +3689,48 @@ fn solve_with(
     if let Some(context) = &v3_context {
         context.refresh(&mut beam[0])?;
     }
-    let tasks = tasks(chart, c)?;
+    // 部分解已略過的部分（rules.skip）：不建任務、不算新接觸，結果照列在 skipped。
+    let given: &[SkippedPart] = rules.map_or(&[], |r| r.skip.as_slice());
+    let mut left_out = vec![[false; 2]; chart.notes.len()];
+    for part in given {
+        if let Some(i) = chart.notes.iter().position(|n| n.id == part.note_id) {
+            left_out[i][usize::from(part.part == "slide")] = true;
+        }
+    }
+    let tasks: Vec<Task> = tasks(chart, c)?
+        .into_iter()
+        .filter(|t| !left_out[t.note][usize::from(t.mode == "slide")])
+        .collect();
     // 需要新接觸的時刻（Tap、Hold、Touch 與 Slide 起點），用來預判手是否需要提早離開 Slide。
     let mut onsets: Vec<f64> = chart
         .notes
         .iter()
-        .filter(|n| n.has_head)
-        .map(|n| n.time_seconds)
+        .enumerate()
+        .filter(|(i, n)| n.has_head && !left_out[*i][0])
+        .map(|(_, n)| n.time_seconds)
         .collect();
     onsets.sort_by(f64::total_cmp);
     let clock = Instant::now();
     let mut expansions: u64 = 0;
+    let no_aside = BTreeSet::new();
+    // 略過模式的退路：最近幾組照標註走得下去時，同一組只違反標註的展開（本來就要丟掉，直接
+    // 留著不必複製）。之後走不下去、卻沒有展開被標註擋掉時（例如暫停的 Slide 到最後才接不
+    // 回來），退回最近的一組，擱著那裡的標記、改走這些展開。
+    let mut forks: Vec<Fork> = vec![];
+    let mut backtracks = 0usize;
+    // 正在退回的那一處走不下去的時刻，與退回前已有的擱置數。
+    let mut stuck: Option<(f64, usize)> = None;
     let mut cursor = 0;
-    while cursor < tasks.len() {
+    'groups: while cursor < tasks.len() {
         let time = tasks[cursor].start;
         let mut limit = cursor + 1;
         while limit < tasks.len() && (tasks[limit].start - time).abs() < EPS {
             limit += 1;
         }
         let group = &tasks[cursor..limit];
+        if stuck.is_some_and(|(at, _)| time > at + EPS) {
+            stuck = None;
+        }
         // 已經結束的 Slide 不會再被查詢；清掉之後每個狀態要複製的資料量才是常數。
         for (origin, state) in beam.iter_mut().enumerate() {
             state.group_origin = origin;
@@ -2914,6 +3746,11 @@ fn solve_with(
             state.resumed.retain(&live);
             state.bundled.retain(|note, _| live(note));
             state.bundle_lead.retain(|note, _| live(note));
+            state.carried.retain(|note, _| live(note));
+            state.swept.retain(|note, _| live(note));
+            state
+                .committed
+                .retain(|note, until| live(note) && *until >= time - EPS);
             state.last_handover.retain(|note, _| live(note));
             state.deposit.retain(|note, held| {
                 let keep = live(note);
@@ -2944,6 +3781,7 @@ fn solve_with(
             .collect();
         beam.extend(swapped);
         if is_touch_sweep_group(group, chart) {
+            let aside = skip.as_deref().map_or(&no_aside, |s| &s.aside);
             let mut swept = Vec::new();
             for state in &beam {
                 for reversed in [false, true] {
@@ -2954,7 +3792,7 @@ fn solve_with(
                         if let Some(context) = &v3_context {
                             context.update(state, &mut result)?;
                         }
-                        if rules.is_none_or(|r| r.satisfied(&result)) {
+                        if rules.is_none_or(|r| r.violations(&result, aside).is_empty()) {
                             swept.push(result);
                         }
                     }
@@ -2974,9 +3812,35 @@ fn solve_with(
         // 標準順序重來一次。順序只是搜尋策略，不同順序能展開出的接法不完全一樣。
         let mut retry = canonical_group(group, chart).map(|order| (order, beam.clone()));
         let mut reordered: Option<Vec<Task>> = None;
+        // 一手同按相鄰兩鍵：標記者標成同一隻手的照標註展開；其餘只在整首最後的放寬重試裡、
+        // 這一組兩手怎麼分都走不下去時，才帶著原本的 beam 重來一次，每一對都展開。
+        let last_pass = relaxed && leave && c.hold_early_release;
+        let mut paired = (last_pass
+            && rules.is_none_or(|r| r.pair_press)
+            && !adjacent_pairs(group, chart).is_empty())
+        .then(|| beam.clone());
+        let mut every_pair = false;
+        // 部分解：整組怎麼排都走不下去時，從這一組開始時的 beam 重來，允許略過音符。
+        // (每個狀態在這一組最多略過幾個, 可以略過到哪一層)：0 只略過新的接觸，
+        // 1 再含還沒接上的 Slide，2 才放掉進行中的 Slide；略過數由少到多。
+        let dropping = drop.then(|| beam.clone());
+        let mut drop_pass: Option<(usize, u8)> = None;
+        // 略過模式：只違反標註的完整展開（違反最少的那些）先留著，連同違反的音符。
+        let mut violators: Vec<(State, Vec<String>)> = vec![];
         let mut next = loop {
             let group = reordered.as_deref().unwrap_or(group);
+            let aside = skip.as_deref().map_or(&no_aside, |s| &s.aside);
             let candidates = palm_candidates(group, chart, c.palm_radius);
+            let labeled = |pair: &[usize; 2]| {
+                rules.is_some_and(|r| {
+                    let [a, b] = pair.map(|i| r.contact.get(&chart.notes[group[i].note].id));
+                    r.pair_press && a.is_some() && a == b
+                })
+            };
+            let pairs: Vec<[usize; 2]> = adjacent_pairs(group, chart)
+                .into_iter()
+                .filter(|pair| every_pair || labeled(pair))
+                .collect();
             let touch_groups = touch_groups(group, chart);
             let in_touch_group: Vec<bool> = (0..group.len())
                 .map(|i| touch_groups.iter().any(|g| g.contains(&i)))
@@ -3018,8 +3882,18 @@ fn solve_with(
                     if let Some(context) = &v3_context {
                         context.refresh(&mut state)?;
                     }
-                    if rules.is_some_and(|r| !r.satisfied(&state)) {
+                    let violated = rules.map_or(vec![], |r| r.violations(&state, aside));
+                    if !violated.is_empty() {
                         rejected += 1;
+                        if skip.is_some() {
+                            let fewest = violators.first().map_or(usize::MAX, |(_, v)| v.len());
+                            if violated.len() < fewest {
+                                violators.clear();
+                            }
+                            if violated.len() <= fewest {
+                                violators.push((state, violated));
+                            }
+                        }
                         continue;
                     }
                     next.push(state);
@@ -3030,10 +3904,28 @@ fn solve_with(
                 after[i] = false;
                 if task.mode == "slide"
                     && (state.finished.contains(&task.note)
-                        || state.bundled.contains_key(&task.note))
+                        || state.bundled.contains_key(&task.note)
+                        || state.swept.contains_key(&task.note)
+                        || riding(&state, task, chart))
                 {
                     pending.push((state, after, auto));
                     continue;
+                }
+                if let Some((limit, tier)) = drop_pass {
+                    let level = match task.mode {
+                        "slide"
+                            if state.owners.contains_key(&task.note)
+                                || state.engaged.contains_key(&task.note)
+                                || state.suspended.contains_key(&task.note) =>
+                        {
+                            2
+                        }
+                        "slide" => 1,
+                        _ => 0,
+                    };
+                    if level <= tier && drops_at(&state, time) < limit {
+                        pending.push((drop_part(&state, task, time), after.clone(), auto.clone()));
+                    }
                 }
                 if let Some(&(progress, bound)) = state.suspended.get(&task.note) {
                     for hand in [Hand::L, Hand::R] {
@@ -3106,6 +3998,27 @@ fn solve_with(
                                 context.update(&state, &mut s)?;
                             }
                             pending.push((s, after.clone(), auto.clone()));
+                        }
+                    }
+                    for pair in pairs
+                        .iter()
+                        .filter(|p| !late && p.contains(&i) && p.iter().all(|j| remaining[*j]))
+                    {
+                        let mut after_pair = remaining.clone();
+                        for j in pair {
+                            after_pair[*j] = false;
+                        }
+                        for hand in [Hand::L, Hand::R] {
+                            expansions += 1;
+                            for mut s in pair_press(&state, *pair, group, hand, chart, c) {
+                                if let Some(context) = &v2_context {
+                                    context.update(&state, &mut s)?;
+                                }
+                                if let Some(context) = &v3_context {
+                                    context.update(&state, &mut s)?;
+                                }
+                                pending.push((s, after_pair.clone(), auto.clone()));
+                            }
                         }
                     }
                     if !matches!(chart.notes[task.note].kind.as_str(), "touch" | "touchHold") {
@@ -3210,7 +4123,11 @@ fn solve_with(
                 // V3 預設畫完：不為了少畫一段而提早離手（交接、暫停接回照常），
                 // 只有整譜重試時才放寬。
                 let may_leave = leave || needed_elsewhere && (!c.is_v3() || c.slide_shortcut);
-                if task.mode == "slide" && may_leave && slide_judged(&state, task, chart) {
+                if task.mode == "slide"
+                    && may_leave
+                    && slide_judged(&state, task, chart)
+                    && !locked(&state, task.note, task.start)
+                {
                     let mut done = state.clone();
                     done.finished.insert(task.note);
                     done.owners.remove(&task.note);
@@ -3229,6 +4146,7 @@ fn solve_with(
                     && !state.wifi_pairs.contains_key(&task.note)
                     && !state.bundle_lead.contains_key(&task.note)
                     && state.owners.contains_key(&task.note)
+                    && !locked(&state, task.note, task.start)
                     && !slide_judged(&state, task, chart)
                 {
                     if let (Some(&pickup), Some(end)) = (
@@ -3253,6 +4171,41 @@ fn solve_with(
                                 pending.push((paused, after.clone(), auto.clone()));
                             }
                         }
+                    }
+                }
+                // V3：判定佇列相同、較晚出發的另一條 Slide 還沒出發時，這隻手快要去打別的音符就可以
+                // 先放開這條、不再接回：之後畫那一條的手會依序碰到這條剩下的判定區，並在這條的正解
+                // 區間內完成（真人「先畫一段、去打別的、再一筆畫完兩條」）。不受暫停的剩餘時間限制。
+                if c.is_v3()
+                    && task.mode == "slide"
+                    && needed_elsewhere
+                    && (onsets
+                        .get(onsets.partition_point(|t| *t <= task.start + EPS))
+                        .is_some_and(|t| *t <= task.start + SWEEP_LEAD + EPS)
+                        || after
+                            .iter()
+                            .enumerate()
+                            .any(|(j, todo)| *todo && group[j].mode != "slide"))
+                    && task.samples.is_empty()
+                    && !state.wifi_pairs.contains_key(&task.note)
+                    && !state.bundle_lead.contains_key(&task.note)
+                    && state.owners.contains_key(&task.note)
+                    && !locked(&state, task.note, task.start)
+                    && !slide_judged(&state, task, chart)
+                {
+                    let lead = chart.paths[task.path]
+                        .hand_routes
+                        .sweepers
+                        .iter()
+                        .copied()
+                        .find(|l| chart.notes[*l].motion_start.unwrap() >= task.start - EPS);
+                    if let Some(lead) = lead {
+                        let mut left = state.clone();
+                        left.owners.remove(&task.note);
+                        left.engaged.remove(&task.note);
+                        left.swept.insert(task.note, lead);
+                        left.used_sweep = true;
+                        pending.push((left, after.clone(), auto.clone()));
                     }
                 }
                 // 沒有任何一手接得到的 Touch，交給 Touch Group 過半判定；整組結束時再驗證過半。
@@ -3280,6 +4233,58 @@ fn solve_with(
                     beam = saved;
                     continue;
                 }
+                if let Some(saved) = paired.take() {
+                    every_pair = true;
+                    beam = saved;
+                    continue;
+                }
+                // 略過模式：這一組只有違反標註的展開時，擱著標記接著解。
+                if let (Some(skip), false) = (skip.as_deref_mut(), violators.is_empty()) {
+                    break set_aside(skip, violators, time, chart, c);
+                }
+                // 沒有展開被標註擋掉：退回最近的岔路，擱著那裡的標記、改走當時違反標註的展開。
+                if let (Some(skip), true) = (skip.as_deref_mut(), backtracks < MAX_BACKTRACKS) {
+                    if let Some(fork) = forks.pop() {
+                        stuck.get_or_insert((time, skip.skipped.len()));
+                        backtracks += 1;
+                        let mut next = set_aside(skip, fork.violators, fork.time, chart, c);
+                        if c.is_v2() {
+                            v2::remove_unnecessary_deferrals(&mut next);
+                        } else if c.is_v3() {
+                            v3::remove_unnecessary_deferrals(&mut next);
+                        }
+                        if let Some(context) = &v3_context {
+                            context.plan(&mut next, fork.time)?;
+                        }
+                        prune(&mut next, c, fork.time);
+                        beam = next;
+                        cursor = fork.limit;
+                        continue 'groups;
+                    }
+                }
+                // 部分解：改從這一組開始時的 beam 重來，允許略過音符（見 drop_pass）。
+                if let Some(saved) = &dropping {
+                    let deepest = if group.iter().any(|t| t.mode == "slide") {
+                        2
+                    } else {
+                        0
+                    };
+                    let pass = match drop_pass {
+                        None => Some((1, 0)),
+                        Some((limit, tier)) if tier < deepest => Some((limit, tier + 1)),
+                        Some((limit, _)) if limit < group.len() => Some((limit + 1, 0)),
+                        Some(_) => None,
+                    };
+                    if let Some(pass) = pass {
+                        drop_pass = Some(pass);
+                        beam = saved.clone();
+                        continue;
+                    }
+                }
+                // 退到底仍走不下去：退回途中擱著的標記不是原因，不列出。
+                if let (Some(skip), Some((_, kept))) = (skip.as_deref_mut(), stuck) {
+                    skip.skipped.truncate(kept);
+                }
                 let mut d = if rejected > 0 {
                     Diagnostic::plain(
                         "annotation_infeasible",
@@ -3300,6 +4305,28 @@ fn solve_with(
                 d.note_ids.dedup();
                 d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
                 return Err(d);
+            }
+            if drop_pass.is_some() {
+                // 略過最少的才接下去（帶著別條一起畫的 Slide 放掉時會連帶多略過）。
+                let fewest = next.iter().map(|s| drops_at(s, time)).min().unwrap_or(0);
+                next.retain(|s| drops_at(s, time) == fewest);
+            }
+            if skip.is_some() && !violators.is_empty() {
+                let keep = 2 * c.beam_width;
+                if violators.len() > keep {
+                    violators
+                        .select_nth_unstable_by(keep, |a, b| compare_states(&a.0, &b.0, c, false));
+                    violators.truncate(keep);
+                }
+                forks.retain(|fork| fork.time >= time - FORK_WINDOW);
+                if forks.len() >= MAX_FORKS {
+                    forks.remove(0);
+                }
+                forks.push(Fork {
+                    time,
+                    limit,
+                    violators,
+                });
             }
             break next;
         };
@@ -3393,7 +4420,25 @@ fn solve_with(
         });
         let used_touch_sweep = state.used_touch_sweep;
         let (used_early_slide, used_touch_group) = (state.used_early_slide, state.used_touch_group);
-        let used_bundle = state.used_bundle;
+        let (used_bundle, used_carry, used_sweep, used_pair_press) = (
+            state.used_bundle,
+            state.used_carry,
+            state.used_sweep,
+            state.used_pair_press,
+        );
+        let mut skipped: Vec<SkippedPart> = given.to_vec();
+        skipped.extend(state.dropped.to_vec().into_iter().map(|d| SkippedPart {
+            note_id: chart.notes[d.note].id.clone(),
+            part: if d.slide { "slide" } else { "contact" }.into(),
+            time_seconds: d.time,
+        }));
+        skipped.sort_by(|a, b| {
+            a.time_seconds
+                .total_cmp(&b.time_seconds)
+                .then_with(|| a.note_id.cmp(&b.note_id))
+                .then_with(|| a.part.cmp(&b.part))
+        });
+        skipped.dedup();
         let [left, right] = state.arms;
         let mut warnings = vec![
             "單點與圓形手掌的 Demo 幾何近似，未模擬實機感測器判定或手臂關節。".into(),
@@ -3423,6 +4468,19 @@ fn solve_with(
                 "部分同時出發的 Slide 由一隻手張開同時覆蓋兩條：掌心沿兩顆星星的中點畫到終點，兩顆星星都在手掌半徑內。"
                     .into()
             });
+        }
+        if used_carry {
+            warnings.push(
+                "部分星星重疊的 Slide 由同一隻手一起畫：後一條出發時，手追著的那條星星正好在它的起點，之後兩顆星星重合。".into(),
+            );
+        }
+        if used_sweep {
+            warnings.push(
+                "部分 Slide 畫一段就放開，剩下的判定區由判定路線相同、較晚出發的 Slide 一筆畫過時一起完成。".into(),
+            );
+        }
+        if used_pair_press {
+            warnings.push("部分同時的相鄰兩鍵由一隻手張開一起按下（手落在兩鍵中間）。".into());
         }
         if used_touch_sweep {
             warnings.push(
@@ -3467,6 +4525,7 @@ fn solve_with(
             right_segments: right.segments.to_vec(),
             config_snapshot: c.clone(),
             warnings,
+            skipped,
         });
         if solutions.len() == c.top_k {
             break;
@@ -3547,6 +4606,12 @@ fn fingerprint(state: &State, time: f64) -> u64 {
     state.wifi_pairs.hash(&mut h);
     state.bundled.hash(&mut h);
     state.bundle_lead.hash(&mut h);
+    state.carried.hash(&mut h);
+    state.swept.hash(&mut h);
+    state
+        .committed
+        .iter()
+        .for_each(|(n, t)| (n, q(*t)).hash(&mut h));
     state.finished.hash(&mut h);
     state
         .suspended

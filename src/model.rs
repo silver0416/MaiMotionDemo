@@ -125,6 +125,13 @@ pub struct HandRoutes {
     pub wifi_single: [Option<Vec<PathSample>>; 2],
     /// WiFi：單手張開同時覆蓋三條線。
     pub wifi_all: Option<Vec<PathSample>>,
+    /// 星星與這條重疊的其他 Slide（音符索引）：這條出發時對方的星星就在起點，之後兩顆重合到
+    /// 其中一條結束。正準時追著對方的手順著畫下去，就同時畫過這條。
+    pub carriers: Vec<usize>,
+    /// 判定佇列和這條相同、較晚出發的其他 Slide（音符索引）：手照常畫那一條時會依序碰到這條
+    /// 剩下的判定區，而且在這條的 Critical Perfect 區間內碰到最後一區。這條在那一條出發前
+    /// 放開，就由那一筆一起畫完。
+    pub sweepers: Vec<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -756,6 +763,20 @@ pub struct Solution {
     pub right_segments: Vec<MotionSegment>,
     pub config_snapshot: SolverConfig,
     pub warnings: Vec<String>,
+    /// 部分解略過、沒有指派手的音符部分；完整的方案為空（不輸出這個欄位）。
+    #[serde(default)]
+    pub skipped: Vec<SkippedPart>,
+}
+
+/// 模型本身在這裡走不下去（手被佔用、來不及移動等），部分解先略過、不指派手的音符部分。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkippedPart {
+    pub note_id: String,
+    /// contact：Tap／Hold／Touch 與星星頭的接觸；slide：Slide 的滑行。
+    pub part: String,
+    /// 走不下去的時刻（秒）；同一刻略過的幾顆是同一處。
+    pub time_seconds: f64,
 }
 
 impl Serialize for Solution {
@@ -778,6 +799,9 @@ impl Serialize for Solution {
         map.serialize_entry("rightSegments", &self.right_segments)?;
         map.serialize_entry("configSnapshot", &self.config_snapshot)?;
         map.serialize_entry("warnings", &self.warnings)?;
+        if !self.skipped.is_empty() {
+            map.serialize_entry("skipped", &self.skipped)?;
+        }
         map.end()
     }
 }

@@ -94,6 +94,15 @@
   const badges = $derived(note ? noteBadges(note) : []);
   const assignments = $derived(note ? (session.assignmentsByNote.get(note.id) ?? []) : []);
   const handovers = $derived(note ? (session.handoversByNote.get(note.id) ?? []) : []);
+  /** 部分解：這顆在目前候選裡被略過的部分（模型走不下去、沒有指派手）。 */
+  const skippedHere = $derived(note ? (session.solution?.skipped ?? []).filter((part) => part.noteId === note.id) : []);
+  const skippedText = $derived(
+    note
+      ? skippedHere
+          .map((part) => (part.part === 'slide' ? '滑行' : note.kind === 'slide' && note.hasHead ? '起點' : '接觸'))
+          .join('與')
+      : '',
+  );
   /** 兩手同時各滑一段（WiFi 2+1）；有交接時不算，交接另有說明。 */
   const dualSlide = $derived(handovers.length === 0 && simultaneousSlideHands(assignments).length > 0);
   /** 覆蓋這顆音符的手掌動作，直接取核心結果，不在前端重算覆蓋組。 */
@@ -218,8 +227,15 @@
 
     <section class="section">
       <div class="section-title"><span>目前候選的分配</span></div>
+      {#if skippedHere.length > 0}
+        <p class="small" style="margin-bottom: var(--space-2)">
+          模型在 <span class="mono">{formatClock(skippedHere[0].timeSeconds)}</span> 走不下去，這顆的{skippedText}先略過、沒有指派手。
+        </p>
+      {/if}
       {#if assignments.length === 0}
-        <p class="small muted">這個候選沒有此音符的指派資料。</p>
+        {#if skippedHere.length === 0}
+          <p class="small muted">這個候選沒有此音符的指派資料。</p>
+        {/if}
       {:else}
         <table class="table">
           <thead>

@@ -43,3 +43,30 @@ fn slide_start_and_new_star_on_same_button_late_in_chart() {
     let (slide, star) = (id("2-5"), id("2<V7"));
     assert_eq!(hand(&slide, "slide"), hand(&star, "head"));
 }
+
+/// Now or Never 的寫法：等待時間用秒數寫（取到小數第 4 位），1-5 比同一鍵上的 Tap 早 40 微秒出發，
+/// 兩者被拆成兩個時刻。另一手按住 8，出發的手要同一次按下 1 鍵；差距遠小於 Tap 的 ±1 幀。
+#[test]
+fn slide_starting_microseconds_before_a_tap_on_its_button() {
+    for config in [SolverConfig::default(), SolverConfig::v3()] {
+        let response = analyze_chart(AnalyzeRequest {
+            request_id: "order".into(),
+            source: "(120){4}1-5[0.49996##0.5]/8h[1:1],1,E".into(),
+            first_seconds: 0.0,
+            solver_config: config,
+        });
+        assert_eq!(response.status, "ok", "{:?}", response.diagnostics);
+        let top = &response.solutions[0];
+        let hands: Vec<Hand> = top
+            .assignments
+            .iter()
+            .filter(|a| a.part == "slide" || a.start_seconds > 0.4)
+            .map(|a| a.hand)
+            .collect();
+        assert!(
+            hands.windows(2).all(|p| p[0] == p[1]),
+            "{:?}",
+            top.assignments
+        );
+    }
+}

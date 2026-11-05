@@ -156,7 +156,11 @@ fn palm_radius_can_be_disabled_or_reduced() {
         assert_eq!(r.status, "no_solution", "radius={radius}");
     }
     assert_eq!(analyze("(120){4}A1/A5/1,E").status, "no_solution");
-    assert_eq!(analyze("(120){4}1/2/3,E").status, "no_solution");
+    // 按鍵不靠手掌半徑：三顆同時、兩手不夠時，只有相鄰兩鍵能由一隻手張開一起按。
+    assert_eq!(analyze("(120){4}1/3/5,E").status, "no_solution");
+    let triple = analyze("(120){4}1/2/3,E");
+    assert_eq!(triple.status, "ok", "{:?}", triple.diagnostics);
+    assert!(triple.solutions[0].palm_placements.is_empty());
     let separated = analyze("(120){4}A1/A5,E");
     assert_eq!(separated.status, "ok");
     assert!(separated.solutions[0].palm_placements.is_empty());

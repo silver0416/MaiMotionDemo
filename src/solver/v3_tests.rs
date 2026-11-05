@@ -43,9 +43,16 @@ fn initial() -> State {
         bundled: BTreeMap::new(),
         bundle_lead: BTreeMap::new(),
         used_bundle: false,
+        carried: BTreeMap::new(),
+        committed: BTreeMap::new(),
+        used_carry: false,
+        swept: BTreeMap::new(),
+        used_sweep: false,
+        used_pair_press: false,
         assign_mark: 0,
         forced_handovers: Default::default(),
         single_track: Default::default(),
+        dropped: Default::default(),
     }
 }
 #[test]

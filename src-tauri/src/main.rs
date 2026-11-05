@@ -65,7 +65,7 @@ async fn analyze_chart(
 ) -> Result<AnalyzeResponse, String> {
     run_cancellable(
         &gate,
-        move || mai_motion_core::analyze_chart(request),
+        move || mai_motion_core::analyze_chart_partial(request),
         "分析",
     )
     .await

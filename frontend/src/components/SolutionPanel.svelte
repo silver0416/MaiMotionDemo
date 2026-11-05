@@ -14,6 +14,7 @@
   } from '../lib/contract';
   import { formatClock, formatNumber } from '../lib/format';
   import { PALM_APPROX_HINT, coveredTargets, palmSeconds } from '../lib/palm';
+  import { skippedPartLabel, skippedSpots, type SkippedSpot } from '../lib/skipped';
   import { playback } from '../state/playback.svelte';
   import { session } from '../state/session.svelte';
   import type {
@@ -50,7 +51,26 @@
     const text = warning.slice(TEMOTO_PREFIX.length).replace(/^(?:：|\s*的)/, '');
     return text.replace(/^依玩家(?:手元)?影片學(?:到|來)的打法/, '').trim();
   });
-  const otherWarnings = $derived(solution?.warnings.filter((warning) => !isTemotoWarning(warning)) ?? []);
+  /** 部分解的總結提醒（「模型有 N 處走不下去…」）已由下方的略過清單說明，不在核心提醒重複。 */
+  const isPartialWarning = (warning: string) => /^模型有 \d+ 處走不下去/.test(warning);
+  const otherWarnings = $derived(
+    solution?.warnings.filter((warning) => !isTemotoWarning(warning) && !isPartialWarning(warning)) ?? [],
+  );
+
+  /** 部分解：模型走不下去、先略過不指派手的地方（同一刻算一處）。 */
+  const skippedAt = $derived<SkippedSpot[]>(skippedSpots(solution?.skipped));
+
+  function spotText(spot: SkippedSpot): string {
+    return spot.parts
+      .map((part) => skippedPartLabel(part, session.noteById.get(part.noteId), session.pathById))
+      .join('、');
+  }
+
+  function seekSpot(spot: SkippedSpot) {
+    const first = spot.parts[0];
+    if (first) session.selectNote(first.noteId);
+    playback.seek(spot.timeSeconds);
+  }
 
   interface SolutionStats {
     /** 接觸音符：Tap、Hold、Touch、Touch Hold 與有起點的 Slide 起點（part = contact / head） */
@@ -218,6 +238,28 @@
           <span class="temoto-head">{TEMOTO_LABEL}</span>
           <p class="small">{temotoNote ?? `這份結果經過 ${TEMOTO_LABEL} 修正。`}</p>
         </div>
+      </section>
+    {/if}
+    {#if skippedAt.length > 0}
+      <section class="section">
+        <div class="section-title"><span>模型略過的地方（{skippedAt.length}）</span></div>
+        <div class="alert alert--warn" role="status">
+          <div class="alert-title">有 {skippedAt.length} 處模型走不下去，先略過</div>
+          <p>
+            那幾顆模型做不到（手被佔用、來不及移動等），先不指派手，其餘音符照常求解；這不代表人類打不出來。
+            用模型預填與比對時，這幾顆也會跳過。
+          </p>
+        </div>
+        <ul class="skip-list">
+          {#each skippedAt as spot (spot.timeSeconds)}
+            <li>
+              <button class="skip-row" title={spotText(spot)} onclick={() => seekSpot(spot)}>
+                <span class="mono xsmall muted">{formatClock(spot.timeSeconds)}</span>
+                <span class="skip-what">{spotText(spot)}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
       </section>
     {/if}
     <section class="section">
@@ -754,5 +796,59 @@
     flex-direction: column;
     gap: var(--space-2);
     color: var(--c-text-dim);
+  }
+
+  .skip-list {
+    list-style: none;
+    margin: var(--space-2) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  /* 清單列：同候選方案的列（圓角 16、透明底，hover 出底、按下縮 .99）。 */
+  .skip-row {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 10px 14px;
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      transform 90ms ease-out;
+  }
+
+  .skip-row:hover {
+    background: var(--c-control);
+  }
+
+  .skip-row:active {
+    transform: scale(0.99);
+  }
+
+  .skip-what {
+    overflow: hidden;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 放在基本樣式之後：同樣的選擇器，後寫的才蓋得過。 */
+  @media (prefers-reduced-motion: reduce) {
+    .skip-row {
+      transition: none;
+    }
+
+    .skip-row:active {
+      transform: none;
+    }
   }
 </style>

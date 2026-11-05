@@ -1129,12 +1129,36 @@ pub fn solve(
     c: &SolverConfig,
     model: &TemotoModel,
 ) -> Result<Vec<Solution>, Diagnostic> {
+    solve_inner(chart, c, model, false)
+}
+
+/// 同 [`solve`]，但基座本身走不下去時用部分解（solver::solve_partial）：基座略過的音符，
+/// 照修正後的手重解時一樣略過，修正照常套在其餘音符上。
+pub fn solve_partial(
+    chart: &Chart,
+    c: &SolverConfig,
+    model: &TemotoModel,
+) -> Result<Vec<Solution>, Diagnostic> {
+    solve_inner(chart, c, model, true)
+}
+
+fn solve_inner(
+    chart: &Chart,
+    c: &SolverConfig,
+    model: &TemotoModel,
+    partial: bool,
+) -> Result<Vec<Solution>, Diagnostic> {
     let base_name = model.base_label();
     let run = || -> Result<Vec<Solution>, Diagnostic> {
-        let base = solver::solve(chart, c)?;
+        let base = if partial {
+            solver::solve_partial(chart, c)?
+        } else {
+            solver::solve(chart, c)?
+        };
         let Some(top) = base.first() else {
             return Ok(base);
         };
+        let skip = top.skipped.clone();
         let input = features(chart, Some(top));
         let probs = model.predict(&input);
         let mut constraints = vec![];
@@ -1181,7 +1205,9 @@ pub fn solve(
             MAX_RELAX_PURE
         };
         for _ in 0..=max_relax {
-            match solver::solve_constrained(chart, c, &build_rules(&constraints)) {
+            let mut rules = build_rules(&constraints);
+            rules.skip = skip.clone();
+            match solver::solve_constrained(chart, c, &rules) {
                 Ok(mut solutions) => {
                     let applied = constraints.iter().filter(|k| k.active && k.flipped).count();
                     let dropped = constraints
@@ -1197,6 +1223,7 @@ pub fn solve(
                     };
                     for s in &mut solutions {
                         s.warnings.insert(0, note.clone());
+                        s.warnings.extend(solver::partial_warning(&skip));
                     }
                     return Ok(solutions);
                 }

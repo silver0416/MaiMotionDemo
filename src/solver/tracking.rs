@@ -5,8 +5,10 @@
 //!   同時解決多個音符，因此同時出發、同時結束的 Slide 若一隻手掌蓋得住兩顆星星，
 //!   就多一條「掌心沿兩顆星星中點走完」的共用路線。
 //! - `slideShortcut`：依判定佇列把路線換成抄近路線，手在尾判正解時刻完成最後一區。
+//! - 星星重疊的 Slide（見 overlapping）：追著先出發那條的手順著畫，就同時畫過後出發的那條。
+//! - 判定佇列相同、較晚出發的 Slide（見 sweeping）：先出發那條放開後，由畫後一條的那一筆畫完。
 
-use super::{slide_critical_window, EPS, JUDGE_FRAME};
+use super::{slide_critical_window, CARRY_TOLERANCE, EPS, JUDGE_FRAME};
 use crate::judge::{self, Route};
 use crate::{Chart, JudgeArea, PathSample, Point, SolverConfig};
 use std::collections::{BTreeMap, BTreeSet};
@@ -141,6 +143,74 @@ fn palm_trace(a: &crate::SlidePath, b: &crate::SlidePath, palm: f64) -> Option<V
         out.push(PathSample { u, x: m.x, y: m.y });
     }
     Some(out)
+}
+
+/// 星星重疊的 Slide 配對 (b, a)：b 出發時 a 的星星就在 b 的起點，之後到其中一條結束前，
+/// 兩顆星星都在 CARRY_TOLERANCE 內。例如 1<1、8<8、7<7 各晚 45° 出發、同方向等速的連鎖，
+/// 或後半段與另一條疊在一起的 Slide。只比對星星位置，不看判定區。
+fn overlapping(chart: &Chart, slides: &[usize]) -> Vec<(usize, usize)> {
+    let star = |i: usize, t: f64| {
+        let n = &chart.notes[i];
+        let (start, end) = (n.motion_start.unwrap(), n.motion_end.unwrap());
+        chart.paths[path_index(chart, i).unwrap()].at((t - start) / (end - start))
+    };
+    let mut out = vec![];
+    for &b in slides {
+        let (b0, b1) = (
+            chart.notes[b].motion_start.unwrap(),
+            chart.notes[b].motion_end.unwrap(),
+        );
+        for &a in slides {
+            let (a0, a1) = (
+                chart.notes[a].motion_start.unwrap(),
+                chart.notes[a].motion_end.unwrap(),
+            );
+            let until = a1.min(b1);
+            // 只差一瞬間的是頭尾相接（a 的終點接 b 的起點），一般接法就做得到，不算重疊。
+            if a == b || a0 > b0 + EPS || until < b0 + JUDGE_FRAME {
+                continue;
+            }
+            let steps = (((until - b0) / 0.005).ceil() as usize).clamp(16, 2048);
+            let same = (0..=steps).all(|k| {
+                let t = b0 + (until - b0) * k as f64 / steps as f64;
+                star(a, t).distance(star(b, t)) <= CARRY_TOLERANCE
+            });
+            if same {
+                out.push((b, a));
+            }
+        }
+    }
+    out
+}
+
+/// 一筆畫完配對 (s, l)：l 的判定佇列和 s 相同、比 s 晚出發而且在 s 結束前出發，手照常畫 l
+/// 進入最後判定區的時刻落在 s 的 Critical Perfect 區間內（例如同一條線上一慢一快、同時結束的
+/// 兩條 8-4）。判定進度不會倒退，畫 l 的手從頭依序經過每一區，所以 s 在 l 出發前放開的話，
+/// 剩下的判定區都會被這一筆碰到。正解時刻與區間看原本的譜面，完成時刻看調整過的路線。
+fn sweeping(chart: &Chart, tracking: &Chart, slides: &[usize]) -> Vec<(usize, usize)> {
+    let queue = |i: usize| &chart.paths[path_index(chart, i).unwrap()].judge_areas;
+    let mut out = vec![];
+    for &s in slides {
+        if queue(s).is_empty() {
+            continue;
+        }
+        let n = &chart.notes[s];
+        let (s0, s1) = (n.motion_start.unwrap(), n.motion_end.unwrap());
+        let (_, (low, high)) = judge_window(chart, s);
+        for &l in slides {
+            let n = &tracking.notes[l];
+            let (l0, l1) = (n.motion_start.unwrap(), n.motion_end.unwrap());
+            if l == s || l0 <= s0 + EPS || l0 >= s1 - EPS || queue(l) != queue(s) {
+                continue;
+            }
+            let progress = tracking.paths[path_index(tracking, l).unwrap()].judge_progress;
+            let reach = l0 + (l1 - l0) * progress;
+            if reach >= low - EPS && reach <= high + EPS {
+                out.push((s, l));
+            }
+        }
+    }
+    out
 }
 
 pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
@@ -300,6 +370,17 @@ pub(super) fn tracking_chart(chart: &Chart, c: &SolverConfig) -> Chart {
                 }
             }
         }
+    }
+
+    // 用調整過的路線與結束時間比對；WiFi 有三條線，不參與。
+    let plain: Vec<usize> = slides.iter().copied().filter(|i| !wifi(*i)).collect();
+    for (b, a) in overlapping(&out, &plain) {
+        let p = path_index(&out, b).unwrap();
+        out.paths[p].hand_routes.carriers.push(a);
+    }
+    for (s, l) in sweeping(chart, &out, &plain) {
+        let p = path_index(&out, s).unwrap();
+        out.paths[p].hand_routes.sweepers.push(l);
     }
 
     // 畫完的 WiFi：三顆星星都走到終點。中央＋一側由同一手掌沿兩顆星星的中點覆蓋、

@@ -31,6 +31,7 @@
   import { copyText } from '../lib/debug';
   import { formatClock } from '../lib/format';
   import { noteLabel, stepLabel } from '../lib/notes';
+  import { skippedPartLabel, skippedSpots } from '../lib/skipped';
   import { annotation, isStepDone, type ListFilter, type Step, type StepPart } from '../state/annotation.svelte';
   import { playback } from '../state/playback.svelte';
   import { records } from '../state/records.svelte';
@@ -49,7 +50,7 @@
     removeFromGroup,
     removeGroup,
   } from '../state/groups';
-  import type { Confidence, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
+  import type { Confidence, Diagnostic, Hand, Note, NoteAnnotation, TrackHand } from '../lib/types';
 
   type View = 'label' | 'branch' | 'memo' | 'share' | 'compare';
   const VIEWS: { id: View; label: string }[] = [
@@ -832,7 +833,36 @@
     evaluation?.model && evaluation.human ? evaluation.human.cost - evaluation.model.cost : null,
   );
   const infeasible = $derived(evaluation?.diagnostics.find((item) => item.code === 'annotation_infeasible') ?? null);
+  /** 照標註走不下去、先擱著那幾顆標記照模型的手接下去的地方（Rust 依時間先後列出）。 */
+  const skipped = $derived(evaluation?.diagnostics.filter((item) => item.code === 'annotation_skipped') ?? []);
+  /** 模型本身走不下去、兩邊都先略過不比對的地方（部分解，Rust 依時間先後列出）。 */
+  const modelSkipped = $derived(evaluation?.diagnostics.filter((item) => item.code === 'model_skipped') ?? []);
   const showingHuman = $derived(session.humanView !== null && session.humanView === evaluation?.humanSolution);
+
+  /** 擱著的那幾顆：音符說明，與標記者原本標的手（接觸優先，沒有就看滑行）。 */
+  function skippedNotes(ids: string[]): { what: string; hands: string } {
+    const notes = ids.map((id) => session.noteById.get(id)).filter((note): note is Note => note !== undefined);
+    const hands = new Set<TrackHand>();
+    for (const note of notes) {
+      const mark = annotation.mark(note);
+      const hand = mark?.hand ?? mark?.track;
+      if (hand) hands.add(hand);
+    }
+    return {
+      what: notes.length > 0 ? notes.map(describe).join('、') : ids.join('、'),
+      hands: [...hands].map(handText).join('、'),
+    };
+  }
+
+  /** 模型略過的那一處：有起點的 Slide 分成起點／滑行說（取自目前模型方案的 skipped，對不上時只寫音符）。 */
+  function modelSkippedText(item: Diagnostic): string {
+    const at = item.timeSeconds ?? Number.NaN;
+    const parts = (modelSolution?.skipped ?? []).filter(
+      (part) => item.noteIds.includes(part.noteId) && Math.abs(part.timeSeconds - at) < 1e-6,
+    );
+    if (parts.length === 0) return skippedNotes(item.noteIds).what;
+    return parts.map((part) => skippedPartLabel(part, session.noteById.get(part.noteId), session.pathById)).join('、');
+  }
 
   function seekTo(time: number, noteId?: string) {
     if (noteId) session.selectNote(noteId);
@@ -851,7 +881,10 @@
       id: 'human-view',
       tone: 'info',
       title: '盤面顯示：照真人標註的打法',
-      body: '這是依標註手順求出的動作，不是模型候選。',
+      body:
+        skipped.length > 0
+          ? '這是依標註手順求出的動作，不是模型候選；略過的幾處照模型的手。'
+          : '這是依標註手順求出的動作，不是模型候選。',
       sticky: true,
       action: {
         label: '回到模型方案',
@@ -1055,7 +1088,16 @@
         <div class="row row-wrap">
           <button class="btn" disabled={!modelSolution} onclick={() => {
             const count = annotation.prefillFromModel();
-            toasts.show({ id: 'annotation-prefill', tone: 'ok', title: `已預填 ${count} 顆`, body: '預填只是草稿，逐顆確認或修改後才算真人資料。' });
+            const gaps = skippedSpots(modelSolution?.skipped).length;
+            toasts.show({
+              id: 'annotation-prefill',
+              tone: 'ok',
+              title: `已預填 ${count} 顆`,
+              body:
+                gaps > 0
+                  ? `預填只是草稿，逐顆確認或修改後才算真人資料。模型走不下去的 ${gaps} 處先略過，那幾顆沒有預填。`
+                  : '預填只是草稿，逐顆確認或修改後才算真人資料。',
+            });
           }}>
             <Icon name="zap" size={14} />用模型預填空白
           </button>
@@ -1476,13 +1518,31 @@
           <dt>模型分數</dt>
           <dd>{evaluation.model ? evaluation.model.cost.toFixed(3) : '—'}</dd>
           <dt>照標註</dt>
-          <dd>{evaluation.human ? evaluation.human.cost.toFixed(3) : '做不到'}</dd>
+          <dd>
+            {#if evaluation.human}
+              {evaluation.human.cost.toFixed(3)}{skipped.length > 0 ? `（略過 ${skipped.length} 處）` : ''}
+            {:else}
+              做不到
+            {/if}
+          </dd>
           {#if gap !== null}
             <dt>差距</dt>
             <dd>{gap >= 0 ? '+' : ''}{gap.toFixed(3)}</dd>
           {/if}
         </dl>
         <p class="xsmall muted">分數越低越好。差距越小，代表目前參數越認同真人的打法；若照標註反而更低，是搜尋沒找到真人打法。</p>
+        {#if modelSkipped.length > 0}
+          <div class="alert alert--warn" role="status">
+            <div class="alert-title">有 {modelSkipped.length} 處模型走不下去，那幾顆沒有比對</div>
+            <p>模型本身做不到的音符先略過，照標註求解時也一起略過，兩邊才是同一份譜面；那幾顆的標記不列入吻合，位置列在下方。</p>
+          </div>
+        {/if}
+        {#if skipped.length > 0 && evaluation.humanSolution}
+          <div class="alert alert--warn" role="status">
+            <div class="alert-title">有 {skipped.length} 處照標註走不下去，已先略過</div>
+            <p>那幾顆的標記先擱著、照模型的手接下去，後面的標註照常求解，位置列在下方。照標註的分數因此只供參考。</p>
+          </div>
+        {/if}
         {#if infeasible}
           <div class="alert alert--warn" role="status">
             <div class="alert-title">模型照標註走不下去</div>
@@ -1500,6 +1560,37 @@
           </button>
         {/if}
       </section>
+      {#if skipped.length > 0}
+        <section class="section stack-sm">
+          <div class="section-title">照標註略過的地方（{skipped.length}）</div>
+          <div class="divergences">
+            {#each skipped as item, index (index)}
+              {@const info = skippedNotes(item.noteIds)}
+              <button class="item" title={info.what} onclick={() => seekTo(item.timeSeconds ?? 0, item.noteIds[0])}>
+                <span class="mono xsmall muted time">{formatClock(item.timeSeconds ?? 0)}</span>
+                <span class="what small">{info.what}</span>
+                <span class="hands small mono">標記 {info.hands || '—'}</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
+      {#if modelSkipped.length > 0}
+        <section class="section stack-sm">
+          <div class="section-title">模型略過的地方（{modelSkipped.length}）</div>
+          <div class="divergences">
+            {#each modelSkipped as item, index (index)}
+              {@const info = skippedNotes(item.noteIds)}
+              {@const what = modelSkippedText(item)}
+              <button class="item" title={what} onclick={() => seekTo(item.timeSeconds ?? 0, item.noteIds[0])}>
+                <span class="mono xsmall muted time">{formatClock(item.timeSeconds ?? 0)}</span>
+                <span class="what small">{what}</span>
+                <span class="hands small mono">標記 {info.hands || '—'}</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
       {#if evaluation.divergences.length > 0}
         <section class="section stack-sm">
           <div class="section-title">與模型不同（{evaluation.divergences.length}）</div>

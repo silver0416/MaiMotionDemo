@@ -312,6 +312,17 @@ interface SolutionBase {
   leftSegments: MotionSegment[];
   rightSegments: MotionSegment[];
   warnings: string[];
+  /** 部分解：模型在這裡走不下去、先略過不指派手的音符部分；完整的方案沒有這個欄位。 */
+  skipped?: SkippedPart[];
+}
+
+/** 模型本身走不下去（手被佔用、來不及移動等）而略過的音符部分。 */
+export interface SkippedPart {
+  noteId: string;
+  /** contact：Tap／Hold／Touch 與星星頭的接觸；slide：Slide 的滑行。 */
+  part: 'contact' | 'slide';
+  /** 走不下去的時刻；同一刻略過的幾顆是同一處。 */
+  timeSeconds: number;
 }
 
 /** V3 沒有 totalCost／costBreakdown。 */
@@ -622,7 +633,10 @@ export interface Divergence {
 
 export interface EvaluateResponse {
   requestId: string;
-  /** ok／human_infeasible（模型照標註走不下去）／invalid 等 */
+  /**
+   * ok／human_infeasible（模型照標註有走不下去的地方；human 有值時是擱著 annotation_skipped 那幾處標記後解完的）／invalid 等。
+   * 模型本身走不下去的地方兩邊都略過、不比對（diagnostics 的 model_skipped），不影響狀態。
+   */
   status: string;
   diagnostics: Diagnostic[];
   labeled: number;

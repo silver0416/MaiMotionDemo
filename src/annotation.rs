@@ -190,7 +190,9 @@ pub struct Divergence {
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateResponse {
     pub request_id: String,
-    /// ok：兩邊都算完；human_infeasible：模型照標註走不下去；invalid 等：原譜或設定有誤。
+    /// ok：兩邊都算完；human_infeasible：模型照標註有走不下去的地方（human 有值時，是擱著
+    /// diagnostics 裡 annotation_skipped 那幾處標記後解完的）；invalid 等：原譜或設定有誤。
+    /// 模型本身走不下去的地方兩邊都略過、不比對（diagnostics 的 model_skipped），不影響狀態。
     pub status: String,
     pub diagnostics: Vec<Diagnostic>,
     /// 有手部資訊、非預填的標註數。
@@ -266,8 +268,13 @@ fn as_track(hand: Hand) -> TrackHand {
 }
 
 /// 把確定的標註轉成求解限制（音符 id）；接觸與滑行各看自己那一步的信心。
-fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
-    let mut rules = HandRules::default();
+/// 滑行標的是開始滑的手：沒標換手時間的先當成整條同一隻手，走不下去時才由模型決定要不要
+/// 中途換手（見 solver::solve_constrained）。相鄰兩鍵同時標成同一隻手的，允許那隻手張開一起按下。
+fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)], c: &SolverConfig) -> HandRules {
+    let mut rules = HandRules {
+        pair_press: true,
+        ..HandRules::default()
+    };
     for (index, mark) in marks {
         let note = &chart.notes[*index];
         if let Some(hand) = mark.hand {
@@ -295,6 +302,11 @@ fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
                 handovers.sort_by(|a, b| a.at.total_cmp(&b.at));
                 schedule.extend(handovers.iter().map(|h| (h.at, h.to)));
                 rules.track.insert(note.id.clone(), schedule);
+                if let (true, Some(start)) = (handovers.is_empty(), note.motion_start) {
+                    rules
+                        .track_start
+                        .insert(note.id.clone(), start + c.slide_pickup_seconds);
+                }
             }
             None => {}
         }
@@ -303,23 +315,37 @@ fn rules(chart: &Chart, marks: &[(usize, &NoteAnnotation)]) -> HandRules {
 }
 
 /// 比對真人標註與模型：分別求出模型最佳解與「照標註打」的最佳解，列出不同的音符與成本差距。
-/// 沒有現成的模型解時，模型與照標註兩個求解同時跑。
+/// 沒有現成的模型解時，模型與照標註兩個求解同時跑。照標註走不下去的地方先擱著那幾顆的
+/// 標記、照模型的手接下去（solve_constrained_skipping），每一處列成 annotation_skipped。
+/// 模型本身走不下去時用部分解：模型略過的音符照標註時也略過、不比對，每一處列成 model_skipped。
 pub fn evaluate_annotation(request: EvaluateRequest) -> EvaluateResponse {
     // 選了 V3 變體時，模型解與照標註解都用它的權重，成本差距才在同一把尺上
     let variant = request.solver_config.v3_variant.clone();
     crate::scoring_v3::with_variant(variant.as_deref(), || {
-        evaluate_inner(request, true, solve_model, solver::solve_constrained)
+        evaluate_inner(
+            request,
+            true,
+            |chart, config| solve_model(chart, config, true),
+            solver::solve_constrained_skipping,
+        )
     })
 }
 
-fn solve_model(chart: &Chart, config: &SolverConfig) -> Result<Vec<Solution>, Diagnostic> {
+/// 模型解；partial 時模型本身走不下去也略過做不到的音符解完（見 solver::solve_partial）。
+fn solve_model(
+    chart: &Chart,
+    config: &SolverConfig,
+    partial: bool,
+) -> Result<Vec<Solution>, Diagnostic> {
     match config
         .ml_model
         .as_deref()
         .and_then(crate::temoto::TemotoModel::builtin)
     {
         // 比對對象跟著介面選的模型：選了 Temoto 就和 Temoto 修正後的結果比
+        Some(model) if partial => crate::temoto::solve_partial(chart, config, model),
         Some(model) => crate::temoto::solve(chart, config, model),
+        None if partial => solver::solve_partial(chart, config),
         None => solver::solve(chart, config),
     }
 }
@@ -336,20 +362,23 @@ pub fn evaluate_annotation_probed(
     let response = evaluate_inner(
         request,
         false,
+        // 學權重只用完整的解，模型走不下去就是沒有解。
         |chart, config| {
-            let (result, totals) = solver::with_probes(probes, || solve_model(chart, config));
+            let (result, totals) =
+                solver::with_probes(probes, || solve_model(chart, config, false));
             if result.is_ok() {
                 model_totals = totals;
             }
             result
         },
+        // 學權重只用完全照標註的解，不擱置標記。
         |chart, config, rules| {
             let (result, totals) =
                 solver::with_probes(probes, || solver::solve_constrained(chart, config, rules));
             if result.is_ok() {
                 human_totals = totals;
             }
-            result
+            (result, vec![])
         },
     );
     (response, model_totals, human_totals)
@@ -361,7 +390,8 @@ fn evaluate_inner(
     mut request: EvaluateRequest,
     parallel: bool,
     solve_model: impl FnOnce(&Chart, &SolverConfig) -> Solved + Send,
-    solve_human: impl FnOnce(&Chart, &SolverConfig, &HandRules) -> Solved,
+    // 照標註的解，以及擱著標記的每一處（annotation_skipped）。
+    mut solve_human: impl FnMut(&Chart, &SolverConfig, &HandRules) -> (Solved, Vec<Diagnostic>),
 ) -> EvaluateResponse {
     let supplied = request.model_solution.take();
     let mut response = EvaluateResponse {
@@ -420,9 +450,20 @@ fn evaluate_inner(
     response.matched = marks.len();
 
     let config = &request.solver_config;
-    let rules = rules(&chart, &marks);
+    let mut rules = rules(&chart, &marks, config);
+    // 模型（部分解）略過的音符，照標註求解時一樣略過，兩邊才是同一份譜面。
+    let skipped_by = |model: &Solved| {
+        model
+            .as_ref()
+            .ok()
+            .and_then(|solutions| solutions.first())
+            .map_or(vec![], |best| best.skipped.clone())
+    };
     let (model, human) = match supplied {
-        Some(solution) => (Ok(vec![solution]), solve_human(&chart, config, &rules)),
+        Some(solution) => {
+            rules.skip = solution.skipped.clone();
+            (Ok(vec![solution]), solve_human(&chart, config, &rules))
+        }
         None if parallel => {
             // 另一個執行緒要帶上這次工作的取消旗標與評分權重（兩者都放在執行緒區域變數）。
             let cancel = solver::current_cancel();
@@ -450,9 +491,22 @@ fn evaluate_inner(
         }
         None => {
             let model = solve_model(&chart, config);
-            (model, solve_human(&chart, config, &rules))
+            rules.skip = skipped_by(&model);
+            let human = solve_human(&chart, config, &rules);
+            (model, human)
         }
     };
+    // 同時跑的照標註求解不知道模型略過了哪些：模型是部分解時照著重解。
+    let skipped = skipped_by(&model);
+    let human = if rules.skip == skipped {
+        human
+    } else {
+        rules.skip = skipped.clone();
+        solve_human(&chart, config, &rules)
+    };
+    response
+        .diagnostics
+        .extend(solver::skipped_diagnostics(&chart, &skipped));
 
     let model = match model {
         Ok(solutions) => solutions.into_iter().next(),
@@ -498,13 +552,21 @@ fn evaluate_inner(
         }
     }
 
+    let (human, skipped) = human;
+    let any_skipped = !skipped.is_empty();
+    response.diagnostics.extend(skipped);
     match human {
         Ok(solutions) => {
             if let Some(best) = solutions.into_iter().next() {
                 response.human = Some(evaluated(&best));
                 response.human_solution = Some(best);
             }
-            response.status = if model.is_some() { "ok" } else { "no_solution" }.into();
+            response.status = match (model.is_some(), any_skipped) {
+                (false, _) => "no_solution",
+                (true, true) => "human_infeasible",
+                (true, false) => "ok",
+            }
+            .into();
         }
         Err(mut diagnostic) => {
             // 模型自己解得出來、照標註卻在某處全部走不下去：原因在標註（或模型不支援的打法），

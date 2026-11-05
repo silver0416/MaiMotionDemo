@@ -215,6 +215,30 @@ fn tracking_hand_brushes_touch_on_its_path() {
 }
 
 #[test]
+fn v3_tracking_hand_reaches_a_touch_further_along_its_path() {
+    // Tricolor⁂circuS 的寫法：兩手在 0.5 秒按下 3、6 並各自追交叉的 3-8、6-1，D1 晚 4 毫秒。
+    // 這時手才剛出發，要再畫約 0.07 秒才經過 D1 附近，仍在 Touch 的 +9 幀內，由畫過去的手碰掉。
+    let c = SolverConfig {
+        palm_fallback_radius: 0.0,
+        ..SolverConfig::v3()
+    };
+    let r = ok("(120){8}3-8[16:1]/6-1[16:1],,{#0.004}3/6,D1,E", c.clone());
+    let touch = note(&r, |n| n.kind == "touch");
+    let hit = contacts(&r, &touch.id)[0];
+    assert!(hit.start_seconds > touch.time_seconds + 0.04);
+    assert!(hit.start_seconds <= touch.time_seconds + 9.0 * FRAME + 1e-9);
+    let tracked = r.solutions[0].assignments.iter().any(|a| {
+        a.part == "slide" && a.hand == hit.hand && a.end_seconds >= hit.start_seconds - 1e-9
+    });
+    assert!(tracked, "碰到 Touch 時這隻手還在畫 Slide");
+    // 路徑外的 D5 碰不到。
+    assert_eq!(
+        run("(120){8}3-8[16:1]/6-1[16:1],,{#0.004}3/6,D5,E", c).status,
+        "no_solution"
+    );
+}
+
+#[test]
 fn touch_group_majority_judges_the_rest() {
     for c in configs() {
         // 一手按住 8；A1 D2 A2 D3 A3 彼此相鄰成 5 顆的 Group，一掌蓋不完全部，
@@ -347,5 +371,42 @@ fn v3_default_draws_the_slide_to_its_end() {
             .warnings
             .iter()
             .any(|w| w.contains("準時接觸優先的搜尋無解")));
+    }
+}
+
+/// 一手按住 7 的 Hold 時同時出現相鄰兩鍵 3、4：兩手怎麼分都做不到，最後的放寬重試讓另一隻手
+/// 張開、落在兩鍵中間一起按（Comet Panto Men! 111.529 標記者的打法）。隔一鍵的 3、5 搆不到，仍然無解。
+#[test]
+fn other_hand_presses_two_adjacent_buttons_when_nothing_else_works() {
+    let source = "(120){4}7h[1:1],3/4,E";
+    for c in configs() {
+        let r = ok(source, c);
+        let hold = note(&r, |n| n.kind == "hold");
+        let three = note(&r, |n| n.kind == "tap" && n.button == 3);
+        let four = note(&r, |n| n.kind == "tap" && n.button == 4);
+        let holder = contacts(&r, &hold.id)[0].hand;
+        let pressed: Vec<Hand> = [three, four]
+            .iter()
+            .map(|n| contacts(&r, &n.id)[0].hand)
+            .collect();
+        assert!(pressed.iter().all(|h| *h != holder), "{pressed:?}");
+        let middle = three.position.lerp(four.position, 0.5);
+        let s = &r.solutions[0];
+        let segments = match pressed[0] {
+            Hand::L => &s.left_segments,
+            Hand::R => &s.right_segments,
+        };
+        let press = segments
+            .iter()
+            .find(|g| g.mode == "tap" && (g.start_seconds - three.time_seconds).abs() < 1e-9)
+            .unwrap();
+        assert!(press
+            .samples
+            .iter()
+            .all(|p| p.point().distance(middle) < 1e-9));
+        assert!(s.warnings.iter().any(|w| w.contains("相鄰兩鍵")));
+    }
+    for c in configs() {
+        assert_eq!(run("(120){4}7h[1:1],3/5,E", c).status, "no_solution");
     }
 }
