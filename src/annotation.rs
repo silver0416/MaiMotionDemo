@@ -59,6 +59,14 @@ pub enum Confidence {
     Either,
 }
 
+/// 標註的一步：接觸（Tap／Hold／Touch、Slide 起點）或 Slide 滑行。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StepPart {
+    Hand,
+    Track,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoverMark {
@@ -85,9 +93,12 @@ pub struct NoteAnnotation {
     /// 有起點的 Slide 滑行那一步的信心；省略時沿用 confidence（舊標註檔整顆共用一個信心）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub track_confidence: Option<Confidence>,
-    /// 由模型預填、還沒有人確認；不當作真人資料。
+    /// 由模型或影片預填、還沒有人確認；不當作真人資料。只要有一步是預填就是 true。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub prefilled: bool,
+    /// 只有這一步是預填，另一步是真人標的；省略時有手的步驟都是預填（舊標註檔的意義不變）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefilled_part: Option<StepPart>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub memo: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -98,6 +109,33 @@ impl NoteAnnotation {
     /// 滑行那一步的信心：起點與滑行可以分開設定（例如起點確定、滑行兩手皆可）。
     pub fn slide_confidence(&self) -> Confidence {
         self.track_confidence.unwrap_or(self.confidence)
+    }
+
+    /// 還沒確認的預填蓋到哪幾步：（接觸, 滑行）。只看有手的步驟。
+    pub fn prefilled_steps(&self) -> (bool, bool) {
+        if !self.prefilled {
+            return (false, false);
+        }
+        (
+            self.hand.is_some() && self.prefilled_part != Some(StepPart::Track),
+            self.track.is_some() && self.prefilled_part != Some(StepPart::Hand),
+        )
+    }
+
+    /// 只留真人確認過的步驟：拿掉預填的手（信心與備註照舊）。沒有剩下任何手時回傳 None。
+    pub fn confirmed(&self) -> Option<NoteAnnotation> {
+        let (hand, track) = self.prefilled_steps();
+        let mut out = self.clone();
+        if hand {
+            out.hand = None;
+        }
+        if track {
+            out.track = None;
+            out.handovers.clear();
+        }
+        out.prefilled = false;
+        out.prefilled_part = None;
+        (out.hand.is_some() || out.track.is_some()).then_some(out)
     }
 }
 
@@ -406,11 +444,14 @@ fn evaluate_inner(
         .enumerate()
         .map(|(i, n)| (n.key.as_str(), i))
         .collect();
+    // 預填的步驟不是真人資料：同一顆的真人步驟照樣比對，預填的那一步拿掉。
+    let confirmed: Vec<NoteAnnotation> = annotation
+        .notes
+        .iter()
+        .filter_map(NoteAnnotation::confirmed)
+        .collect();
     let mut marks: Vec<(usize, &NoteAnnotation)> = vec![];
-    for mark in &annotation.notes {
-        if mark.prefilled || (mark.hand.is_none() && mark.track.is_none()) {
-            continue;
-        }
+    for mark in &confirmed {
         response.labeled += 1;
         match by_key.get(mark.key.as_str()) {
             Some(index) => marks.push((*index, mark)),

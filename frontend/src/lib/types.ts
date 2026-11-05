@@ -516,8 +516,13 @@ export interface NoteAnnotation {
   confidence?: Confidence;
   /** 有起點的 Slide 滑行那一步的信心；省略時沿用 confidence */
   trackConfidence?: Confidence;
-  /** 由模型預填、尚未確認；不當作真人資料 */
+  /** 由模型或影片預填、尚未確認；不當作真人資料。只要有一步是預填就是 true */
   prefilled?: boolean;
+  /**
+   * 只有這一步是預填（hand：接觸的手；track：滑行的手與換手），另一步是真人標的。
+   * 省略時有手順的步驟都是預填（舊存檔、舊標註檔的意義不變）
+   */
+  prefilledPart?: 'hand' | 'track';
   memo?: string;
   /** 最後編輯的標註者 */
   by?: string;
