@@ -31,11 +31,21 @@ fn sure(mark: &Value, field: &str) -> bool {
     } else {
         fallback
     };
-    value.unwrap_or("sure") == "sure"
-        && !mark
-            .get("prefilled")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
+    // 預填的步驟不算：prefilledPart 指明只有那一步是預填，省略時整顆都是。
+    let part = if field == "trackConfidence" {
+        "track"
+    } else {
+        "hand"
+    };
+    let prefilled = mark
+        .get("prefilled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && mark
+            .get("prefilledPart")
+            .and_then(Value::as_str)
+            .is_none_or(|p| p == part);
+    value.unwrap_or("sure") == "sure" && !prefilled
 }
 
 /// 模型在某顆音符上的手（與 annotation::model_hands 相同規則）。

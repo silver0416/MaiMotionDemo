@@ -183,8 +183,58 @@ export function partHands(mark: NoteAnnotation | undefined, part: StepPart): str
 }
 
 /**
+ * 這一筆裡哪幾步是還沒確認的預填。只看有手的步驟：hand 是接觸的手，track 是滑行的手（連同換手）。
+ * prefilledPart 指明只有那一步是預填；舊存檔只有 prefilled，表示有手的步驟都是預填。
+ */
+export function prefilledParts(mark: NoteAnnotation | undefined): Record<StepPart, boolean> {
+  if (!mark?.prefilled) return { hand: false, track: false };
+  return {
+    hand: mark.hand !== undefined && mark.prefilledPart !== 'track',
+    track: mark.track !== undefined && mark.prefilledPart !== 'hand',
+  };
+}
+
+/** 這一步是還沒確認的預填。 */
+export function isPrefilledPart(mark: NoteAnnotation | undefined, part: StepPart): boolean {
+  return prefilledParts(mark)[part];
+}
+
+/**
+ * 記下哪幾步是預填（就地修改），沒有手的步驟不算。只要有一步是預填 prefilled 就是 true，
+ * 只認 prefilled 的程式（評測、訓練腳本）會整顆略過，不會把預填當成真人資料；
+ * 另一步是真人標的時才用 prefilledPart 指明預填的是哪一步。
+ */
+export function setPrefilled(mark: NoteAnnotation, parts: Record<StepPart, boolean>): void {
+  const hand = parts.hand && mark.hand !== undefined;
+  const track = parts.track && mark.track !== undefined;
+  delete mark.prefilledPart;
+  if (!hand && !track) {
+    delete mark.prefilled;
+    return;
+  }
+  mark.prefilled = true;
+  if (!track && mark.track !== undefined) mark.prefilledPart = 'hand';
+  else if (!hand && mark.hand !== undefined) mark.prefilledPart = 'track';
+}
+
+/** 只留真人確認過的步驟：拿掉預填的手（信心與備註照舊）；沒有剩下任何手時回傳 undefined。送去比對用。 */
+export function humanMark(mark: NoteAnnotation | undefined): NoteAnnotation | undefined {
+  if (!mark) return undefined;
+  const pre = prefilledParts(mark);
+  const out: NoteAnnotation = { ...mark };
+  if (pre.hand) delete out.hand;
+  if (pre.track) {
+    delete out.track;
+    delete out.handovers;
+  }
+  delete out.prefilled;
+  delete out.prefilledPart;
+  return out.hand !== undefined || out.track !== undefined ? out : undefined;
+}
+
+/**
  * 把一顆音符各步的標註組成一份：source 給出負責那一步的線上的標註。
- * 兩步由同一條線負責時直接回傳那一筆；任一部分還是預填就整顆視為預填。
+ * 兩步由同一條線負責時直接回傳那一筆；分屬不同的線時，各步的預填跟著各自那一筆。
  */
 export function composeMark(
   note: Note,
@@ -209,7 +259,7 @@ export function composeMark(
   }
   const by = hand?.by ?? track?.by;
   if (by) out.by = by;
-  if ((hand?.prefilled && out.hand !== undefined) || (track?.prefilled && out.track !== undefined)) out.prefilled = true;
+  setPrefilled(out, { hand: isPrefilledPart(hand, 'hand'), track: isPrefilledPart(track, 'track') });
   return isEmptyMark(out) ? undefined : out;
 }
 
@@ -218,9 +268,15 @@ export function isWifi(note: Note, shape: string | undefined): boolean {
   return note.kind === 'slide' && shape === 'w';
 }
 
-/** 有人確認過的標註：至少有一個部分，而且不是模型預填。 */
+/** 有人確認過的標註：至少有一步有手，而且那一步不是預填。 */
 export function isHumanLabeled(mark: NoteAnnotation | undefined): boolean {
-  return !!mark && !mark.prefilled && (mark.hand !== undefined || mark.track !== undefined);
+  if (!mark) return false;
+  if (!mark.prefilled) return mark.hand !== undefined || mark.track !== undefined;
+  // 有預填時，只有 prefilledPart 以外的那一步可能是真人標的。
+  return (
+    (mark.prefilledPart === 'track' && mark.hand !== undefined) ||
+    (mark.prefilledPart === 'hand' && mark.track !== undefined)
+  );
 }
 
 /** 需要的部分都填了（不論是否為預填）。 */
@@ -256,7 +312,10 @@ export function cleanMark(value: unknown): NoteAnnotation | null {
   if (isConfidence(raw.trackConfidence) && raw.trackConfidence !== (mark.confidence ?? 'sure')) {
     mark.trackConfidence = raw.trackConfidence;
   }
-  if (raw.prefilled === true) mark.prefilled = true;
+  if (raw.prefilled === true) {
+    mark.prefilled = true;
+    if (raw.prefilledPart === 'hand' || raw.prefilledPart === 'track') mark.prefilledPart = raw.prefilledPart;
+  }
   if (text(raw.memo)) mark.memo = text(raw.memo);
   if (text(raw.by)) mark.by = text(raw.by);
   return isEmptyMark(mark) ? null : mark;
@@ -885,11 +944,6 @@ export function sameGroup(a: NoteGroup, b: NoteGroup): boolean {
   return Math.abs((a.from ?? 0) - (b.from ?? 0)) < 1e-3 && Math.abs((a.to ?? 0) - (b.to ?? 0)) < 1e-3;
 }
 
-export function sameHands(a: NoteAnnotation, b: NoteAnnotation): boolean {
-  const handovers = (m: NoteAnnotation) => JSON.stringify(m.handovers ?? []);
-  return a.hand === b.hand && a.track === b.track && handovers(a) === handovers(b);
-}
-
 export interface MergeResult {
   draft: AnnotationDraft;
   /** 新增的音符標註數 */
@@ -898,6 +952,69 @@ export interface MergeResult {
   conflicts: string[];
   /** 新加入的打法分支數 */
   branches: number;
+}
+
+/** 這一步在這一筆裡的狀態：沒有手、預填、真人標的。 */
+function partState(mark: NoteAnnotation, part: StepPart): 'none' | 'prefill' | 'human' {
+  if ((part === 'hand' ? mark.hand : mark.track) === undefined) return 'none';
+  return isPrefilledPart(mark, part) ? 'prefill' : 'human';
+}
+
+/** 接觸那一步取自 handFrom、滑行那一步取自 trackFrom，組成一筆；信心跟著各自那一步。 */
+function combineParts(handFrom: NoteAnnotation, trackFrom: NoteAnnotation): NoteAnnotation {
+  const out: NoteAnnotation = { key: handFrom.key };
+  if (handFrom.hand !== undefined) out.hand = handFrom.hand;
+  if (trackFrom.track !== undefined) out.track = trackFrom.track;
+  if (trackFrom.handovers) out.handovers = trackFrom.handovers.map((item) => ({ ...item }));
+  const trackConfidence = trackFrom.trackConfidence ?? trackFrom.confidence ?? 'sure';
+  // 沒有接觸的手時（沒有起點的 Slide，或兩邊都還沒標起點），confidence 就是滑行的信心。
+  const confidence = out.hand !== undefined ? (handFrom.confidence ?? 'sure') : trackConfidence;
+  if (confidence !== 'sure') out.confidence = confidence;
+  if (out.hand !== undefined && out.track !== undefined && trackConfidence !== confidence) {
+    out.trackConfidence = trackConfidence;
+  }
+  setPrefilled(out, { hand: isPrefilledPart(handFrom, 'hand'), track: isPrefilledPart(trackFrom, 'track') });
+  return out;
+}
+
+/**
+ * 合併同一顆音符的兩筆標註，逐步決定用哪一邊：真人標的優先於預填，預填只補空白的步驟；
+ * 兩邊都是真人標的而手不同時算衝突，fill 保留自己的、replace 改用對方的。備註取聯集。
+ * added：補進了自己原本沒有的真人步驟。
+ */
+function mergeMark(
+  mine: NoteAnnotation,
+  theirs: NoteAnnotation,
+  mode: 'fill' | 'replace',
+): { mark: NoteAnnotation; added: boolean; conflict: boolean } {
+  let added = false;
+  let conflict = false;
+  let theirsHuman = false;
+  const take: Record<StepPart, boolean> = { hand: false, track: false };
+  for (const part of ['hand', 'track'] as const) {
+    const own = partState(mine, part);
+    const other = partState(theirs, part);
+    if (own === 'human' && other === 'human') {
+      const different = partHands(mine, part) !== partHands(theirs, part);
+      if (different) conflict = true;
+      take[part] = different && mode === 'replace';
+    } else {
+      take[part] = other === 'human' || (other === 'prefill' && own === 'none');
+      if (other === 'human') added = true;
+    }
+    if (take[part] && other === 'human') theirsHuman = true;
+  }
+  const mark: NoteAnnotation =
+    take.hand === take.track
+      ? { ...(take.hand ? theirs : mine), key: mine.key }
+      : combineParts(take.hand ? theirs : mine, take.track ? theirs : mine);
+  const memo = [mine.memo, theirs.memo].filter((value, index, all) => value && all.indexOf(value) === index).join(' / ');
+  if (memo) mark.memo = memo;
+  else delete mark.memo;
+  const by = theirsHuman ? (theirs.by ?? mine.by) : mine.by;
+  if (by) mark.by = by;
+  else delete mark.by;
+  return { mark, added, conflict };
 }
 
 /** 把對方一條線的手順合併進 marks（就地修改）。 */
@@ -910,30 +1027,24 @@ function mergeMarks(
   const conflicts: string[] = [];
   for (const item of theirs) {
     const current = marks[item.key];
-    if (!current || !isHumanLabeled(current)) {
-      if (!item.prefilled || !current) {
-        marks[item.key] = { ...item };
-        if (isHumanLabeled(item)) added += 1;
-      }
+    if (!current) {
+      marks[item.key] = { ...item };
+      if (isHumanLabeled(item)) added += 1;
       continue;
     }
-    if (!isHumanLabeled(item)) continue;
-    const different = !sameHands(current, item);
-    if (different) conflicts.push(item.key);
-    const memo = [current.memo, item.memo].filter((value, index, all) => value && all.indexOf(value) === index).join(' / ');
-    if (mode === 'replace' && different) {
-      marks[item.key] = { ...item, ...(memo ? { memo } : {}) };
-    } else if (memo && memo !== current.memo) {
-      marks[item.key] = { ...current, memo };
-    }
+    const result = mergeMark(current, item, mode);
+    marks[item.key] = result.mark;
+    if (result.added) added += 1;
+    if (result.conflict) conflicts.push(item.key);
   }
   return { added, conflicts };
 }
 
 /**
- * 合併匯入的標註。
- * - fill：只補自己沒標（或只是預填）的音符，手順不同的保留自己的並列為衝突。
- * - replace：匯入的為準，覆蓋同一顆音符。
+ * 合併匯入的標註，以步驟為單位（Slide 的起點與滑行分開看）。
+ * - fill：只補自己沒標（或只是預填）的步驟，手順不同的保留自己的並列為衝突。
+ * - replace：匯入的真人標註為準，覆蓋同一步；匯入檔沒標的步驟保留自己的。
+ * 兩種模式下對方的預填都只補自己空白的步驟，不會蓋掉任何真人標註。
  * 兩種模式的備註都會保留雙方內容，區段備註與標註者名單取聯集。
  * 打法分支以 id 對應：同一條分支照同樣規則合併手順，自己沒有的整條加入。
  */
@@ -1007,7 +1118,10 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
   return { draft, added, conflicts, branches };
 }
 
-/** 標註進度：需要標的音符中，已由人確認的數量；marks 通常是目前路線展開後的手順。 */
+/**
+ * 標註進度：需要標的步驟都由人確認過的音符數，以及還有預填步驟的音符數（不論其他步驟標了沒）；
+ * marks 通常是目前路線展開後的手順。
+ */
 export function progress(
   marks: Record<string, NoteAnnotation>,
   notes: Note[],
@@ -1016,9 +1130,10 @@ export function progress(
   let prefilled = 0;
   for (const note of notes) {
     const mark = note.key ? marks[note.key] : undefined;
-    if (!mark || !isFilled(note, mark)) continue;
-    if (mark.prefilled) prefilled += 1;
-    else done += 1;
+    if (!mark) continue;
+    const pre = prefilledParts(mark);
+    if (pre.hand || pre.track) prefilled += 1;
+    else if (isFilled(note, mark)) done += 1;
   }
   return { done, total: notes.length, prefilled };
 }

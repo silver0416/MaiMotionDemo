@@ -9,9 +9,10 @@ import {
   composeMark,
   emptyDraft,
   firstPart,
+  humanMark,
   inBranch,
   isEmptyMark,
-  isHumanLabeled,
+  isPrefilledPart,
   dependsOn,
   lineAt,
   lineMarks,
@@ -26,8 +27,10 @@ import {
   nextBranchName,
   partFields,
   partHands,
+  prefilledParts,
   routeMarks,
   serialize,
+  setPrefilled,
   setTrackConfidence,
   sortBranches,
   stepConfidence,
@@ -97,7 +100,7 @@ export async function checkSource(file: HandAnnotation): Promise<string | null> 
 
 /** 這一步是否已有人確認（不是預填）。 */
 export function isStepDone(step: Step, mark: NoteAnnotation | undefined): boolean {
-  if (!mark || mark.prefilled) return false;
+  if (!mark || isPrefilledPart(mark, step.part)) return false;
   return step.part === 'hand' ? mark.hand !== undefined : mark.track !== undefined;
 }
 
@@ -402,24 +405,23 @@ export class AnnotationStore {
   }
 
   /**
-   * 把 next 中這些欄位寫進某條線的那一筆；原本是預填時整筆轉為已確認，其他欄位的預填一併清掉。
+   * 把 next 中這幾步負責的欄位寫進某條線的那一筆。寫到的步驟算有人確認過、不再是預填；
+   * 沒寫到的步驟維持原樣（預填仍是預填），沒看過的預填不會因為這次編輯就變成真人資料。
    * 滑行的信心在省略時沿用起點的信心，所以寫完後重新算一次，讓它維持原本（或 next）的值。
    */
-  #writeFields(line: string, note: Note, next: NoteAnnotation, fields: (keyof NoteAnnotation)[]): void {
+  #writeParts(line: string, note: Note, next: NoteAnnotation, parts: StepPart[]): void {
     const marks = lineMarks(this.draft, line);
     const key = note.key;
     if (!marks || !key) return;
     const current = marks[key];
     const out: NoteAnnotation = current ? { ...current } : { key };
+    const fields = parts.flatMap((part) => partFields(note, part));
     const trackConfidence = fields.includes('track')
       ? stepConfidence(note, next, 'track')
       : current
         ? stepConfidence(note, current, 'track')
         : undefined;
-    if (current?.prefilled) {
-      // 沒看過的預填不能因為這次編輯就變成真人資料。
-      for (const field of ['hand', 'track', 'handovers'] as const) if (!fields.includes(field)) delete out[field];
-    }
+    const prefilled = prefilledParts(current);
     const record = out as unknown as Record<string, unknown>;
     for (const field of fields) {
       const value = next[field];
@@ -427,64 +429,40 @@ export class AnnotationStore {
       else record[field] = value;
     }
     setTrackConfidence(note, out, trackConfidence);
-    delete out.prefilled;
+    setPrefilled(out, { hand: prefilled.hand && !parts.includes('hand'), track: prefilled.track && !parts.includes('track') });
     if (this.annotator) out.by = this.annotator;
     if (isEmptyMark(out)) delete marks[key];
     else marks[key] = out;
   }
 
   /**
-   * 修改一顆的標註；只要有人動過就不再是預填。內容清空時移除整筆。
-   * 起點與滑行分屬不同的線時，只把有變動的那一步寫回它自己的線。
+   * 修改一顆的標註：parts 是這次動到的步驟，只有它們寫回去並算有人確認過（其他步驟的預填照舊）。
+   * 內容清空時移除整筆。起點與滑行分屬不同的線時，各步寫回自己的線。
    */
-  #edit(note: Note, change: (mark: NoteAnnotation) => void): void {
+  #edit(note: Note, parts: StepPart[], change: (mark: NoteAnnotation) => void): void {
     if (!note.key) return;
-    const parts = this.#parts(note);
-    const lines = parts.map((part) => this.lineOfStep(note, part));
     const current = this.mark(note);
     const next: NoteAnnotation = current ? { ...current } : { key: note.key };
     change(next);
-    if (lines.every((line) => line === lines[0])) {
-      const fields = parts.flatMap((part) => partFields(note, part));
-      this.#writeFields(lines[0], note, next, fields);
-    } else {
-      parts.forEach((part, index) => {
-        const fields = partFields(note, part);
-        const changed = fields.some((field) => JSON.stringify(next[field] ?? null) !== JSON.stringify(current?.[field] ?? null));
-        if (changed) this.#writeFields(lines[index], note, next, fields);
-      });
+    const byLine = new Map<string, StepPart[]>();
+    for (const part of this.#parts(note)) {
+      if (!parts.includes(part)) continue;
+      const line = this.lineOfStep(note, part);
+      byLine.set(line, [...(byLine.get(line) ?? []), part]);
     }
+    for (const [line, list] of byLine) this.#writeParts(line, note, next, list);
     this.#touch();
   }
 
-  /**
-   * 分步標註時只改一個部分；如果原本是模型預填，另一部分也一起清掉，
-   * 留給那一步自己標，免得沒看過的預填被當成真人資料。
-   */
-  #dropOtherPrefill(note: Note, mark: NoteAnnotation, part: StepPart): void {
-    const need = neededParts(note);
-    if (!need.hand || !need.track) return;
-    const other = part === 'hand' ? 'track' : 'hand';
-    if (!this.#source(note, other)?.prefilled) return;
-    if (part === 'hand') {
-      delete mark.track;
-      delete mark.handovers;
-    } else {
-      delete mark.hand;
-    }
-  }
-
   setHand(note: Note, hand: Hand | undefined): void {
-    this.#edit(note, (mark) => {
-      this.#dropOtherPrefill(note, mark, 'hand');
+    this.#edit(note, ['hand'], (mark) => {
       if (hand) mark.hand = hand;
       else delete mark.hand;
     });
   }
 
   setTrack(note: Note, track: TrackHand | undefined): void {
-    this.#edit(note, (mark) => {
-      this.#dropOtherPrefill(note, mark, 'track');
+    this.#edit(note, ['track'], (mark) => {
       if (track) mark.track = track;
       else delete mark.track;
       if (track === 'LR') delete mark.handovers;
@@ -494,7 +472,7 @@ export class AnnotationStore {
   /** 快捷鍵 Shift+A／D：這顆需要的部分都設成同一隻手。 */
   setAll(note: Note, hand: Hand): void {
     const need = neededParts(note);
-    this.#edit(note, (mark) => {
+    this.#edit(note, this.#parts(note), (mark) => {
       if (need.hand) mark.hand = hand;
       if (need.track) mark.track = hand;
     });
@@ -502,7 +480,7 @@ export class AnnotationStore {
 
   /** 設定某一步的信心（預設第一步）；有起點的 Slide 起點與滑行分開設定，互不影響。 */
   setConfidence(note: Note, confidence: Confidence, part: StepPart = firstPart(note)): void {
-    this.#edit(note, (mark) => {
+    this.#edit(note, [part], (mark) => {
       if (part === 'track' && part !== firstPart(note)) {
         setTrackConfidence(note, mark, confidence);
         return;
@@ -525,7 +503,7 @@ export class AnnotationStore {
   }
 
   setMemo(note: Note, memo: string): void {
-    this.#edit(note, (mark) => {
+    this.#edit(note, [firstPart(note)], (mark) => {
       if (memo.trim()) mark.memo = memo;
       else delete mark.memo;
     });
@@ -533,7 +511,7 @@ export class AnnotationStore {
 
   /** 在 Slide 滑行期間加一次換手；換到目前滑行手的另一隻。 */
   addHandover(note: Note, at: number): void {
-    this.#edit(note, (mark) => {
+    this.#edit(note, ['track'], (mark) => {
       const list = (mark.handovers ?? [])
         .map((item) => ({ ...item }))
         .filter((item) => Math.abs(item.at - at) > 1e-3);
@@ -553,7 +531,7 @@ export class AnnotationStore {
   }
 
   removeHandover(note: Note, index: number): void {
-    this.#edit(note, (mark) => {
+    this.#edit(note, ['track'], (mark) => {
       const list = (mark.handovers ?? []).map((item) => ({ ...item }));
       list.splice(index, 1);
       let hand: Hand = mark.track === 'R' ? 'R' : 'L';
@@ -568,7 +546,7 @@ export class AnnotationStore {
 
   clear(note: Note): void {
     if (!note.key || !this.mark(note)) return;
-    this.#edit(note, (mark) => {
+    this.#edit(note, this.#parts(note), (mark) => {
       delete mark.hand;
       delete mark.track;
       delete mark.handovers;
@@ -578,16 +556,17 @@ export class AnnotationStore {
     });
   }
 
-  /** 把這顆各步的預填確認為真人資料（手順不變）；有確認到時回傳 true。 */
-  #confirmNote(note: Note): boolean {
+  /** 把這顆這幾步（預設全部）的預填確認為真人資料（手順不變）；有確認到時回傳 true。 */
+  #confirmParts(note: Note, parts: StepPart[] = this.#parts(note)): boolean {
     let changed = false;
-    for (const part of this.#parts(note)) {
-      const line = this.lineOfStep(note, part);
-      const marks = lineMarks(this.draft, line);
+    for (const part of parts) {
+      const marks = lineMarks(this.draft, this.lineOfStep(note, part));
       const mark = note.key ? marks?.[note.key] : undefined;
-      if (!marks || !mark?.prefilled) continue;
+      if (!marks || !mark || !isPrefilledPart(mark, part)) continue;
       const next = { ...mark };
-      delete next.prefilled;
+      const prefilled = prefilledParts(mark);
+      prefilled[part] = false;
+      setPrefilled(next, prefilled);
       if (this.annotator) next.by = this.annotator;
       marks[mark.key] = next;
       changed = true;
@@ -596,17 +575,20 @@ export class AnnotationStore {
   }
 
   confirm(note: Note): void {
-    if (this.#confirmNote(note)) this.#touch();
+    if (this.#confirmParts(note)) this.#touch();
   }
 
   confirmAll(): number {
     let count = 0;
-    for (const note of this.ordered) if (this.#confirmNote(note)) count += 1;
+    for (const note of this.ordered) if (this.#confirmParts(note)) count += 1;
     if (count > 0) this.#touch();
     return count;
   }
 
-  /** 以目前盤面的模型方案預填目前路線上還沒標的步驟；已有標註（含預填）的不動。 */
+  /**
+   * 以目前盤面的模型方案預填目前路線上還沒有手的步驟（含 Slide 滑行），標成預填；
+   * 已經有手的步驟（真人標的或之前的預填）不動，同一顆其他步驟的真人標註也照舊。回傳填入的音符數。
+   */
   prefillFromModel(): number {
     const solution = session.solutions[session.solutionIndex] ?? session.solutions[0];
     if (!solution) return 0;
@@ -622,16 +604,16 @@ export class AnnotationStore {
         const value = part === 'hand' ? model.hand : model.track;
         if (value === undefined) continue;
         const current = marks[note.key];
-        // 那一條線已經有這顆的標註就不動（包含其他步的真人資料）。
-        if (current && !current.prefilled) continue;
+        if (current && (part === 'hand' ? current.hand : current.track) !== undefined) continue;
         const out: NoteAnnotation = current ? { ...current } : { key: note.key };
+        const prefilled = prefilledParts(current);
         if (part === 'hand') out.hand = model.hand;
         else {
           out.track = model.track;
           if (model.handovers) out.handovers = model.handovers;
+          else delete out.handovers;
         }
-        if (current && (part === 'hand' ? current.hand : current.track) !== undefined) continue;
-        out.prefilled = true;
+        setPrefilled(out, { ...prefilled, [part]: true });
         marks[note.key] = out;
         filled = true;
       }
@@ -642,8 +624,8 @@ export class AnnotationStore {
   }
 
   /**
-   * 以手元影片推估的結果預填目前路線上的步驟。真人標註一律不動；原本是預填（含模型預填）的步驟改用影片結果，
-   * 因為影片是實際打法的觀察。中信心的步驟標「不確定」，提醒照影片確認。回傳填入的音符數。
+   * 以手元影片推估的結果預填目前路線上的步驟。真人標的步驟一律不動；空白或原本是預填（含模型預填）的步驟
+   * 改用影片結果，因為影片是實際打法的觀察。中信心的步驟標「不確定」，提醒照影片確認。回傳填入的音符數。
    */
   prefillFromVideo(marks: HandcamMark[]): number {
     const byKey = new Map(marks.map((mark) => [mark.key, mark]));
@@ -659,19 +641,30 @@ export class AnnotationStore {
         const lineMarksOf = lineMarks(this.draft, this.lineOfStep(note, part));
         if (!lineMarksOf) continue;
         const current = lineMarksOf[note.key];
-        if (current && !current.prefilled) continue;
+        const prefilled = prefilledParts(current);
+        if (current && (part === 'hand' ? current.hand : current.track) !== undefined && !prefilled[part]) continue;
         const out: NoteAnnotation = current ? { ...current } : { key: note.key };
         const unsure = part === 'hand' ? video.handUnsure : video.trackUnsure;
         // 有起點的 Slide：滑行那一步的信心記在 trackConfidence；其餘第一步記在 confidence。
-        const field = part === 'track' && note.hasHead ? 'trackConfidence' : 'confidence';
+        const first = part === firstPart(note);
+        const own = first ? current?.confidence : current?.trackConfidence;
+        // 原本是預填就換成影片的信心；空白的步驟有人設過信心就照舊，否則中信心標「不確定」。
+        const confidence: Confidence = prefilled[part] || own === undefined ? (unsure ? 'unsure' : 'sure') : own;
+        const track = stepConfidence(note, current, 'track');
         if (part === 'hand') out.hand = value as Hand;
         else {
           out.track = value;
           delete out.handovers;
         }
-        if (unsure) out[field] = 'unsure';
-        else delete out[field];
-        out.prefilled = true;
+        if (first) {
+          if (confidence === 'sure') delete out.confidence;
+          else out.confidence = confidence;
+          // 滑行沿用起點的信心；改了起點的信心，已經有手（或自己設過信心）的滑行要維持原本的值。
+          if (current?.track !== undefined || current?.trackConfidence !== undefined) setTrackConfidence(note, out, track);
+        } else {
+          setTrackConfidence(note, out, confidence);
+        }
+        setPrefilled(out, { ...prefilled, [part]: true });
         lineMarksOf[note.key] = out;
         filled = true;
       }
@@ -686,14 +679,40 @@ export class AnnotationStore {
     return [this.draft.notes, ...this.draft.branches.map((branch) => branch.notes)];
   }
 
-  /** 移除所有線上尚未確認的預填。 */
+  /**
+   * 移除所有線上尚未確認的預填：拿掉預填那一步的手和它的信心（預填時帶的），同一顆真人標的步驟與備註保留。
+   * 回傳拿掉的步數。
+   */
   clearPrefilled(): number {
     let count = 0;
     for (const marks of this.#allMarks()) {
       for (const [key, mark] of Object.entries(marks)) {
-        if (!mark.prefilled) continue;
-        delete marks[key];
-        count += 1;
+        const prefilled = prefilledParts(mark);
+        if (!prefilled.hand && !prefilled.track) continue;
+        const note = this.#byKey.get(key);
+        // 對不到音符時（不是這份譜面的鍵）有接觸的手就當作有起點。
+        const twoSteps = note ? neededParts(note).hand && neededParts(note).track : mark.hand !== undefined;
+        const out: NoteAnnotation = { ...mark };
+        if (prefilled.hand) {
+          // 滑行沿用起點的信心；拿掉起點的信心後，真人標的滑行要維持原本的值。
+          const track = out.trackConfidence ?? out.confidence ?? 'sure';
+          delete out.hand;
+          delete out.confidence;
+          if (twoSteps && out.track !== undefined && !prefilled.track) {
+            if (track === 'sure') delete out.trackConfidence;
+            else out.trackConfidence = track;
+          }
+        }
+        if (prefilled.track) {
+          delete out.track;
+          delete out.handovers;
+          delete out.trackConfidence;
+          if (!twoSteps) delete out.confidence;
+        }
+        setPrefilled(out, { hand: false, track: false });
+        if (isEmptyMark(out)) delete marks[key];
+        else marks[key] = out;
+        count += Number(prefilled.hand) + Number(prefilled.track);
       }
     }
     if (count > 0) this.#touch();
@@ -735,12 +754,10 @@ export class AnnotationStore {
     return map;
   }
 
-  /** 這些步驟都標成同一隻手（起點／接觸寫手，滑行寫滑行的手）。 */
+  /** 這些步驟都標成同一隻手（起點／接觸寫手，滑行寫滑行的手）；沒選到的步驟維持原樣。 */
   setHandMany(steps: Step[], hand: Hand): number {
     for (const [note, parts] of this.#partsByNote(steps)) {
-      this.#edit(note, (mark) => {
-        // 只標其中一步時，和單步標註一樣清掉另一步沒看過的預填。
-        if (parts.size === 1) this.#dropOtherPrefill(note, mark, [...parts][0]);
+      this.#edit(note, [...parts], (mark) => {
         if (parts.has('hand')) mark.hand = hand;
         if (parts.has('track')) mark.track = hand;
       });
@@ -761,8 +778,7 @@ export class AnnotationStore {
       const filled = [...parts].filter((part) => (part === 'hand' ? mark?.hand : mark?.track) !== undefined).length;
       if (filled === 0) continue;
       count += filled;
-      this.#edit(note, (next) => {
-        if (parts.size === 1) this.#dropOtherPrefill(note, next, [...parts][0]);
+      this.#edit(note, [...parts], (next) => {
         if (parts.has('hand')) delete next.hand;
         if (parts.has('track')) {
           delete next.track;
@@ -773,10 +789,10 @@ export class AnnotationStore {
     return count;
   }
 
-  /** 把這些步驟所在音符的預填確認為真人資料；回傳確認的音符數。 */
+  /** 把這些步驟的預填確認為真人資料（沒選到的步驟維持預填）；回傳確認的步數。 */
   confirmMany(steps: Step[]): number {
     let count = 0;
-    for (const note of this.#partsByNote(steps).keys()) if (this.#confirmNote(note)) count += 1;
+    for (const step of steps) if (this.#confirmParts(step.note, [step.part])) count += 1;
     if (count > 0) this.#touch();
     return count;
   }
@@ -821,7 +837,7 @@ export class AnnotationStore {
 
   pickConfirm(): void {
     const steps = this.pickedSteps;
-    this.#batch(() => this.confirmMany(steps), (count) => `已確認 ${count} 顆的預填`, '選取的步驟沒有預填');
+    this.#batch(() => this.confirmMany(steps), (count) => `已確認 ${count} 步的預填`, '選取的步驟沒有預填');
   }
 
   pickClear(): void {
@@ -900,7 +916,7 @@ export class AnnotationStore {
     return stepSource(this.draft, line, note, part);
   }
 
-  /** 把 source 這一步負責的欄位複製進 marks 裡這顆的那一筆（深拷貝換手）。 */
+  /** 把 source 這一步負責的欄位複製進 marks 裡這顆的那一筆（深拷貝換手）；這一步是否預填跟著 source。 */
   #copyPart(marks: Record<string, NoteAnnotation>, note: Note, part: StepPart, source: NoteAnnotation | undefined): void {
     if (!note.key || !source) return;
     const out: NoteAnnotation = marks[note.key] ? { ...marks[note.key] } : { key: note.key };
@@ -908,6 +924,7 @@ export class AnnotationStore {
     const existing = marks[note.key];
     const trackConfidence =
       part === 'track' ? stepConfidence(note, source, 'track') : existing ? stepConfidence(note, existing, 'track') : undefined;
+    const prefilled = prefilledParts(existing);
     const record = out as unknown as Record<string, unknown>;
     for (const field of partFields(note, part)) {
       const value = source[field];
@@ -915,7 +932,7 @@ export class AnnotationStore {
       else record[field] = field === 'handovers' ? (value as HandoverMark[]).map((item) => ({ ...item })) : value;
     }
     setTrackConfidence(note, out, trackConfidence);
-    if (source.prefilled) out.prefilled = true;
+    setPrefilled(out, { ...prefilled, [part]: isPrefilledPart(source, part) });
     if (source.by && !out.by) out.by = source.by;
     marks[note.key] = out;
   }
@@ -925,11 +942,13 @@ export class AnnotationStore {
     const mark = note.key ? marks[note.key] : undefined;
     if (!mark) return;
     const trackConfidence = part === 'hand' ? stepConfidence(note, mark, 'track') : undefined;
+    const prefilled = prefilledParts(mark);
     const out = { ...mark } as unknown as Record<string, unknown>;
     for (const field of partFields(note, part)) delete out[field];
     const next = out as unknown as NoteAnnotation;
     // 拿掉起點的信心後，滑行的信心要保持原本的值。
     if (part === 'hand') setTrackConfidence(note, next, trackConfidence);
+    setPrefilled(next, { ...prefilled, [part]: false });
     if (isEmptyMark(next)) delete marks[mark.key];
     else marks[mark.key] = next;
   }
@@ -1555,7 +1574,7 @@ export class AnnotationStore {
 
   /**
    * 標註分頁開著時的快捷鍵；處理了就回傳 true。
-   * A／D 標目前這一步的左右手（Shift 整顆同一隻手）、S 切換信心、Enter 確認預填、
+   * A／D 標目前這一步的左右手（Shift 整顆同一隻手）、S 切換信心、Enter 確認這一步的預填、
    * Delete 清除、N 下一步未標。
    */
   handleKey(event: KeyboardEvent): boolean {
@@ -1598,7 +1617,8 @@ export class AnnotationStore {
       return true;
     }
     if (event.key === 'Enter') {
-      if (this.mark(note)?.prefilled) this.confirm(note);
+      // 只確認看著的這一步；Slide 的另一步要到那一步自己確認。
+      if (this.#confirmParts(note, [step.part])) this.#touch();
       this.#advance(step);
       return true;
     }
@@ -1609,15 +1629,14 @@ export class AnnotationStore {
     return false;
   }
 
-  /** 比對：Rust 求模型最佳解與照標註的最佳解。只送有人確認過的標註。 */
+  /** 比對：Rust 求模型最佳解與照標註的最佳解。只送有人確認過的步驟（預填的步驟拿掉）。 */
   async evaluate(): Promise<void> {
     const file = await this.toFile();
     if (!file) return;
     // Rust 只認單一份手順：送目前路線展開後的結果，不送分支。
     file.notes = this.ordered
-      .map((note) => (note.key ? this.routed[note.key] : undefined))
-      .filter((mark): mark is NoteAnnotation => isHumanLabeled(mark))
-      .map((mark) => ({ ...mark }));
+      .map((note) => humanMark(note.key ? this.routed[note.key] : undefined))
+      .filter((mark): mark is NoteAnnotation => mark !== undefined);
     delete file.branches;
     delete file.groups;
     const solverConfig = projectConfig(session.config);

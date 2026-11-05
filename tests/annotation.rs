@@ -417,6 +417,49 @@ fn slide_start_and_track_have_their_own_confidence() {
     assert!(r.divergences.is_empty());
 }
 
+/// 星星頭真人標了、滑行還是預填（prefilledPart = track）：起點照樣限制求解與比對，滑行不算答案；
+/// 反過來也一樣。舊標註檔只有 prefilled，整顆都是預填、不列入。
+#[test]
+fn prefilled_step_is_dropped_but_the_human_step_of_the_same_slide_counts() {
+    let source = "(120){4}1-5[4:1],,,,E";
+    let k = key(source, 0);
+    let hands = |r: &EvaluateResponse, part: &str| -> Vec<Hand> {
+        r.human_solution
+            .as_ref()
+            .unwrap()
+            .assignments
+            .iter()
+            .filter(|a| a.part == part)
+            .map(|a| a.hand)
+            .collect()
+    };
+    let head_human =
+        json!([{"key": k, "hand": "L", "track": "R", "prefilled": true, "prefilledPart": "track"}]);
+    let stored = serde_json::to_value(&annotation(source, head_human.clone()).notes[0]).unwrap();
+    assert_eq!(stored["prefilledPart"], "track");
+    let r = evaluate(source, head_human);
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_eq!((r.labeled, r.matched, r.compared), (1, 1, 1));
+    assert!(r.divergences.iter().all(|d| d.part == "hand"));
+    assert_eq!(hands(&r, "head"), [Hand::L]);
+
+    let r = evaluate(
+        source,
+        json!([{"key": k, "hand": "L", "track": "R", "prefilled": true, "prefilledPart": "hand"}]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_eq!((r.labeled, r.compared), (1, 1));
+    assert!(r.divergences.iter().all(|d| d.part == "track"));
+    assert!(hands(&r, "slide").iter().all(|&h| h == Hand::R));
+
+    let r = evaluate(
+        source,
+        json!([{"key": k, "hand": "L", "track": "R", "prefilled": true}]),
+    );
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_eq!((r.labeled, r.compared), (0, 0));
+}
+
 #[test]
 fn wrong_format_is_rejected_with_a_message() {
     let source = "(120){4}1,E";

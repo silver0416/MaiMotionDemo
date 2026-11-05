@@ -55,8 +55,10 @@ fn main() {
         let chart = parsed.chart;
         let mut hands: HashMap<&str, char> = HashMap::new();
         for mark in annotation["notes"].as_array().into_iter().flatten() {
-            let sure = mark["confidence"].as_str().unwrap_or("sure") == "sure"
-                && !mark["prefilled"].as_bool().unwrap_or(false);
+            // 預填的起點不算；prefilledPart 是 track 時只有滑行是預填。
+            let prefilled = mark["prefilled"].as_bool().unwrap_or(false)
+                && mark["prefilledPart"].as_str() != Some("track");
+            let sure = mark["confidence"].as_str().unwrap_or("sure") == "sure" && !prefilled;
             if let (Some(key), Some(hand)) = (mark["key"].as_str(), mark["hand"].as_str()) {
                 if sure {
                     hands.insert(key, if hand == "L" { 'L' } else { 'R' });

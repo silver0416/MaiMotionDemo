@@ -17,13 +17,14 @@
     CONFIDENCE_LABEL,
     inBranch,
     fileName,
-    isHumanLabeled,
+    isPrefilledPart,
     isWifi,
     laneRows,
     MAIN_LINE,
     modelMarks as modelMarksOf,
     neededParts,
     parseFile,
+    prefilledParts,
     progress,
     spansByTime,
     stepConfidence,
@@ -113,6 +114,13 @@
   const need = $derived(note ? neededParts(note) : { hand: false, track: false });
   const noteShape = $derived(note?.pathId ? session.pathById.get(note.pathId)?.shape : undefined);
   const wifi = $derived(note ? isWifi(note, noteShape) : false);
+  /** 編輯區的預填提示；有起點的 Slide 只有一步是預填時寫出是哪一步。 */
+  const prefillText = $derived.by(() => {
+    const parts = prefilledParts(mark);
+    if (!parts.hand && !parts.track) return null;
+    if (split && parts.hand !== parts.track) return parts.hand ? '起點是模型預填，尚未確認' : '滑行是模型預填，尚未確認';
+    return '模型預填，尚未確認';
+  });
 
   /** 模型的手，一律取候選方案（不是盤面上的真人打法），用來比對。 */
   const modelSolution = $derived(session.solutions[session.solutionIndex] ?? session.solutions[0] ?? null);
@@ -125,9 +133,9 @@
   const stats = $derived(progress(annotation.routed, annotation.ordered));
   const percent = $derived(stats.total > 0 ? Math.round((100 * stats.done) / stats.total) : 0);
 
-  /** 這一步和模型不同；human 是這一步自己的標註（annotation.stepMark）。 */
+  /** 這一步和模型不同；human 是這一步自己的標註（annotation.stepMark），這一步是預填時不算。 */
   function stepDiffers(step: Step, human: NoteAnnotation | undefined): boolean {
-    if (!isHumanLabeled(human) || !human) return false;
+    if (!human || isPrefilledPart(human, step.part)) return false;
     const model = modelMarks.get(step.note.id);
     if (!model) return false;
     if (step.part === 'hand') return !!human.hand && !!model.hand && human.hand !== model.hand;
@@ -148,7 +156,7 @@
         case 'todo':
           return !isStepDone(step, own);
         case 'prefilled':
-          return own?.prefilled === true && stepValue(step, own) !== undefined;
+          return isPrefilledPart(own, step.part);
         case 'diff':
           return stepDiffers(step, own);
         case 'memo':
@@ -638,7 +646,7 @@
         differs: stepDiffers(step, own),
         doubt: confidence === 'sure' ? null : confidence,
         memo: first && human?.memo ? human.memo : null,
-        prefilled: !!own?.prefilled && !!text,
+        prefilled: isPrefilledPart(own, step.part),
         pendingStart: pending?.key === step.key,
       };
     }),
@@ -915,7 +923,7 @@
       <div class="bar-fill" style={`width:${percent}%`}></div>
     </div>
     {#if stats.prefilled > 0}
-      <p class="xsmall muted">另有 {stats.prefilled} 顆是模型預填，確認後才算真人資料。</p>
+      <p class="xsmall muted">另有 {stats.prefilled} 顆還有模型預填，確認後才算真人資料。</p>
     {/if}
     <div class="views seg seg--soft" role="group" aria-label="標註面板" use:segmented>
       {#each VIEWS as item (item.id)}
@@ -1063,8 +1071,8 @@
           </label>
 
           <div class="row row-wrap small">
-            {#if mark?.prefilled}
-              <span class="badge badge--quiet">模型預填，尚未確認</span>
+            {#if prefillText}
+              <span class="badge badge--quiet">{prefillText}</span>
               <button class="btn" onclick={() => note && annotation.confirm(note)}>
                 <Icon name="check" size={14} />確認
               </button>
@@ -1079,7 +1087,7 @@
           <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
         {/if}
         <p class="xsmall muted keys">
-          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認<br />
+          <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認這一步的預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認<br />
           清單上 <kbd>Ctrl</kbd>／<kbd>Shift</kbd>+點選可以多選，選取時 <kbd>A</kbd>/<kbd>D</kbd> 一次標全部選取、<kbd>Esc</kbd> 結束
         </p>
       </section>
@@ -1095,8 +1103,8 @@
               title: `已預填 ${count} 顆`,
               body:
                 gaps > 0
-                  ? `預填只是草稿，逐顆確認或修改後才算真人資料。模型走不下去的 ${gaps} 處先略過，那幾顆沒有預填。`
-                  : '預填只是草稿，逐顆確認或修改後才算真人資料。',
+                  ? `預填只是草稿，逐步確認或修改後才算真人資料。模型走不下去的 ${gaps} 處先略過，那幾步沒有預填。`
+                  : '預填只是草稿，逐步確認或修改後才算真人資料。',
             });
           }}>
             <Icon name="zap" size={14} />用模型預填空白
