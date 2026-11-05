@@ -6,9 +6,9 @@
     SCHEMA_VERSION,
     SCORING_LABEL,
     SCORING_V3,
-    SCORING_VERSION,
     TEMOTO_LABEL,
     TEMOTO_MODELS,
+    v3Label,
   } from '../lib/contract';
   import { STORE_ANALYSES, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
   import { copyText } from '../lib/debug';
@@ -186,21 +186,20 @@
     return Number.isNaN(time) ? BUILD_TIME : formatTime(time);
   });
 
-  /** 目前參數頁選的評分方式；null 為純 V3。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
+  /** 目前參數頁選的 TemotoAI-1；null 是只用基座。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
   const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
-  /** 沒選 Temoto 時選的基座（v4.1、v4、v3、v3.1、v3.2）直接當版本號；選了 Temoto 時一律為 null。 */
-  const scoringVersion = $derived((!temoto && session.config.v3Variant) || SCORING_VERSION);
+  /** 基座名稱：TemotoAI-1 用模型附帶的基座（主卡是 V4.1），沒選模型時是參數頁選的基座。 */
+  const baseName = $derived(v3Label(temoto ? temoto.base : session.config.v3Variant));
 
   function versionText(): string {
-    const scoring = temoto
-      ? `評分方式：${TEMOTO_LABEL}（${temoto.id}，基於 ${SCORING_LABEL} ${SCORING_VERSION}／${SCORING_V3}，schema ${SCHEMA_VERSION}）`
-      : `評分方式：${SCORING_LABEL} ${scoringVersion}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`;
+    const model = temoto ? `${TEMOTO_LABEL}（${temoto.id}，基於 ${baseName}）` : baseName;
     return [
       `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
       `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
       `Build：${BUILD_ID}（${BUILD_TIME}）`,
       `判定規則修訂：${SOLVER_REVISION}`,
-      scoring,
+      `模型：${model}`,
+      `評分方式：${SCORING_LABEL}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
     ].join('\n');
   }
 
@@ -390,15 +389,18 @@
         <dd>{buildTime}</dd>
         <dt>判定規則修訂</dt>
         <dd>{SOLVER_REVISION}</dd>
-        <dt>評分方式</dt>
+        <dt>模型</dt>
         <dd>
           {#if temoto}
             <span class={`scoring-model scoring-model--${temoto.color}`}><span class="scoring-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
-            <span class="muted">基於 {SCORING_LABEL} <span class="mono">{SCORING_VERSION}</span></span>
+            <span class="muted">基於 {baseName}</span>
           {:else}
-            {SCORING_LABEL} <span class="mono">{scoringVersion}</span>
+            {baseName}
           {/if}
-          <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span>
+        </dd>
+        <dt>評分方式</dt>
+        <dd>
+          {SCORING_LABEL} <span class="muted mono">{SCORING_V3}・schema {SCHEMA_VERSION}</span>
         </dd>
       </dl>
 
@@ -1048,7 +1050,7 @@
     padding: var(--space-2) 0;
   }
 
-  /* 目前的評分方式：TemotoAI-1 以模型原色的圓點區分三個變體，不顯示變體名稱。 */
+  /* 目前的模型：TemotoAI-1 以模型原色的圓點區分各個模型，不顯示模型名稱。 */
   .scoring-model {
     display: inline-flex;
     align-items: center;

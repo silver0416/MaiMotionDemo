@@ -24,7 +24,6 @@ export const SCORING_V3 = 'human-motion-v3' satisfies ScoringModel;
 export const SCHEMA_VERSION = 4;
 
 export const SCORING_LABEL = '人類動作';
-export const SCORING_VERSION = 'v3';
 
 /** 與 src/model.rs 的 SolverConfig::default() 一致的共用欄位。 */
 export const DEFAULT_BASE: BaseSolverConfig = {
@@ -74,17 +73,19 @@ export type TemotoColor = 'konruri' | 'shoubu' | 'rurikon' | 'ayame' | 'ruri' | 
 export interface TemotoModel {
   id: MlModelId;
   color: TemotoColor;
+  /** 模型附帶的基座（與 tests/temoto.rs 的 base_label_follows_model_tuning 一致）。 */
+  base: BaseChoice;
 }
 export const MAIN_MODELS: readonly TemotoModel[] = [
-  { id: 'temoto-1-konruri', color: 'konruri' },
-  { id: 'temoto-1-shoubu', color: 'shoubu' },
+  { id: 'temoto-1-konruri', color: 'konruri', base: 'v4.1' },
+  { id: 'temoto-1-shoubu', color: 'shoubu', base: 'v4.1' },
 ];
 export const MORE_MODELS: readonly TemotoModel[] = [
-  { id: 'temoto-1-rurikon', color: 'rurikon' },
-  { id: 'temoto-1-ayame', color: 'ayame' },
-  { id: 'temoto-1-ruri', color: 'ruri' },
-  { id: 'temoto-1-akane', color: 'akane' },
-  { id: 'temoto-1-tokiwa', color: 'tokiwa' },
+  { id: 'temoto-1-rurikon', color: 'rurikon', base: 'v4' },
+  { id: 'temoto-1-ayame', color: 'ayame', base: 'v4' },
+  { id: 'temoto-1-ruri', color: 'ruri', base: 'v3.2' },
+  { id: 'temoto-1-akane', color: 'akane', base: 'v3.1' },
+  { id: 'temoto-1-tokiwa', color: 'tokiwa', base: 'v3' },
 ];
 export const TEMOTO_MODELS: readonly TemotoModel[] = [...MAIN_MODELS, ...MORE_MODELS];
 
@@ -138,8 +139,8 @@ function isBaseChoice(value: unknown): value is BaseChoice {
   return value === 'v3' || isV3VariantId(value);
 }
 
-/** 純 V3 與 V3 變體在畫面上的名稱（Temoto 模型另顯示 TEMOTO_LABEL）。 */
-export function v3Label(variant: V3VariantId | null | undefined): string {
+/** 基座在畫面上的名稱：V3 變體用它的標籤，原始 V3（'v3' 或沒選）是 V3（Temoto 模型另顯示 TEMOTO_LABEL）。 */
+export function v3Label(variant: BaseChoice | null | undefined): string {
   return V3_VARIANTS.find((item) => item.id === variant)?.label ?? 'V3';
 }
 
