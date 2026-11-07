@@ -10,7 +10,7 @@
     MAIN_MODELS,
     MORE_BASES,
     MORE_MODELS,
-    TEMOTO_LABEL,
+    TEMOTO_MODELS,
     type TemotoModel,
   } from '../lib/contract';
   import { PALM_APPROX_HINT } from '../lib/palm';
@@ -35,8 +35,9 @@
   const config = $derived(session.config);
   const R = CONFIG_RANGE;
 
-  /** TemotoAI-1 的卡畫面上只有名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
+  /** TemotoAI 的卡畫面上只有系列名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
   const COLOR_NAME = {
+    yamabuki: '山吹色',
     konruri: '紺瑠璃',
     shoubu: '菖蒲色，しょうぶいろ',
     rurikon: '瑠璃紺',
@@ -47,13 +48,17 @@
   } as const;
   /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
   const usingTemoto = $derived(config.mlModel !== null);
+  const selectedTemoto = $derived(TEMOTO_MODELS.find((model) => model.id === config.mlModel) ?? null);
+  /** AI 卡一律半寬；換系列（TemotoAI-2 → TemotoAI-1）時從新的一排開始（2026-11-07 使用者指定）。 */
+  const startsRow = (list: readonly TemotoModel[], index: number) =>
+    index > 0 && list[index - 1].label !== list[index].label;
 
-  // V4、V3.2、V3.1、原始 V3 與舊的 TemotoAI-1 收在「顯示更多模型」裡；
+  // V4、V3.2、V3.1、原始 V3 與 TemotoAI-1 收在「顯示更多模型」裡；
   // 目前選的是其中之一時自動展開，選中的卡不會藏起來。
   let moreOpen = $state(false);
   const moreLabel = $derived(
     MORE_MODELS.some((model) => model.id === config.mlModel)
-      ? TEMOTO_LABEL
+      ? (selectedTemoto?.label ?? null)
       : config.mlModel === null
         ? (MORE_BASES.find((item) => item.id === config.v3Variant)?.label ?? null)
         : null,
@@ -83,15 +88,16 @@
   }
 </script>
 
-{#snippet temotoCard(model: TemotoModel)}
+{#snippet temotoCard(model: TemotoModel, newRow = false)}
   <button
     class={`model-card model-card--${model.color}`}
+    class:model-card--row={newRow}
     role="radio"
     aria-checked={config.mlModel === model.id}
-    aria-label={`${TEMOTO_LABEL}（${COLOR_NAME[model.color]}）`}
+    aria-label={`${model.label}（${COLOR_NAME[model.color]}）`}
     onclick={() => session.setMlModel(model.id)}
   >
-    <span class="model-card-name">{TEMOTO_LABEL}</span>
+    <span class="model-card-name">{model.label}</span>
   </button>
 {/snippet}
 
@@ -112,8 +118,8 @@
       >
         <span class="model-card-name">{MAIN_BASE.label}</span>
       </button>
-      {#each MAIN_MODELS as model (model.id)}
-        {@render temotoCard(model)}
+      {#each MAIN_MODELS as model, index (model.id)}
+        {@render temotoCard(model, startsRow(MAIN_MODELS, index))}
       {/each}
     </div>
     <div class="more-row">
@@ -144,17 +150,17 @@
               <span class="model-card-name">{base.label}</span>
             </button>
           {/each}
-          {#each MORE_MODELS as model (model.id)}
-            {@render temotoCard(model)}
+          {#each MORE_MODELS as model, index (model.id)}
+            {@render temotoCard(model, startsRow(MORE_MODELS, index))}
           {/each}
         </div>
         <p class="field-hint">
-          V4.1 之前的版本與舊的 {TEMOTO_LABEL}，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮四件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍、快速三顆一組頭尾同一鍵（例如 6、5、6）時兩手交互；V4.1 再多考慮兩件事：兩手都空著時各打靠自己那一側的音符、和長押同時按下的幾顆兩手不交叉，散得太開時也不一隻手硬包。
+          V4.1 之前的版本與舊的 TemotoAI-1，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮四件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍、快速三顆一組頭尾同一鍵（例如 6、5、6）時兩手交互；V4.1 再多考慮兩件事：兩手都空著時各打靠自己那一側的音符、和長押同時按下的幾顆兩手不交叉，散得太開時也不一隻手硬包。
         </p>
       </div>
     {/if}
     <p class="field-hint" style="margin-top: var(--space-2)">
-      {TEMOTO_LABEL} 要先跑一次基座（上方兩張是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
+      TemotoAI 要先跑一次基座（上方三張都是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
     </p>
   </section>
 
@@ -164,7 +170,7 @@
     </div>
     <div class="stack">
       {#if usingTemoto}
-        <p class="field-hint">打法由 {TEMOTO_LABEL} 決定，四個打法偏好滑桿不使用；下面的規則開關照常有效。</p>
+        <p class="field-hint">打法由 {selectedTemoto?.label ?? 'TemotoAI'} 決定，四個打法偏好滑桿不使用；下面的規則開關照常有效。</p>
       {:else}
       <NumberField
         label="左右分工傾向"
@@ -244,6 +250,19 @@
           Hold 可以提早放手
           <span class="field-hint">
             打開後 Hold 結尾 12 幀不必按住、很短的 Hold 只看頭判，手可以先放開去接別的音符。預設關閉，Hold 一律按到結尾。
+          </span>
+        </span>
+      </label>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={config.stairFlow}
+          onchange={(event) => set('stairFlow', event.currentTarget.checked)}
+        />
+        <span>
+          快速階梯一隻手刷完
+          <span class="field-hint">
+            打開後，又快又平均的一串相鄰鍵（例如繞一整圈）由起步那一側的手一路刷完，跨進另一半也不換手。預設打開；關掉時多半照左右半邊分給兩隻手。
           </span>
         </span>
       </label>
@@ -475,9 +494,10 @@
 </div>
 
 <style>
-  /* 評分方式：V4.1 卡佔一整列；TemotoAI-1 主卡（紺瑠璃、菖蒲）兩張並排。
+  /* 評分方式：V4.1 卡佔一整列；AI 卡一律半寬、兩兩並排，換系列時從新的一排開始（使用者指定）：
+     TemotoAI-2 山吹自己一排（右半空著），下一排是 TemotoAI-1 的紺瑠璃與菖蒲しょうぶ。
      分隔列「顯示更多模型」下面同一套規則：V4、V3.2、V3.1、V3 由新到舊各佔一整列，
-     舊的五張 TemotoAI-1 兩兩並排（瑠璃紺與菖蒲、瑠璃與茜各一排，常磐第三排同尺寸）。 */
+     五張舊的 TemotoAI-1 兩兩並排（瑠璃紺與菖蒲あやめ、瑠璃與茜各一排，常磐第三排同尺寸）。 */
   .models {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -486,6 +506,10 @@
 
   .models .model-card--v3 {
     grid-column: 1 / -1;
+  }
+
+  .models .model-card--row {
+    grid-column-start: 1;
   }
 
   /* 分隔列：兩側細線，中間是無填滿的膠囊按鈕。 */

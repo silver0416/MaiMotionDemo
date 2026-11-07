@@ -73,8 +73,9 @@ function apply(stored: StoredSettings): void {
   if (stored.config && typeof stored.config === 'object') {
     // 逐欄合併並補上加入 V3 前沒有的 v3 欄位；已選的評分方式與各版數值原樣保留。
     const draft = migrateDraft(stored.config, session.config);
-    // 主卡換代前的存檔選的是當時的主卡：換成這一代對應的主卡（只在讀到舊版號時做一次）。
-    session.config = (stored.lineup ?? 1) < MAIN_LINEUP ? promoteMainCards(draft) : draft;
+    // 主卡換代前的存檔選的是當時的主卡：一代一代換成這一代對應的主卡（只在讀到舊版號時做一次）。
+    const lineup = stored.lineup ?? 1;
+    session.config = lineup < MAIN_LINEUP ? promoteMainCards(draft, lineup) : draft;
   }
   if (typeof stored.firstSeconds === 'number' && Number.isFinite(stored.firstSeconds)) {
     session.firstSeconds = stored.firstSeconds;

@@ -63,6 +63,8 @@ fn engine() -> ScoringV3 {
         jack_exit_window: 0.17,
         hold_cross: 0.0,
         hold_cross_min: 0.3,
+        stair_flow: 0.0,
+        stair_flow_gap: 0.15,
     });
     ScoringV3::new(PreferenceConfigV3 {
         travel_comfort: 6.5,

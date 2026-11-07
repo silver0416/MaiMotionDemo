@@ -6,7 +6,6 @@
     SCORING_LABEL,
     SCORING_V3,
     STATUS_LABEL,
-    TEMOTO_LABEL,
     TEMOTO_MODELS,
     v3Label,
     V3_BREAKDOWN_KEYS,
@@ -37,18 +36,18 @@
     return TEMOTO_MODELS.find((model) => model.id === id) ?? null;
   });
   /**
-   * 核心把 Temoto 的結果寫在「Temoto-1」開頭的提醒：「Temoto-1：修改了 N 個手順…」，
-   * 或整份退回基座時的「Temoto-1 的修正在這份譜面走不下去…」（基座名稱由核心依模型寫入）。拉出來放在方案頁上方。
+   * 核心把 Temoto 的結果寫在「Temoto-1」或「Temoto-2」開頭的提醒：「Temoto-2：修改了 N 個手順…」，
+   * 或整份退回基座時的「Temoto-2 的修正在這份譜面走不下去…」（基座名稱由核心依模型寫入）。拉出來放在方案頁上方。
    */
-  /** 核心提醒文字的開頭（Rust 寫死），與介面顯示名稱 TEMOTO_LABEL 無關。 */
-  const TEMOTO_PREFIX = 'Temoto-1';
-  const isTemotoWarning = (warning: string) => warning.startsWith(TEMOTO_PREFIX);
+  /** 核心提醒文字的開頭（Rust 的 TemotoModel::note_head 寫死），與介面顯示名稱 TemotoAI-1／TemotoAI-2 無關。 */
+  const TEMOTO_PREFIX = /^Temoto-\d+/;
+  const isTemotoWarning = (warning: string) => TEMOTO_PREFIX.test(warning);
   /** 畫面上不提模型的訓練來源（使用者要求）；舊快取的文字開頭可能還有「依玩家影片學到的打法」。 */
   const temotoNote = $derived.by(() => {
     const warning = solution?.warnings.find(isTemotoWarning);
     if (!warning) return null;
-    // 標題已經是 Temoto-1，內文開頭的「Temoto-1：」或「Temoto-1 的」不再重複。
-    const text = warning.slice(TEMOTO_PREFIX.length).replace(/^(?:：|\s*的)/, '');
+    // 標題已經是模型名稱，內文開頭的「Temoto-2：」或「Temoto-2 的」不再重複。
+    const text = warning.replace(TEMOTO_PREFIX, '').replace(/^(?:：|\s*的)/, '');
     return text.replace(/^依玩家(?:手元)?影片學(?:到|來)的打法/, '').trim();
   });
   /** 部分解的總結提醒（「模型有 N 處走不下去…」）已由下方的略過清單說明，不在核心提醒重複。 */
@@ -235,8 +234,8 @@
     {#if temoto}
       <section class="section temoto-section">
         <div class={`temoto-note temoto-note--${temoto.color}`} role="note">
-          <span class="temoto-head">{TEMOTO_LABEL}</span>
-          <p class="small">{temotoNote ?? `這份結果經過 ${TEMOTO_LABEL} 修正。`}</p>
+          <span class="temoto-head">{temoto.label}</span>
+          <p class="small">{temotoNote ?? `這份結果經過 ${temoto.label} 修正。`}</p>
         </div>
       </section>
     {/if}
@@ -541,7 +540,7 @@
             <dt>模型</dt>
             <dd>
               {#if temoto}
-                <span class={`model-tag model-tag--${temoto.color}`}><span class="temoto-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
+                <span class={`model-tag model-tag--${temoto.color}`}><span class="temoto-dot" aria-hidden="true"></span>{temoto.label}</span>
               {:else}
                 {v3Label((solution.configSnapshot as SolverConfig).v3Variant)}
               {/if}
@@ -562,6 +561,8 @@
               <dd>{solution.configSnapshot.slideShortcut ? '依判定區抄近' : '沿星星畫完'}</dd>
               <dt>Hold</dt>
               <dd>{solution.configSnapshot.holdEarlyRelease === false ? '按到結尾' : '可提早放手'}</dd>
+              <dt>快速階梯</dt>
+              <dd>{solution.configSnapshot.stairFlow ? '一隻手刷完' : '關閉'}</dd>
             <dt>搜尋寬度</dt>
             <dd>{solution.configSnapshot.beamWidth}</dd>
             <dt>候選數</dt>
@@ -675,8 +676,8 @@
     font-size: var(--fs-xs);
   }
 
-  /* Temoto-1 修正摘要：和參數頁的評分方式卡同一套——實色凸起底、沒有框線，
-     右下角一塊模型原色（常磐色 #007b43／茜色 #b7282e）的四分之一圓，邊緣硬切。 */
+  /* TemotoAI 修正摘要：和參數頁的評分方式卡同一套——實色凸起底、沒有框線，
+     右下角一塊模型原色（山吹色 #f8b500、紺瑠璃 #164a84 …）的四分之一圓，邊緣硬切。 */
   .temoto-section {
     padding-bottom: 0;
     border-bottom: none;
@@ -708,6 +709,12 @@
     height: 80px;
     border-radius: 50%;
     background: var(--model-fill);
+  }
+
+  .temoto-note--yamabuki,
+  .model-tag--yamabuki {
+    --model: var(--c-yamabuki);
+    --model-fill: var(--c-yamabuki-deep);
   }
 
   .temoto-note--konruri,

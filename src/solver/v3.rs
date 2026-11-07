@@ -60,6 +60,10 @@ pub(super) struct Context<'a> {
     sweep_prev: BTreeMap<&'a str, (&'a str, f64)>,
     /// 快速階梯一組（stairUnit）的第二顆起 → 上一步與換手成本。
     unit_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 快速而等距的階梯（stairFlow）的一步 → 上一步，以及起步那一側的手。
+    flow_prev: BTreeMap<&'a str, (&'a str, Hand)>,
+    /// stairFlow 免收的比例：設定打開時是 STAIR_FLOW_SHARE，否則照權重檔（研究用）。
+    flow_share: f64,
     /// 同鍵兩顆後換鍵的那顆（jackExit）→ 那兩顆、成本，以及兩顆間隔是否夠慢、不該拆給兩手。
     exit_prev: BTreeMap<&'a str, ([&'a str; 2], f64, bool)>,
     /// 兩顆按鍵同時的和弦（chordCross）→ 另一顆。
@@ -122,6 +126,12 @@ impl<'a> Context<'a> {
             ));
         }
         let tuning = crate::scoring_v3::tuning();
+        // stairFlow：設定的開關打開時用 2026-11-07 選定的權重；關閉時照權重檔（內建版本都是 0）。
+        let (flow_share, flow_gap) = if c.stair_flow {
+            (STAIR_FLOW_SHARE, STAIR_FLOW_GAP)
+        } else {
+            (tuning.stair_flow, tuning.stair_flow_gap)
+        };
         let (found, group_weight) = match phrases::given_groups(chart) {
             Some(given) => (
                 given.into_iter().map(|(n, r)| (n, r, None)).collect(),
@@ -182,6 +192,12 @@ impl<'a> Context<'a> {
             stair_prev: stair_steps(chart, c.travel_comfort),
             sweep_prev: sweep_steps(chart),
             unit_prev: stair_units(chart),
+            flow_prev: if flow_share > 0.0 {
+                stair_flow_steps(chart, flow_gap)
+            } else {
+                BTreeMap::new()
+            },
+            flow_share,
             exit_prev: jack_exits(chart),
             jack_prev: jack_runs(chart),
             chord_pair: chord_pairs(chart),
@@ -309,6 +325,8 @@ impl<'a> Context<'a> {
             data.parts.reversal += terms.reversal;
             data.parts.workload += terms.workload;
             data.parts.ownership_switch += terms.ownership_switch;
+            // stairFlow 退還的 homeEntry（沒有時是 0）
+            data.parts.excursion += terms.excursion;
         }
         for handover in fresh_values(&old.handovers, &next.handovers) {
             next.v3.parts.handover += self.engine.handover(handover.swap);
@@ -819,6 +837,20 @@ impl<'a> Context<'a> {
             0.0
         };
         let history = &mut histories[hand.index()];
+        // stairFlow：起步那一側的手剛打完同一段快速階梯的上一格，接著打這一格
+        // （回傳上一格的位置）。
+        let flow = match (key, event.note_id.as_deref()) {
+            (Some(_), Some(id)) => self.flow_prev.get(id).and_then(|(prev, side)| {
+                let (prev, now) = (self.notes[prev], self.notes[id]);
+                let (p, t) = history.last_action()?;
+                (*side == hand
+                    && p.distance(prev.position) <= EPS
+                    && (t - prev.time_seconds).abs()
+                        <= 0.5 * (now.time_seconds - prev.time_seconds))
+                    .then_some(p)
+            }),
+            _ => None,
+        };
         let (mut switch, mut scale) = (0.0, 1.0);
         if let Some(key) = key {
             let chord = self.lookahead.is_button_chord(time);
@@ -837,7 +869,16 @@ impl<'a> Context<'a> {
             Some(key) => roles.observe(hand, point, key, self.lookahead.revisit(key, time), time),
             None => roles.release(hand),
         }
-        terms.ownership_switch = switch + split;
+        // 沿著階梯走進另一隻手的鍵或那一半，鍵位歸屬與 homeEntry 依 stairFlow 比例不收；
+        // homeEntry 已在移動路徑上收過，這裡退還上一格到這一格那段直線的份。
+        let waive = match flow {
+            Some(_) => self.flow_share,
+            None => 0.0,
+        };
+        terms.ownership_switch = switch * (1.0 - waive) + split;
+        if let Some(from) = flow {
+            terms.excursion = -waive * self.engine.home_entry_between(hand, from, point);
+        }
         Ok(terms)
     }
 
@@ -1130,6 +1171,7 @@ impl<'a> Context<'a> {
             expected.reversal += terms.reversal;
             expected.workload += terms.workload;
             expected.ownership_switch += terms.ownership_switch;
+            expected.excursion += terms.excursion;
         }
         for handover in state.handovers.to_vec() {
             expected.handover += self.engine.handover(handover.swap);
@@ -1339,6 +1381,30 @@ fn single_contacts(chart: &Chart) -> Vec<Option<&Note>> {
     singles
 }
 
+/// 只看按鍵（Tap、Hold、星星頭）：同時刻只有一顆按鍵的依時間排序，同時刻有兩顆以上按鍵的
+/// 那個時刻記為 None；同時的 Touch 不算。
+fn button_singles(chart: &Chart) -> Vec<Option<&Note>> {
+    let mut buttons: Vec<&Note> = chart
+        .notes
+        .iter()
+        .filter(|n| n.touch_area.is_none() && (n.kind != "slide" || n.has_head))
+        .collect();
+    buttons.sort_by(|a, b| a.time_seconds.total_cmp(&b.time_seconds));
+    let mut singles: Vec<Option<&Note>> = vec![];
+    let mut last_time = f64::NEG_INFINITY;
+    for note in buttons {
+        if (note.time_seconds - last_time).abs() < 0.002 {
+            if let Some(last) = singles.last_mut() {
+                *last = None;
+            }
+        } else {
+            singles.push(Some(note));
+        }
+        last_time = note.time_seconds;
+    }
+    singles
+}
+
 /// sweepBreak：相鄰兩顆單顆接觸（按鍵或 Touch）間隔不超過 sweepWindow、距離不超過
 /// sweepStep 時，後一顆 → (前一顆, 換手成本)。標記者在這種地方幾乎都用同一隻手
 /// （例如 tap 6 → E6 → B5 往內刷）。
@@ -1470,6 +1536,61 @@ fn stair_units(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
             }
         }
         i = j + 1;
+    }
+    result
+}
+
+/// 設定打開 stairFlow 時免收的比例與每步最長間隔（2026-11-07 在新 30 首選定：1.0、0.10 秒；
+/// 0.15 秒打平）。
+const STAIR_FLOW_SHARE: f64 = 1.0;
+const STAIR_FLOW_GAP: f64 = 0.10;
+
+/// stairFlow：單顆按鍵往同方向走相鄰鍵、每步不超過 `max_gap` 的一串（三顆以上）裡，
+/// 間隔和前一步或後一步相差 25% 以內的每一步 → (上一顆, 起步那一側的手)。開頭較慢的弱拍、
+/// 節奏改變的那一步不算；起步是第一個等距步的起點，鍵 1–4 是右手那側、5–8 是左手那側。
+/// 折返時轉折那顆同時是下一串的開頭。同時落下的 Touch 不切斷階梯（火炎地獄那種一路轉圈、
+/// 每隔幾拍另一手補一個 Touch）。標記者在新 30 首把每步不到 0.15 秒的階梯 84% 一隻手
+/// 刷完，繞一整圈、跨進另一半也一樣；只在半邊的快速階梯 102／107 段由那一側的手打
+/// （2026-11-07）。只有起步那側的手免收，另一側的手整段打另一半不會因此變便宜。
+fn stair_flow_steps(chart: &Chart, max_gap: f64) -> BTreeMap<&str, (&str, Hand)> {
+    let mut result = BTreeMap::new();
+    let seq = button_singles(chart);
+    let gap = |a: &Note, b: &Note| b.time_seconds - a.time_seconds;
+    let even = |a: f64, b: f64| (a - b).abs() <= 0.25 * a.max(b) + EPS;
+    let mut i = 0;
+    while i < seq.len() {
+        let mut j = i;
+        let mut direction = None;
+        while let (Some(a), Some(Some(b))) = (seq[j], seq.get(j + 1)) {
+            let d = (b.button + 8 - a.button) % 8;
+            if !matches!(d, 1 | 7) || gap(a, b) > max_gap + EPS || direction.is_some_and(|x| x != d)
+            {
+                break;
+            }
+            direction = Some(d);
+            j += 1;
+        }
+        if j >= i + 2 {
+            let run: Vec<&Note> = seq[i..=j].iter().flatten().copied().collect();
+            let gaps: Vec<f64> = run.windows(2).map(|p| gap(p[0], p[1])).collect();
+            let steady: Vec<bool> = (0..gaps.len())
+                .map(|k| {
+                    (k > 0 && even(gaps[k], gaps[k - 1]))
+                        || (k + 1 < gaps.len() && even(gaps[k], gaps[k + 1]))
+                })
+                .collect();
+            if let Some(k0) = steady.iter().position(|s| *s) {
+                let side = if (1..=4).contains(&run[k0].button) {
+                    Hand::R
+                } else {
+                    Hand::L
+                };
+                for k in (k0..gaps.len()).filter(|k| steady[*k]) {
+                    result.insert(run[k + 1].id.as_str(), (run[k].id.as_str(), side));
+                }
+            }
+        }
+        i = if j > i { j } else { i + 1 };
     }
     result
 }

@@ -6,7 +6,6 @@
     SCHEMA_VERSION,
     SCORING_LABEL,
     SCORING_V3,
-    TEMOTO_LABEL,
     TEMOTO_MODELS,
     v3Label,
   } from '../lib/contract';
@@ -186,19 +185,20 @@
     return Number.isNaN(time) ? BUILD_TIME : formatTime(time);
   });
 
-  /** 目前參數頁選的 TemotoAI-1；null 是只用基座。畫面上只顯示 TemotoAI-1 與顏色，複製的版本資訊才帶模型 id。 */
+  /** 目前參數頁選的 TemotoAI；null 是只用基座。畫面上只顯示系列名稱與顏色，複製的版本資訊才帶模型 id。 */
   const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
-  /** 基座名稱：TemotoAI-1 用模型附帶的基座（主卡是 V4.1），沒選模型時是參數頁選的基座。 */
+  /** 基座名稱：TemotoAI 用模型附帶的基座（主卡 TemotoAI-2 是 V4.1），沒選模型時是參數頁選的基座。 */
   const baseName = $derived(v3Label(temoto ? temoto.base : session.config.v3Variant));
 
   function versionText(): string {
-    const model = temoto ? `${TEMOTO_LABEL}（${temoto.id}，基於 ${baseName}）` : baseName;
+    const model = temoto ? `${temoto.label}（${temoto.id}，基於 ${baseName}）` : baseName;
     return [
       `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
       `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
       `Build：${BUILD_ID}（${BUILD_TIME}）`,
       `判定規則修訂：${SOLVER_REVISION}`,
       `模型：${model}`,
+      `快速階梯一隻手刷完：${session.config.stairFlow ? '開' : '關'}`,
       `評分方式：${SCORING_LABEL}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
     ].join('\n');
   }
@@ -392,7 +392,7 @@
         <dt>模型</dt>
         <dd>
           {#if temoto}
-            <span class={`scoring-model scoring-model--${temoto.color}`}><span class="scoring-dot" aria-hidden="true"></span>{TEMOTO_LABEL}</span>
+            <span class={`scoring-model scoring-model--${temoto.color}`}><span class="scoring-dot" aria-hidden="true"></span>{temoto.label}</span>
             <span class="muted">基於 {baseName}</span>
           {:else}
             {baseName}
@@ -1050,7 +1050,7 @@
     padding: var(--space-2) 0;
   }
 
-  /* 目前的模型：TemotoAI-1 以模型原色的圓點區分各個模型，不顯示模型名稱。 */
+  /* 目前的模型：TemotoAI 以模型原色的圓點區分各個模型，只寫系列名稱（TemotoAI-1／TemotoAI-2），不顯示模型名稱。 */
   .scoring-model {
     display: inline-flex;
     align-items: center;
@@ -1064,6 +1064,11 @@
     height: 9px;
     border-radius: var(--radius-pill);
     background: var(--dot);
+  }
+
+  /* 山吹色原值在淺色配色只有 1.7:1，圓點用 --c-yamabuki（深色配色是原值，淺色配色是加深的 #9c5e00）。 */
+  .scoring-model--yamabuki {
+    --dot: var(--c-yamabuki);
   }
 
   .scoring-model--konruri {

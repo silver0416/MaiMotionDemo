@@ -231,7 +231,11 @@ pub struct SolverConfig {
     /// Hold／Touch Hold 可以提早放手：結尾 12 幀不檢查按壓、總長不超過頭尾不檢查區間的
     /// 短 Hold 只看頭判。預設 false：一律按到結尾（真人標註裡提早放手去接別的音符很少見）。
     pub hold_early_release: bool,
-    /// V3 限定：以 Temoto 模型（從玩家手元影片學到的打法）修正手順；None 為純 V3。
+    /// V3：快速等距的階梯由起步那一側的手一路刷完（stairFlow：那隻手接著打下一格時不收
+    /// 鍵位歸屬與進入另一半的成本，權重 1、每步 0.10 秒內，見 `scoring_v3::TuningV3::stair_flow`）。
+    /// 預設 false；App 的參數頁預設打開（2026-11-07 使用者決定）。
+    pub stair_flow: bool,
+    /// V3 限定：以 Temoto 模型修正手順（TemotoAI-1 學玩家手元影片的打法，TemotoAI-2 學手標譜面）；None 為純 V3。
     pub ml_model: Option<String>,
     /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`、`v4`、`v4.1`，見 `scoring_v3::V3_VARIANTS`）；None 為原始 V3。
     /// Temoto 模型自帶基座權重，兩者不能同時指定。
@@ -268,6 +272,7 @@ struct SolverConfigWire {
     palm_fallback_radius: f64,
     slide_shortcut: bool,
     hold_early_release: bool,
+    stair_flow: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     ml_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -309,6 +314,7 @@ impl From<&SolverConfig> for SolverConfigWire {
             palm_fallback_radius: c.palm_fallback_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
+            stair_flow: c.stair_flow,
             ml_model: c.ml_model.clone(),
             v3_variant: c.v3_variant.clone(),
             preparation_seconds: c.preparation_seconds,
@@ -345,6 +351,7 @@ impl From<SolverConfigWire> for SolverConfig {
             palm_fallback_radius: c.palm_fallback_radius,
             slide_shortcut: c.slide_shortcut,
             hold_early_release: c.hold_early_release,
+            stair_flow: c.stair_flow,
             ml_model: c.ml_model,
             v3_variant: c.v3_variant,
             preparation_seconds: c.preparation_seconds,
@@ -389,11 +396,23 @@ impl<'de> Deserialize<'de> for SolverConfig {
             "human-motion-v3" => LEGACY_KEYS.into_iter().chain(["repeatTolerance"]).collect(),
             "hand-affinity-v2" => LEGACY_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut", "mlModel", "v3Variant"])
+                .chain([
+                    "jackTolerance",
+                    "slideShortcut",
+                    "stairFlow",
+                    "mlModel",
+                    "v3Variant",
+                ])
                 .collect(),
             _ => V2_KEYS
                 .into_iter()
-                .chain(["jackTolerance", "slideShortcut", "mlModel", "v3Variant"])
+                .chain([
+                    "jackTolerance",
+                    "slideShortcut",
+                    "stairFlow",
+                    "mlModel",
+                    "v3Variant",
+                ])
                 .collect(),
         };
         if let Some(key) = forbidden.iter().find(|key| value.get(**key).is_some()) {
@@ -420,6 +439,7 @@ impl Serialize for SolverConfig {
         let map = value.as_object_mut().unwrap();
         if !self.is_v3() {
             map.remove("slideShortcut");
+            map.remove("stairFlow");
         }
         if !self.is_legacy() {
             map.remove(if self.is_v3() {
@@ -462,6 +482,7 @@ impl Default for SolverConfig {
             palm_fallback_radius: 0.7,
             slide_shortcut: false,
             hold_early_release: false,
+            stair_flow: false,
             ml_model: None,
             v3_variant: None,
             preparation_seconds: 1.0,
@@ -526,6 +547,9 @@ impl SolverConfig {
         }
         if self.slide_shortcut && !self.is_v3() {
             return Err("slideShortcut 只適用 human-motion-v3".into());
+        }
+        if self.stair_flow && !self.is_v3() {
+            return Err("stairFlow 只適用 human-motion-v3".into());
         }
         if let Some(id) = &self.ml_model {
             if !self.is_v3() {

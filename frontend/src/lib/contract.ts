@@ -55,37 +55,43 @@ export const DEFAULT_DRAFT: ConfigDraft = {
   ...DEFAULT_BASE,
   v3: { ...DEFAULT_V3_PREFERENCES },
   slideShortcut: false,
+  // 2026-11-07 使用者決定預設打開（Rust 的 SolverConfig 預設關閉）
+  stairFlow: true,
   mlModel: null,
   v3Variant: 'v4.1',
 };
 
 /**
- * Temoto 模型（與 src/temoto.rs 的 MODEL_IDS 一致）。介面上一律標「TemotoAI-1」，
- * 選項卡只用 color 區分：konruri＝紺瑠璃、shoubu＝菖蒲色（しょうぶいろ）、rurikon＝瑠璃紺、
- * ayame＝菖蒲色（あやめいろ）、ruri＝瑠璃色、akane＝茜色、tokiwa＝常磐色。
+ * Temoto 模型（與 src/temoto.rs 的 MODEL_IDS 一致）。介面上只標系列名稱（label），
+ * 選項卡只用 color 區分：yamabuki＝山吹色（TemotoAI-2）；konruri＝紺瑠璃、shoubu＝菖蒲色（しょうぶいろ）、
+ * rurikon＝瑠璃紺、ayame＝菖蒲色（あやめいろ）、ruri＝瑠璃色、akane＝茜色、tokiwa＝常磐色（TemotoAI-1）。
  * 2026-10-30 使用者決定：主卡是瑠璃紺（瑠璃＋V4）與菖蒲（V4 重訓），舊的三個收進「顯示更多模型」。
  * 2026-11-05 使用者決定：主卡換成紺瑠璃與菖蒲（しょうぶ），是同樣兩個網路改配 V4.1；
- * 瑠璃紺與菖蒲（あやめ）收進「顯示更多模型」。各清單的順序就是參數頁的順序。
+ * 瑠璃紺與菖蒲（あやめ）收進「顯示更多模型」。
+ * 2026-11-07 使用者決定：主卡加上山吹（TemotoAI-2，只用手標譜面訓練，配 V4.1），紺瑠璃與菖蒲（しょうぶ）
+ * 仍是主卡、排在山吹下一排；AI 卡一律半寬。各清單的順序就是參數頁的順序。
  */
-/** 介面顯示名稱（2026-10-16 使用者改為 TemotoAI-1；核心的模型 id 與提醒文字開頭仍是 Temoto-1）。 */
-export const TEMOTO_LABEL = 'TemotoAI-1';
-export type TemotoColor = 'konruri' | 'shoubu' | 'rurikon' | 'ayame' | 'ruri' | 'akane' | 'tokiwa';
+/** 介面顯示的系列名稱（2026-10-16 起 TemotoAI-1，2026-11-07 起山吹是 TemotoAI-2）。核心提醒文字的開頭是 Temoto-1／Temoto-2。 */
+export type TemotoLabel = 'TemotoAI-1' | 'TemotoAI-2';
+export type TemotoColor = 'yamabuki' | 'konruri' | 'shoubu' | 'rurikon' | 'ayame' | 'ruri' | 'akane' | 'tokiwa';
 export interface TemotoModel {
   id: MlModelId;
   color: TemotoColor;
+  label: TemotoLabel;
   /** 模型附帶的基座（與 tests/temoto.rs 的 base_label_follows_model_tuning 一致）。 */
   base: BaseChoice;
 }
 export const MAIN_MODELS: readonly TemotoModel[] = [
-  { id: 'temoto-1-konruri', color: 'konruri', base: 'v4.1' },
-  { id: 'temoto-1-shoubu', color: 'shoubu', base: 'v4.1' },
+  { id: 'temoto-2-yamabuki', color: 'yamabuki', label: 'TemotoAI-2', base: 'v4.1' },
+  { id: 'temoto-1-konruri', color: 'konruri', label: 'TemotoAI-1', base: 'v4.1' },
+  { id: 'temoto-1-shoubu', color: 'shoubu', label: 'TemotoAI-1', base: 'v4.1' },
 ];
 export const MORE_MODELS: readonly TemotoModel[] = [
-  { id: 'temoto-1-rurikon', color: 'rurikon', base: 'v4' },
-  { id: 'temoto-1-ayame', color: 'ayame', base: 'v4' },
-  { id: 'temoto-1-ruri', color: 'ruri', base: 'v3.2' },
-  { id: 'temoto-1-akane', color: 'akane', base: 'v3.1' },
-  { id: 'temoto-1-tokiwa', color: 'tokiwa', base: 'v3' },
+  { id: 'temoto-1-rurikon', color: 'rurikon', label: 'TemotoAI-1', base: 'v4' },
+  { id: 'temoto-1-ayame', color: 'ayame', label: 'TemotoAI-1', base: 'v4' },
+  { id: 'temoto-1-ruri', color: 'ruri', label: 'TemotoAI-1', base: 'v3.2' },
+  { id: 'temoto-1-akane', color: 'akane', label: 'TemotoAI-1', base: 'v3.1' },
+  { id: 'temoto-1-tokiwa', color: 'tokiwa', label: 'TemotoAI-1', base: 'v3' },
 ];
 export const TEMOTO_MODELS: readonly TemotoModel[] = [...MAIN_MODELS, ...MORE_MODELS];
 
@@ -119,27 +125,40 @@ export const MORE_BASES: readonly { id: BaseChoice; label: string }[] = [
 
 /**
  * 主卡換代的版號：1＝V4、瑠璃紺、菖蒲（あやめ）（2026-10-30），2＝V4.1、紺瑠璃、菖蒲（しょうぶ）（2026-11-05）。
- * 存檔的版號比這個舊時，選的若是上一代的主卡就換成這一代對應的主卡；主動從「顯示更多模型」選的不動。
+ * 2026-11-07 加上山吹（TemotoAI-2）沒有換掉任何主卡，版號不變。
+ * 存檔的版號比這個舊時，選的若是當時的主卡就一代一代換成這一代對應的主卡；主動從「顯示更多模型」選的不動。
  */
 export const MAIN_LINEUP = 2;
-const NEXT_MAIN_MODEL: Partial<Record<MlModelId, MlModelId>> = {
-  'temoto-1-rurikon': 'temoto-1-konruri',
-  'temoto-1-ayame': 'temoto-1-shoubu',
-};
+/** 每一代換主卡時的對應：索引 k 是從第 k+1 代換到第 k+2 代。 */
+const NEXT_MAIN: readonly {
+  model: Partial<Record<MlModelId, MlModelId>>;
+  base: Partial<Record<BaseChoice, BaseChoice>>;
+}[] = [
+  { model: { 'temoto-1-rurikon': 'temoto-1-konruri', 'temoto-1-ayame': 'temoto-1-shoubu' }, base: { v4: 'v4.1' } },
+];
 
-export function promoteMainCards(draft: ConfigDraft): ConfigDraft {
-  if (draft.mlModel) {
-    const next = NEXT_MAIN_MODEL[draft.mlModel];
-    return next ? { ...draft, mlModel: next } : draft;
+/** 從存檔的版號（沒寫是 1）換到目前的主卡。 */
+export function promoteMainCards(draft: ConfigDraft, from = 1): ConfigDraft {
+  let next = draft;
+  for (let k = Math.max(from, 1) - 1; k < MAIN_LINEUP - 1; k++) {
+    const step = NEXT_MAIN[k];
+    if (!step) break;
+    if (next.mlModel) {
+      const model = step.model[next.mlModel];
+      if (model) next = { ...next, mlModel: model };
+    } else if (next.v3Variant) {
+      const base = step.base[next.v3Variant];
+      if (base) next = { ...next, v3Variant: base };
+    }
   }
-  return draft.v3Variant === 'v4' ? { ...draft, v3Variant: MAIN_BASE.id } : draft;
+  return next;
 }
 
 function isBaseChoice(value: unknown): value is BaseChoice {
   return value === 'v3' || isV3VariantId(value);
 }
 
-/** 基座在畫面上的名稱：V3 變體用它的標籤，原始 V3（'v3' 或沒選）是 V3（Temoto 模型另顯示 TEMOTO_LABEL）。 */
+/** 基座在畫面上的名稱：V3 變體用它的標籤，原始 V3（'v3' 或沒選）是 V3（Temoto 模型另顯示系列名稱 label）。 */
 export function v3Label(variant: BaseChoice | null | undefined): string {
   return V3_VARIANTS.find((item) => item.id === variant)?.label ?? 'V3';
 }
@@ -147,12 +166,13 @@ export function v3Label(variant: BaseChoice | null | undefined): string {
 export const BASE_KEYS = Object.keys(DEFAULT_BASE) as (keyof BaseSolverConfig)[];
 export const V3_PREFERENCE_KEYS = Object.keys(DEFAULT_V3_PREFERENCES) as (keyof V3PreferenceControls)[];
 
-/** 投影成送給 Rust 的 solverConfig：共用欄位、V3 四個控制與 slideShortcut。 */
+/** 投影成送給 Rust 的 solverConfig：共用欄位、V3 四個控制、slideShortcut 與 stairFlow。 */
 export function projectConfig(draft: ConfigDraft): SolverConfig {
   const config = { scoringModel: SCORING_V3 } as Record<string, unknown>;
   for (const key of BASE_KEYS) config[key] = draft[key];
   for (const key of V3_PREFERENCE_KEYS) config[key] = draft.v3[key];
   config.slideShortcut = draft.slideShortcut;
+  config.stairFlow = draft.stairFlow;
   if (draft.mlModel) config.mlModel = draft.mlModel;
   else if (draft.v3Variant && draft.v3Variant !== 'v3') config.v3Variant = draft.v3Variant;
   return config as unknown as SolverConfig;
@@ -186,6 +206,8 @@ export function migrateDraft(stored: unknown, current: ConfigDraft): ConfigDraft
     }
   }
   if (typeof raw.slideShortcut === 'boolean') next.slideShortcut = raw.slideShortcut;
+  // 加入開關前保存的參數沒有這個欄位：用目前的預設（打開）
+  if (typeof raw.stairFlow === 'boolean') next.stairFlow = raw.stairFlow;
   if (raw.mlModel === null || isMlModelId(raw.mlModel)) next.mlModel = raw.mlModel;
   if (raw.v3Variant === null || isBaseChoice(raw.v3Variant)) next.v3Variant = raw.v3Variant;
   // 兩者只能選一個；舊資料或手改的資料兩個都有時以 Temoto 模型為準

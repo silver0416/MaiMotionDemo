@@ -190,6 +190,18 @@ pub struct TuningV3 {
     /// chord; 0 = off.
     pub hold_cross: f64,
     pub hold_cross_min: f64,
+    /// Share of key ownership and home entry waived when a hand plays the
+    /// next step of a fast, even stair it is already playing: single buttons
+    /// stepping to the neighbour in one direction, every gap at most
+    /// stair_flow_gap, the step within 25% of a neighbouring step (a pickup or
+    /// a change of rhythm is not part of the flow). The annotator sweeps such
+    /// a stair with one hand around the ring and into the other half; V4.1
+    /// handed the far half over because those keys belonged to the other
+    /// hand. 0 = off, 1 = waive both completely. Built-in variants keep 0; the
+    /// App turns the rule on through `SolverConfig::stair_flow` (1 and 0.10 s),
+    /// which takes precedence over these research fields.
+    pub stair_flow: f64,
+    pub stair_flow_gap: f64,
 }
 impl Default for TuningV3 {
     fn default() -> Self {
@@ -250,6 +262,8 @@ impl Default for TuningV3 {
             jack_exit_window: 0.17,
             hold_cross: 0.0,
             hold_cross_min: 0.3,
+            stair_flow: 0.0,
+            stair_flow_gap: 0.15,
         }
     }
 }
@@ -534,6 +548,12 @@ impl ScoringV3 {
                 weight * (tuning().home_entry * entry + tuning().home_exposure * exposure),
             )?,
         })
+    }
+    /// motion_terms 收的 homeEntry 中，手直線從 `from` 移到 `to` 的那一份（stairFlow 退還用）。
+    pub(crate) fn home_entry_between(&self, hand: Hand, from: Point, to: Point) -> f64 {
+        let weight = self.config.home_preference / 100.;
+        let entry = (opposite_depth(hand, to).powi(2) - opposite_depth(hand, from).powi(2)).max(0.);
+        weight * tuning().home_entry * entry
     }
     pub fn action(
         &self,

@@ -159,14 +159,20 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
    * 偷懶只靠手掌範圍同時覆蓋多條 Slide 或順手點到 Tap。只有 V3 接受；舊快照沒有這個欄位。
    */
   slideShortcut?: boolean;
+  /**
+   * 快速而間隔平均的一串相鄰鍵（例如繞一整圈）由起步那一側的手一路刷完（Rust 的 stairFlow）。
+   * Rust 預設 false，參數頁預設打開（2026-11-07 使用者決定）。舊快照沒有這個欄位，當時是關閉。
+   */
+  stairFlow?: boolean;
 }
 
 /**
- * Temoto 模型（從玩家手元影片學到的打法修正基座）。介面上統一顯示「TemotoAI-1」，
- * 各變體只用顏色區分（主卡紺瑠璃、菖蒲色しょうぶいろ；更多模型裡的瑠璃紺、菖蒲色あやめいろ、瑠璃色、茜色、常磐色），
- * 不顯示 id。
+ * Temoto 模型（修正基座的手順）。介面上只顯示系列名稱「TemotoAI-2」（主卡山吹色，只用手標譜面訓練）或
+ * 「TemotoAI-1」（學玩家手元影片；主卡紺瑠璃、菖蒲色しょうぶいろ，更多模型裡的瑠璃紺、菖蒲色あやめいろ、瑠璃色、茜色、常磐色），
+ * 各變體只用顏色區分，不顯示 id。
  */
 export type MlModelId =
+  | 'temoto-2-yamabuki'
   | 'temoto-1-konruri'
   | 'temoto-1-shoubu'
   | 'temoto-1-rurikon'
@@ -199,6 +205,8 @@ export type SolverConfig = V3SolverConfig & {
 export interface ConfigDraft extends BaseSolverConfig {
   v3: V3PreferenceControls;
   slideShortcut: boolean;
+  /** 快速階梯一隻手刷完，預設 true；保存資料沒有這個欄位時用預設。 */
+  stairFlow: boolean;
   /** null 為純 V3。選了 Temoto 時「打法偏好」的四個控制不影響結果，介面應隱藏。 */
   mlModel: MlModelId | null;
   /** 選的基座（預設 V4.1；沿用既有保存資料的欄位名）；選了 Temoto 模型時一律為 null（模型自帶基座）。 */

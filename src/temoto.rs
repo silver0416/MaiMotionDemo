@@ -1,4 +1,4 @@
-//! Temoto：從玩家手元影片學來的左右手修正模型（雙向 GRU）。
+//! Temoto：左右手修正模型（雙向 GRU）。TemotoAI-1 從玩家手元影片學來，TemotoAI-2（山吹）只用手標譜面訓練。
 //!
 //! 流程：V3 先求解 → 依譜面與 V3 的手算出每顆音符的特徵 → 模型估每顆用右手的機率
 //! → 以模型的手當限制重新求解（照標註求解的同一套機制），保證動作做得到。
@@ -30,7 +30,9 @@ const RANK_COL: usize = 15;
 /// （2026-10-30 使用者選入 App；tokiwa、akane、ruri 收進前端的「顯示更多模型」）。
 /// konruri（紺瑠璃）、shoubu（菖蒲，しょうぶ）是同樣兩個網路改配 V4.1 權重，不重訓
 /// （2026-11-05 使用者定名並換成主卡；rurikon、ayame 收進「顯示更多模型」）。
-pub const MODEL_IDS: [&str; 7] = [
+/// yamabuki（山吹）是 TemotoAI-2：只用 79 首手標譜面從頭訓練的分組架構，配 V4.1
+/// （2026-11-07 使用者定名並加進主卡；紺瑠璃、菖蒲仍是主卡，排在山吹下一排）。
+pub const MODEL_IDS: [&str; 8] = [
     "temoto-1-tokiwa",
     "temoto-1-akane",
     "temoto-1-ruri",
@@ -38,6 +40,7 @@ pub const MODEL_IDS: [&str; 7] = [
     "temoto-1-ayame",
     "temoto-1-konruri",
     "temoto-1-shoubu",
+    "temoto-2-yamabuki",
 ];
 
 /// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
@@ -330,6 +333,7 @@ impl TemotoModel {
     /// rurikon、ayame（分組架構，基座 V4）與 konruri、shoubu（基座 V4.1）也是 0.5。
     ///
     /// konruri、shoubu 和 rurikon、ayame 共用模型檔，只把附帶的權重換成 V4.1（不另存一份網路）。
+    /// yamabuki（TemotoAI-2）的模型檔本身就附 V4.1 權重，門檻 0.5（研究評測時也沒寫 flipAt）。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
         const RURIKON_FILE: &[u8] = include_bytes!("../models/temoto-1-rurikon.temoto");
         const AYAME_FILE: &[u8] = include_bytes!("../models/temoto-1-ayame.temoto");
@@ -340,6 +344,7 @@ impl TemotoModel {
         static AYAME: OnceLock<TemotoModel> = OnceLock::new();
         static KONRURI: OnceLock<TemotoModel> = OnceLock::new();
         static SHOUBU: OnceLock<TemotoModel> = OnceLock::new();
+        static YAMABUKI: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
                 Self {
@@ -370,6 +375,10 @@ impl TemotoModel {
                 name: id.into(),
                 tuning: crate::scoring_v3::variant_tuning("v4.1"),
                 ..Self::load(AYAME_FILE).expect("內建模型 ayame")
+            })),
+            "temoto-2-yamabuki" => Some(YAMABUKI.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-2-yamabuki.temoto"))
+                    .expect("內建模型 yamabuki")
             })),
             _ => None,
         }
@@ -406,6 +415,16 @@ impl TemotoModel {
 
     pub fn flip_at(&self) -> f32 {
         self.flip_at
+    }
+
+    /// 提醒文字的開頭：TemotoAI-2（id 以 temoto-2- 開頭）寫 Temoto-2，其餘（含研究用的模型檔）寫 Temoto-1。
+    /// 前端認這個開頭把提醒拉到方案頁上方，標題另用介面名稱 TemotoAI-1／TemotoAI-2。
+    pub fn note_head(&self) -> &'static str {
+        if self.name.starts_with("temoto-2-") {
+            "Temoto-2"
+        } else {
+            "Temoto-1"
+        }
     }
 
     /// 每顆音符（依 `features` 的排序）用右手的機率：[接觸, 滑行]。各 seed × 左右鏡像平均。
@@ -1149,6 +1168,7 @@ fn solve_inner(
     partial: bool,
 ) -> Result<Vec<Solution>, Diagnostic> {
     let base_name = model.base_label();
+    let head = model.note_head();
     let run = || -> Result<Vec<Solution>, Diagnostic> {
         let base = if partial {
             solver::solve_partial(chart, c)?
@@ -1215,10 +1235,10 @@ fn solve_inner(
                         .filter(|k| !k.active && k.flipped)
                         .count();
                     let note = match (applied, dropped) {
-                        (0, 0) => "Temoto-1：檢查過，沒有需要修改的手順。".to_string(),
-                        (a, 0) => format!("Temoto-1：修改了 {a} 個手順。"),
+                        (0, 0) => format!("{head}：檢查過，沒有需要修改的手順。"),
+                        (a, 0) => format!("{head}：修改了 {a} 個手順。"),
                         (a, d) => format!(
-                            "Temoto-1：修改了 {a} 個手順；另有 {d} 個修改動作上做不到，沿用 {base_name}。"
+                            "{head}：修改了 {a} 個手順；另有 {d} 個修改動作上做不到，沿用 {base_name}。"
                         ),
                     };
                     for s in &mut solutions {
@@ -1259,7 +1279,7 @@ fn solve_inner(
         for s in &mut base {
             s.warnings.insert(
                 0,
-                format!("Temoto-1 的修正在這份譜面走不下去，改用 {base_name} 的結果。"),
+                format!("{head} 的修正在這份譜面走不下去，改用 {base_name} 的結果。"),
             );
         }
         Ok(base)

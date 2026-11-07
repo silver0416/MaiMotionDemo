@@ -61,8 +61,9 @@ fn builtin_models_load() {
             "{id}"
         );
     }
-    // konruri（紺瑠璃）與 shoubu（菖蒲，しょうぶ）：同樣兩個網路（共用模型檔）改配 V4.1 的權重，門檻 0.5
-    for id in ["temoto-1-konruri", "temoto-1-shoubu"] {
+    // konruri（紺瑠璃）與 shoubu（菖蒲，しょうぶ）：同樣兩個網路（共用模型檔）改配 V4.1 的權重，門檻 0.5；
+    // yamabuki（山吹，TemotoAI-2）：只用手標譜面訓練的分組架構，模型檔本身附 V4.1 的權重，門檻 0.5
+    for id in ["temoto-1-konruri", "temoto-1-shoubu", "temoto-2-yamabuki"] {
         let model = TemotoModel::builtin(id).unwrap();
         assert!(model.grouped(), "{id}");
         assert_eq!(model.flip_at(), 0.5, "{id}");
@@ -85,6 +86,7 @@ fn base_label_follows_model_tuning() {
         ("temoto-1-ayame", "V4"),
         ("temoto-1-konruri", "V4.1"),
         ("temoto-1-shoubu", "V4.1"),
+        ("temoto-2-yamabuki", "V4.1"),
     ] {
         assert_eq!(
             TemotoModel::builtin(id).unwrap().base_label(),
@@ -186,8 +188,14 @@ fn ml_model_corrects_and_stays_feasible() {
         let response = analyze_chart(request(Some(id)));
         assert_eq!(response.status, "ok", "{id}: {:?}", response.diagnostics);
         let top = &response.solutions[0];
+        // 提醒開頭照系列：TemotoAI-2 寫 Temoto-2，其餘 Temoto-1（前端認這個開頭）
+        let head = if id.starts_with("temoto-2-") {
+            "Temoto-2"
+        } else {
+            "Temoto-1"
+        };
         assert!(
-            top.warnings[0].starts_with("Temoto-1"),
+            top.warnings[0].starts_with(head),
             "{id}: {}",
             top.warnings[0]
         );
