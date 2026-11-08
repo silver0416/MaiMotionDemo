@@ -248,7 +248,7 @@
           {/if}
         </div>
         {#if !library.status.runtime}
-          <p class="xsmall muted">YouTube 要求用 JS 執行環境解題，沒有的話很多影片會下載失敗。</p>
+          <p class="xsmall muted help">YouTube 要求用 JS 執行環境解題，沒有的話很多影片會下載失敗。</p>
         {/if}
         {#each Object.keys(library.installing) as tool (tool)}
           {@const value = toolPercent(tool as VideoTool)}
@@ -302,7 +302,7 @@
     {#if results}
       <section class="results" aria-label="搜尋結果">
         {#if results.length === 0}
-          <p class="small muted empty">找不到影片，換個關鍵字試試（例如加上「直撮り」）。</p>
+          <p class="small muted empty">找不到影片，換個關鍵字試試<span class="help">（例如加上「直撮り」）</span>。</p>
         {/if}
         {#each results as item (item.id)}
           {@const busy = !!library.downloads[item.id]}
@@ -355,9 +355,11 @@
       {/if}
       {#if listed.length === 0}
         <p class="small muted">
-          {library.entries.length === 0
-            ? '還沒有下載的影片。'
-            : '這份譜面還沒有影片。在這份譜面開著時下載或選用的影片會自動歸到這裡；打開「顯示所有影片」可以看其他譜面的影片。'}
+          {#if library.entries.length === 0}
+            還沒有下載的影片。
+          {:else}
+            這份譜面還沒有影片。<span class="help">在這份譜面開著時下載或選用的影片會自動歸到這裡；打開「顯示所有影片」可以看其他譜面的影片。</span>
+          {/if}
         </p>
       {:else}
         <ul class="library" aria-label="已下載的影片">

@@ -68,13 +68,14 @@
   --c-on-hand: #0b0d11;
   --c-focus: #8fd2ff;
 
-  /* TemotoAI 選項卡（色號取自 colordic 和色大辞典）：主卡是 TemotoAI-2 的山吹色（やまぶきいろ）；
+  /* TemotoAI 選項卡（色號取自 colordic 和色大辞典）：主卡是 TemotoAI-2 的山吹色（やまぶきいろ）與鉛丹色（えんたんいろ）；
      更多模型裡是 TemotoAI-1 的紺瑠璃（こんるり）、菖蒲色（しょうぶいろ）、瑠璃紺（るりこん）、菖蒲色（あやめいろ）、
      瑠璃色（るりいろ）、茜色（あかねいろ）與常磐色（ときわいろ）。
      瑠璃色是 2026-10-26、瑠璃紺與菖蒲色（あやめ）是 2026-10-30、紺瑠璃與菖蒲色（しょうぶ）是 2026-11-05、
-     山吹色是 2026-11-07 使用者核准的例外色相。深色底提高明度維持對比：同色相把 OKLCH 明度加 0.17，和瑠璃紺、瑠璃色的做法一樣
-     （菖蒲色あやめ與山吹色本身夠亮，深色底直接用原值）。 */
+     山吹色是 2026-11-07、鉛丹色是 2026-11-09 使用者核准的例外色相。深色底提高明度維持對比：同色相把 OKLCH 明度加 0.17，
+     和瑠璃紺、瑠璃色的做法一樣（菖蒲色あやめ、山吹色與鉛丹色本身夠亮，深色底直接用原值；鉛丹色在深色面板 5.8:1）。 */
   --c-yamabuki: #f8b500;
+  --c-entan: #ec6d51;
   --c-konruri: #497cba;
   --c-shoubu: #9973cd;
   --c-rurikon: #4f76c4;
@@ -82,11 +83,12 @@
   --c-ruri: #5184d6;
   --c-tokiwa: #3fae76;
   --c-akane: #e0565c;
-  /* 選中時填滿整張卡的顏色：山吹色 #f8b500、紺瑠璃 #164a84、菖蒲色しょうぶ #674196、瑠璃紺 #19448e、
+  /* 選中時填滿整張卡的顏色：山吹色 #f8b500、鉛丹色 #ec6d51、紺瑠璃 #164a84、菖蒲色しょうぶ #674196、瑠璃紺 #19448e、
      菖蒲色あやめ #cc7eb1、瑠璃色 #1e50a2、常磐色 #007b43、茜色 #b7282e 原值。
-     山吹色配白字只有 1.8:1、菖蒲色あやめ只有 2.9:1，這兩色改配深色字（山吹色 10.7:1、あやめ 6.6:1），
-     其餘配白字（紺瑠璃 9.0:1、菖蒲色しょうぶ 7.6:1）。 */
+     山吹色配白字只有 1.8:1、鉛丹色 3.1:1、菖蒲色あやめ 2.9:1，這三色改配深色字（山吹色 10.7:1、鉛丹色 6.4:1、
+     あやめ 6.6:1），其餘配白字（紺瑠璃 9.0:1、菖蒲色しょうぶ 7.6:1）。 */
   --c-yamabuki-deep: #f8b500;
+  --c-entan-deep: #ec6d51;
   --c-konruri-deep: #164a84;
   --c-shoubu-deep: #674196;
   --c-rurikon-deep: #19448e;
@@ -200,8 +202,10 @@
   --c-focus: #1f72c9;
 
   /* 淺底用原值；菖蒲色あやめ原值在淺底只有 2.5:1，圓點改用加深的 #9e4f84（4.7:1），
-     山吹色原值在淺底只有 1.7:1，圓點改用同色相加深的 #9c5e00（4.9:1）；填滿仍用原值。 */
+     山吹色原值在淺底只有 1.7:1，圓點改用同色相加深的 #9c5e00（4.9:1）；
+     鉛丹色原值在淺底只有 2.9:1，圓點改用同色相（OKLCH 明度減 0.14）加深的 #bb4025（5.1:1）；填滿仍用原值。 */
   --c-yamabuki: #9c5e00;
+  --c-entan: #bb4025;
   --c-konruri: #164a84;
   --c-shoubu: #674196;
   --c-rurikon: #19448e;
@@ -297,6 +301,24 @@ ul {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/*
+  說明文字：操作說明、欄位提示、快捷鍵清單、「怎麼用、為什麼」的段落都加上 .help。
+  設定「外觀 → 說明文字 → 詳細模式」關掉（精簡模式，v1.2.0 起的預設）時（<html data-help="off">）一律不顯示（2026-11-09 使用者要求介面只留標題與重點）。
+  圖例（時間軸下方、顯示頁的圖例區）與時間軸旁的左右手狀態也算，使用者說多餘；通知的內文也算（錯誤、警告除外，見 Toaster）。
+  標題、數字、狀態、錯誤與警告、空白時的那一句、「瀏覽器預覽」等誠實標示不要加；一句話前半是狀態、後半是說明時，只把後半包成 <span class="help">。
+*/
+:root[data-help='off'] .help {
+  display: none;
+}
+
+/*
+  簡潔模式（說明文字關掉）才顯示的精簡版：一段話在簡潔模式要改寫成更短的一句時，完整版包 .help、精簡版包 .concise。
+  例如 Wiki 搜尋的來源說明，簡潔模式只留「來源：simai Wiki、adxdls（CC BY 4.0）」（2026-11-09 使用者：「這邊在簡潔模式下也精簡文字」）。
+*/
+:root:not([data-help='off']) .concise {
+  display: none;
 }
 
 .small {
@@ -946,7 +968,7 @@ input[type='radio']:checked::before {
 
 /* 評分方式選項卡（參數頁）：只放大字名稱，顏色由右下角的扇形漸層呈現（使用者指定，例外於「不用漸層」）。
    點選時，模型色由右下角展開填滿整張卡（clip-path 圓形放大），底色全部不透明。
-   TemotoAI 的卡只寫系列名稱、用顏色區分（主卡 TemotoAI-2 山吹色；更多模型裡的 TemotoAI-1 紺瑠璃、菖蒲色しょうぶ、
+   TemotoAI 的卡只寫系列名稱、用顏色區分（主卡 TemotoAI-2 山吹色、鉛丹色；TemotoAI-1 紺瑠璃、菖蒲色しょうぶ，更多模型裡的
    瑠璃紺、菖蒲色あやめ、瑠璃色、茜色、常磐色）。用法：
    <button class="model-card model-card--yamabuki" role="radio" aria-checked=…><span class="model-card-name">TemotoAI-2</span></button> */
 .model-card {
@@ -1003,6 +1025,12 @@ input[type='radio']:checked::before {
   --on-model: #0b0d11;
 }
 
+.model-card--entan {
+  --model: var(--c-entan);
+  --model-fill: var(--c-entan-deep);
+  --on-model: #0b0d11;
+}
+
 .model-card--konruri {
   --model: var(--c-konruri);
   --model-fill: var(--c-konruri-deep);
@@ -1043,6 +1071,16 @@ input[type='radio']:checked::before {
   --model: var(--c-akane);
   --model-fill: var(--c-akane-deep);
   --on-model: #ffffff;
+}
+
+/* 基座卡（V4.1、V4、V3.2、V3.1、V3）：中性色的扇形，選中時填滿反白色。
+   參數頁與比對頁的模型選單（ModelPicker）共用，所以放全域。 */
+.model-card--v3 {
+  --model: var(--c-border-strong);
+  --model-fan: var(--c-border-strong);
+  --model-fill: var(--c-invert-bg);
+  --on-model: var(--c-on-invert);
+  min-height: 56px;
 }
 
 .model-card:hover:not(:disabled)::before {

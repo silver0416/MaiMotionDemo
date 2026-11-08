@@ -147,7 +147,7 @@
       <div class="alert alert--error" role="alert">
         <div class="alert-title">讀不到更新內容</div>
         <p>{releaseNotes.error}</p>
-        <p class="muted">可以稍後再試一次，或到 GitHub 發布頁查看。</p>
+        <p class="muted help">可以稍後再試一次，或到 GitHub 發布頁查看。</p>
       </div>
     {:else}
       {#each parsed as { note, blocks } (note.version)}

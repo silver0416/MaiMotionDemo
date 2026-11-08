@@ -199,7 +199,7 @@
           <input type="checkbox" bind:checked={organize} />
           <span>
             套用檔案裡的資料夾、標籤與時間軸標籤
-            <span class="field-hint"
+            <span class="field-hint help"
               >資料夾與標籤依名稱對應，沒有就建立；已在其他資料夾的紀錄不移動。時間軸標籤同時間同名的不重複加入。</span
             >
           </span>

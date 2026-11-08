@@ -76,7 +76,7 @@
       />
     </div>
   {/if}
-  {#if hint}<p class="field-hint">{hint}</p>{/if}
+  {#if hint}<p class="field-hint help">{hint}</p>{/if}
   {#if error}<p class="field-error">{error}</p>{/if}
 </div>
 

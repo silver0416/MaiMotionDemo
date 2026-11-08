@@ -13,6 +13,7 @@
     row,
     empty,
     focusIndex = null,
+    focusToken = undefined,
     overscan = 8,
     label,
     class: className = '',
@@ -22,8 +23,13 @@
     keyOf: (item: T) => string;
     row: Snippet<[item: T, index: number, style: string]>;
     empty?: Snippet;
-    /** 這一列要捲進可視範圍（選取改變時）。 */
+    /**
+     * 這一列要捲進可視範圍。只在它換成別列（選取改變）時捲；清單內容或列高改變
+     * （例如切換打法路線、換模型方案）不捲，免得畫面從正在看的地方跳回選取那列。
+     */
     focusIndex?: number | null;
+    /** 這個值換了，選取沒變也再對準一次（例如換篩選，清單整個換過）。 */
+    focusToken?: unknown;
     overscan?: number;
     label: string;
     class?: string;
@@ -61,10 +67,21 @@
     return out;
   });
 
+  /** 上一次對準的列與 focusToken；一樣就不再捲（只用來比較，不需要是響應式狀態）。 */
+  let aimed: { key: string; token: unknown } | null = null;
+
   $effect(() => {
     const index = focusIndex;
+    const token = focusToken;
     const list = element;
-    if (index === null || index < 0 || index >= items.length || !list) return;
+    if (!list) return;
+    if (index === null || index < 0 || index >= items.length) {
+      aimed = null;
+      return;
+    }
+    const key = keyOf(items[index]);
+    if (aimed?.key === key && aimed.token === token) return;
+    aimed = { key, token };
     const top = tops[index];
     const bottom = tops[index + 1];
     if (top < list.scrollTop) list.scrollTop = top;

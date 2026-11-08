@@ -397,7 +397,7 @@
             {/if}
           </dl>
           {#if sourceChanged && (record.majdata || record.wiki || record.adx)}
-            <p class="field-hint">
+            <p class="field-hint help">
               來源資訊會保留，但原文已和來源不同；之後從搜尋匯入同一張會直接開啟這筆修改過的紀錄。
             </p>
           {/if}
@@ -430,7 +430,7 @@
         <p class="field-hint">
           偵測到整包標記檔：{bundlePaste.items.length} 份譜面{bundlePaste.errors.length > 0
             ? `（${bundlePaste.errors.length} 份無法讀取）`
-            : ''}。按「匯入標記檔」後會先列出每一份是新紀錄還是合併到既有紀錄，確認後才匯入。
+            : ''}。<span class="help">按「匯入標記檔」後會先列出每一份是新紀錄還是合併到既有紀錄，確認後才匯入。</span>
         </p>
       {/if}
       {#if annotationFile}
@@ -443,7 +443,7 @@
             偵測到真人手順標註檔「{annotationFile.file.title || '未命名'}」：{annotationFile.file.notes.length} 顆標註{annotationFile
               .file.video
               ? '，含對照影片'
-              : ''}。會用檔案附的原譜新增紀錄並匯入標註；已經有同一份原譜的紀錄時直接合併進去，你已標的保留不動。
+              : ''}。<span class="help">會用檔案附的原譜新增紀錄並匯入標註；已經有同一份原譜的紀錄時直接合併進去，你已標的保留不動。</span>
           </p>
         {/if}
         {#if importError && importError.source === draft}
@@ -461,7 +461,7 @@
         <p class="field-error">「參數」分頁有超出範圍的數值，修正後才能生成。</p>
       {/if}
       {#if mode === 'edit' && record && session.desktop}
-        <p class="field-hint">只改名稱會直接儲存；原文改了要先通過核心分析才會儲存，失敗時紀錄維持原狀。</p>
+        <p class="field-hint help">只改名稱會直接儲存；原文改了要先通過核心分析才會儲存，失敗時紀錄維持原狀。</p>
       {/if}
 
       {#if failed}
@@ -546,7 +546,7 @@
       />
     {/if}
     <span class="muted xsmall mono">{draft.length} 字元</span>
-    <span class="muted xsmall">Ctrl + Enter {mode === 'edit' ? '儲存' : '生成'}</span>
+    <span class="muted xsmall help">Ctrl + Enter {mode === 'edit' ? '儲存' : '生成'}</span>
     <span class="spacer"></span>
     <button class="btn" onclick={() => (open = false)}>
       <Icon name="x" />{mode === 'edit' && !dirty ? '關閉' : '取消'}

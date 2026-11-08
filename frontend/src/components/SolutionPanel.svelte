@@ -215,7 +215,7 @@
           <DiagnosticList {diagnostics} linked />
         </div>
       {/if}
-      <p class="small muted" style="margin-top: var(--space-3)">
+      <p class="small muted help" style="margin-top: var(--space-3)">
         可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
       </p>
       <div class="row row-wrap" style="margin-top: var(--space-3)">
@@ -244,7 +244,7 @@
         <div class="section-title"><span>模型略過的地方（{skippedAt.length}）</span></div>
         <div class="alert alert--warn" role="status">
           <div class="alert-title">有 {skippedAt.length} 處模型走不下去，先略過</div>
-          <p>
+          <p class="help">
             那幾顆模型做不到（手被佔用、來不及移動等），先不指派手，其餘音符照常求解；這不代表人類打不出來。
             用模型預填與比對時，這幾顆也會跳過。
           </p>
@@ -264,7 +264,7 @@
     <section class="section">
       <div class="section-title">
         <span>候選方案</span>
-        <span class="muted xsmall">
+        <span class="muted xsmall help">
           依核心排序，越前面越符合目前偏好
         </span>
       </div>
@@ -283,7 +283,7 @@
               <span class="xsmall muted">第 {index + 1} 名</span>
             </span>
             <span class="xsmall mono">{v3ScoreLine(item)}</span>
-            <span class="xsmall muted">{summaryOf(stats)}</span>
+            <span class="xsmall muted help">{summaryOf(stats)}</span>
           </button>
         {/each}
       </div>
@@ -332,7 +332,7 @@
             ? `・手掌覆蓋 ${stats.palmMoveTotal} 次`
             : ''}
         </p>
-        <p class="field-hint" style="margin-top: var(--space-2)">
+        <p class="field-hint help" style="margin-top: var(--space-2)">
           「接觸音符」計 Tap、Hold、Touch、Touch Hold 與 Slide 起點（無起點的 ? ! 不算）；
           同一顆音符中途換手時兩手各算一次，各欄不能相加。
           {#if stats.palmMoveTotal > 0}
@@ -358,7 +358,7 @@
                   <span class="score-label">{group.label}</span>
                   <span class="mono score-value">{formatNumber(v3.score[group.id])}</span>
                 </div>
-                <p class="field-hint">{group.hint}</p>
+                <p class="field-hint help">{group.hint}</p>
                 <details class="score-details">
                   <summary>分項</summary>
                   <table class="table">
@@ -368,7 +368,7 @@
                         <tr>
                           <td style="width: 42%">
                             <div>{entry.label}</div>
-                            <div class="xsmall muted">{entry.hint}</div>
+                            <div class="xsmall muted help">{entry.hint}</div>
                           </td>
                           <td class="mono" style="width: 22%">{formatNumber(value)}</td>
                           <td>
@@ -384,14 +384,14 @@
               </div>
             {/each}
           </div>
-          <details class="score-details" style="margin-top: var(--space-3)">
+          <details class="score-details help" style="margin-top: var(--space-3)">
             <summary>排序方式</summary>
             <p class="field-hint">
               核心把三群直接相加成總分，總分越低排越前面；沒有額外倍率。
               分項長條以這個候選十項中的最大值為基準，可以跨群比較。
             </p>
           </details>
-          <p class="field-hint" style="margin-top: var(--space-3)">
+          <p class="field-hint help" style="margin-top: var(--space-3)">
             分數是同一份譜面裡比較候選用的相對值，不是機率、百分比或玩家能力評估；
             公式與預設值是本 Demo 的起點，尚未經玩家校準。
           </p>
@@ -513,7 +513,7 @@
                 {/each}
               </tbody>
             </table>
-            <p class="field-hint" style="margin-top: var(--space-3)">
+            <p class="field-hint help" style="margin-top: var(--space-3)">
               一次手掌動作只覆蓋同一判定時間的 Touch／Touch Hold，佔用到其中最晚放開的時刻，
               期間該手不接別處；Tap 與 Slide 不會被算進同一掌。
               覆蓋名單、掌心與時間都由核心判定。{PALM_APPROX_HINT}
@@ -588,7 +588,7 @@
             <dt>手掌半徑</dt>
             <dd>{palmRadiusText}</dd>
           </dl>
-          <p class="field-hint" style="margin-top: var(--space-3)">
+          <p class="field-hint help" style="margin-top: var(--space-3)">
             手掌半徑 0 表示這次分析沒有啟用手掌覆蓋，每顆 Touch 都要各自接觸。{PALM_APPROX_HINT}
           </p>
         </details>
@@ -715,6 +715,12 @@
   .model-tag--yamabuki {
     --model: var(--c-yamabuki);
     --model-fill: var(--c-yamabuki-deep);
+  }
+
+  .temoto-note--entan,
+  .model-tag--entan {
+    --model: var(--c-entan);
+    --model-fill: var(--c-entan-deep);
   }
 
   .temoto-note--konruri,

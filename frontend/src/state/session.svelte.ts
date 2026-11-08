@@ -1,5 +1,5 @@
 import { CANCELLED, analyzeChart, appVersion, cancelAnalysis, isDesktop, nextRequestId } from '../lib/api';
-import { STORE_ANALYSES, dbGet, dbPut, hashText } from '../lib/db';
+import { STORE_ANALYSES, dbGet, dbPut, hashText, stableJson } from '../lib/db';
 import {
   DEFAULT_DRAFT,
   STATUS_HINT,
@@ -10,6 +10,8 @@ import {
   responseMismatch,
   isV3Config,
   validateConfig,
+  withScoring,
+  type ScoringChoice,
 } from '../lib/contract';
 import { buildTrack, type Track } from '../lib/motion';
 import { palmByNote } from '../lib/palm';
@@ -66,15 +68,6 @@ interface CachedAnalysis {
   response: AnalyzeResponse;
   config: SolverConfig;
   firstSeconds: number;
-}
-
-function stableJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, item]) => item !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
 }
 
 /**
@@ -153,8 +146,11 @@ export class Session {
   /**
    * 盤面暫時改看「照真人標註求解」的方案（標註分頁的比對結果）。
    * 不是模型候選；切換候選或重新分析時自動取消。
+   * 用 raw：只會整份換掉、不會就地修改；而且要保留傳進來的那個物件，
+   * 比對頁靠「是不是同一個物件」判斷按鈕目前是不是在看照標註的打法（比對暫存是 raw 物件，
+   * 深層 $state 會另外包一層代理，永遠對不上）。
    */
-  humanView = $state<Solution | null>(null);
+  humanView = $state.raw<Solution | null>(null);
 
   /** 開啟紀錄時正在查快取（還沒決定要不要送核心）。 */
   fetching = $state(false);
@@ -304,12 +300,17 @@ export class Session {
 
   /** 切換 Temoto 模型；null 回到預設基座。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
   setMlModel(id: MlModelId | null): void {
-    this.config = { ...this.config, mlModel: id, v3Variant: id ? null : DEFAULT_DRAFT.v3Variant };
+    this.config = id ? withScoring(this.config, { kind: 'ml', id }) : withScoring(this.config, null);
   }
 
   /** 切換基座（V4.1、原始 V3 或 V3.1、V3.2、V4）。選了基座就不用 Temoto 模型。 */
   setV3Variant(id: BaseChoice): void {
-    this.config = { ...this.config, mlModel: null, v3Variant: id };
+    this.config = withScoring(this.config, { kind: 'base', id });
+  }
+
+  /** 參數頁與比對頁的模型選單共用：換評分方式（基座或 Temoto 模型）。 */
+  setScoring(choice: ScoringChoice): void {
+    this.config = withScoring(this.config, choice);
   }
 
   /** 還原預設數值。 */

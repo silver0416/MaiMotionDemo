@@ -1,9 +1,11 @@
 import { isHumanLabeled, type AnnotationDraft } from '../lib/annotation';
 import {
+  STORE_EVALUATIONS,
   STORE_RECORDS,
   STORE_SETTINGS,
   dbDelete,
   dbDeleteAnalysesBySource,
+  dbDeleteByIndex,
   dbGet,
   dbGetAll,
   dbPut,
@@ -698,6 +700,8 @@ export class Records {
     this.items = this.items.filter((item) => item.id !== id);
     if (this.activeId === id) this.activeId = null;
     void dbDelete(STORE_RECORDS, id);
+    // 比對暫存跟著紀錄（復原刪除時不會回來，和分析快取一樣重新比對即可）。
+    void dbDeleteByIndex(STORE_EVALUATIONS, 'recordId', id);
     const hash = target?.sourceHash;
     if (hash && !this.items.some((item) => item.sourceHash === hash)) {
       void dbDeleteAnalysesBySource(hash);

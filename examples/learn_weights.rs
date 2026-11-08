@@ -210,6 +210,7 @@ fn run(
                         solver_config: config.clone(),
                         annotation: annotation.clone(),
                         model_solution: None,
+                        routes: vec![],
                     };
                     let (response, model, human) =
                         with_tuning(tuning, || evaluate_annotation_probed(request, probes));

@@ -213,7 +213,7 @@
         <dd>第 {note.sourceSpan.line} 行 第 {note.sourceSpan.column} 欄</dd>
       </dl>
       {#if note.touchArea === 'C'}
-        <p class="small muted" style="margin-top: var(--space-2)">
+        <p class="small muted help" style="margin-top: var(--space-2)">
           simai 的 C、C1、C2 在核心合併為同一個 C，共用中央這一個落點。
         </p>
       {/if}
@@ -267,7 +267,7 @@
 
       {#if dualSlide}
         <p class="small" style="margin-top: var(--space-3)">
-          L 與 R 同時各滑一段，軌道進度同步；兩手位置各自取自核心輸出的軌跡。
+          L 與 R 同時各滑一段<span class="help">，軌道進度同步；兩手位置各自取自核心輸出的軌跡</span>。
         </p>
       {/if}
 
@@ -312,7 +312,7 @@
           <dt>半徑</dt>
           <dd>{formatNumber(palm.radius, 2)}</dd>
         </dl>
-        <p class="small muted" style="margin-top: var(--space-2)">
+        <p class="small muted help" style="margin-top: var(--space-2)">
           這一掌佔用到其中最晚釋放的時刻，期間該手不接別處。{PALM_APPROX_HINT}
         </p>
         <div class="row row-wrap" style="margin-top: var(--space-3)">

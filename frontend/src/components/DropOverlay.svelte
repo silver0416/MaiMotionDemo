@@ -49,7 +49,7 @@
       <span class="drop-icon"><Icon name="upload" size={24} /></span>
       <div class="drop-text">
         <div class="drop-title">放開就匯入{count > 1 ? `這 ${count} 個檔案` : ''}</div>
-        <p class="drop-hint">標記檔（.json）會先列出新紀錄與合併；譜面文字檔（.txt）直接分析後新增。</p>
+        <p class="drop-hint help">標記檔（.json）會先列出新紀錄與合併；譜面文字檔（.txt）直接分析後新增。</p>
       </div>
     </div>
   </div>

@@ -10,6 +10,7 @@
     MAIN_MODELS,
     MORE_BASES,
     MORE_MODELS,
+    TEMOTO_COLOR_NAME,
     TEMOTO_MODELS,
     type TemotoModel,
   } from '../lib/contract';
@@ -35,17 +36,6 @@
   const config = $derived(session.config);
   const R = CONFIG_RANGE;
 
-  /** TemotoAI 的卡畫面上只有系列名稱與顏色（使用者指定）；給輔助技術的名稱另外帶上顏色。 */
-  const COLOR_NAME = {
-    yamabuki: '山吹色',
-    konruri: '紺瑠璃',
-    shoubu: '菖蒲色，しょうぶいろ',
-    rurikon: '瑠璃紺',
-    ayame: '菖蒲色，あやめいろ',
-    ruri: '瑠璃色',
-    akane: '茜色',
-    tokiwa: '常磐色',
-  } as const;
   /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
   const usingTemoto = $derived(config.mlModel !== null);
   const selectedTemoto = $derived(TEMOTO_MODELS.find((model) => model.id === config.mlModel) ?? null);
@@ -94,7 +84,7 @@
     class:model-card--row={newRow}
     role="radio"
     aria-checked={config.mlModel === model.id}
-    aria-label={`${model.label}（${COLOR_NAME[model.color]}）`}
+    aria-label={`${model.label}（${TEMOTO_COLOR_NAME[model.color]}）`}
     onclick={() => session.setMlModel(model.id)}
   >
     <span class="model-card-name">{model.label}</span>
@@ -154,13 +144,13 @@
             {@render temotoCard(model, startsRow(MORE_MODELS, index))}
           {/each}
         </div>
-        <p class="field-hint">
+        <p class="field-hint help">
           V4.1 之前的版本與舊的 TemotoAI-1，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮四件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍、快速三顆一組頭尾同一鍵（例如 6、5、6）時兩手交互；V4.1 再多考慮兩件事：兩手都空著時各打靠自己那一側的音符、和長押同時按下的幾顆兩手不交叉，散得太開時也不一隻手硬包。
         </p>
       </div>
     {/if}
-    <p class="field-hint" style="margin-top: var(--space-2)">
-      TemotoAI 要先跑一次基座（上方三張都是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
+    <p class="field-hint help" style="margin-top: var(--space-2)">
+      TemotoAI 要先跑一次基座（上方四張都是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
     </p>
   </section>
 
@@ -170,7 +160,7 @@
     </div>
     <div class="stack">
       {#if usingTemoto}
-        <p class="field-hint">打法由 {selectedTemoto?.label ?? 'TemotoAI'} 決定，四個打法偏好滑桿不使用；下面的規則開關照常有效。</p>
+        <p class="field-hint help">打法由 {selectedTemoto?.label ?? 'TemotoAI'} 決定，四個打法偏好滑桿不使用；下面的規則開關照常有效。</p>
       {:else}
       <NumberField
         label="左右分工傾向"
@@ -224,7 +214,7 @@
         />
         <span>
           允許 Slide 中途換手
-          <span class="field-hint">關掉後一條 Slide 只能由同一隻手完成。</span>
+          <span class="field-hint help">關掉後一條 Slide 只能由同一隻手完成。</span>
         </span>
       </label>
       <label class="check">
@@ -235,7 +225,7 @@
         />
         <span>
           Slide 依判定區抄近
-          <span class="field-hint">
+          <span class="field-hint help">
             打開後手只照判定區走捷徑：可跳過判定區、進最後判定區就離手。預設關閉，手沿星星畫到終點，偷懶只靠手掌同時蓋住多條 Slide 或 Tap。
           </span>
         </span>
@@ -248,7 +238,7 @@
         />
         <span>
           Hold 可以提早放手
-          <span class="field-hint">
+          <span class="field-hint help">
             打開後 Hold 結尾 12 幀不必按住、很短的 Hold 只看頭判，手可以先放開去接別的音符。預設關閉，Hold 一律按到結尾。
           </span>
         </span>
@@ -261,13 +251,13 @@
         />
         <span>
           快速階梯一隻手刷完
-          <span class="field-hint">
+          <span class="field-hint help">
             打開後，又快又平均的一串相鄰鍵（例如繞一整圈）由起步那一側的手一路刷完，跨進另一半也不換手。預設打開；關掉時多半照左右半邊分給兩隻手。
           </span>
         </span>
       </label>
     </div>
-    <p class="field-hint" style="margin-top: var(--space-3)">
+    <p class="field-hint help" style="margin-top: var(--space-3)">
       數值可輸入小數。折返與單手集中負荷使用固定的內部係數，不開放調整；
       偏好與預設值是本 Demo 的起點，尚未經玩家校準，不代表官方判定或人體能力。
     </p>
@@ -278,7 +268,7 @@
       <summary>
         <span class="chevron"><Icon name="chevron-right" size={14} /></span>
         進階設定
-        <span class="muted xsmall">搜尋、時間與手掌覆蓋</span>
+        <span class="muted xsmall help">搜尋、時間與手掌覆蓋</span>
         {#if advancedIssue}<span class="badge badge--danger">有欄位超出範圍</span>{/if}
       </summary>
 
@@ -431,7 +421,7 @@
             />
             <span>
               允許一隻手掌同時覆蓋多個 Touch
-              <span class="field-hint">
+              <span class="field-hint help">
                 關閉等同把半徑設為 0：每個 Touch 都要各自接觸，同時多顆可能因此變成無方案。
               </span>
             </span>
@@ -456,8 +446,8 @@
             error={errorOf('palmFallbackRadius')}
             onValue={(value) => set('palmFallbackRadius', value)}
           />
-          <p class="field-hint">{PALM_APPROX_HINT}</p>
-          <p class="field-hint">
+          <p class="field-hint help">{PALM_APPROX_HINT}</p>
+          <p class="field-hint help">
             只有同一判定時間的 Touch／Touch Hold 會被併成一掌，Tap 與 Slide 不會；
             覆蓋期間該手不能接別處。實際是否成立由核心判定，改動後要重新生成。
           </p>
@@ -495,7 +485,7 @@
 
 <style>
   /* 評分方式：V4.1 卡佔一整列；AI 卡一律半寬、兩兩並排，換系列時從新的一排開始（使用者指定）：
-     TemotoAI-2 山吹自己一排（右半空著），下一排是 TemotoAI-1 的紺瑠璃與菖蒲しょうぶ。
+     TemotoAI-2 山吹與鉛丹一排（2026-11-09 鉛丹補進山吹右邊），下一排是 TemotoAI-1 的紺瑠璃與菖蒲しょうぶ。
      分隔列「顯示更多模型」下面同一套規則：V4、V3.2、V3.1、V3 由新到舊各佔一整列，
      五張舊的 TemotoAI-1 兩兩並排（瑠璃紺與菖蒲あやめ、瑠璃與茜各一排，常磐第三排同尺寸）。 */
   .models {
@@ -572,15 +562,6 @@
     .more-toggle .chevron {
       transition: none;
     }
-  }
-
-  /* V3 卡：中性色的扇形，選中時填滿反白色。 */
-  .model-card--v3 {
-    --model: var(--c-border-strong);
-    --model-fan: var(--c-border-strong);
-    --model-fill: var(--c-invert-bg);
-    --on-model: var(--c-on-invert);
-    min-height: 56px;
   }
 
   .advanced > summary {

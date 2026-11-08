@@ -146,14 +146,14 @@
         bind:value={text}
         onkeydown={onKeydown}
       ></textarea>
-      <span class="field-hint">
+      <span class="field-hint help">
         和右側「標註 → 備註」的整體備註是同一份，會跟著標註一起匯出。
       </span>
     </label>
   </div>
 
   <footer class="dialog-foot">
-    <span class="muted xsmall"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 儲存</span>
+    <span class="muted xsmall help"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> 儲存</span>
     <span class="spacer"></span>
     <button class="btn" onclick={close}><Icon name="x" />取消</button>
     <button class="btn btn--primary" onclick={save}><Icon name="check" />儲存</button>

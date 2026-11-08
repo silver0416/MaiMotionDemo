@@ -80,7 +80,7 @@
 
 <section class="section stack-sm" aria-labelledby="hc-intro">
   <div class="section-title" id="hc-intro">從手元影片預填左右手</div>
-  <p class="small muted">
+  <p class="small muted help">
     偵測影片裡玩家的雙手，推出每顆音符是哪隻手打的，填成「預填」草稿；確認之後才算真人資料，已經標過的不會被改。
     看得到玩家肩膀和手臂的機位最準；拍不到肩膀時會改用手在盤面上的位置分左右，錯誤會多一些。
   </p>
@@ -115,7 +115,7 @@
         <button class="btn btn--ghost" onclick={() => void handcam.cancelInstall()}>取消</button>
       </div>
     {:else}
-      <p class="small muted">需要先下載姿態偵測模型（約 {mb(MODEL_TOTAL_BYTES)}），只下載一次，存在本機。</p>
+      <p class="small muted">需要先下載姿態偵測模型（約 {mb(MODEL_TOTAL_BYTES)}）<span class="help">，只下載一次，存在本機</span>。</p>
       <button class="btn btn--primary" onclick={() => void handcam.installModel()}><Icon name="download" size={14} />下載模型</button>
     {/if}
   {:else}
@@ -140,7 +140,7 @@
     <p class="small">
       在影片上點 <strong>{handcam.cursor + 1} 號鍵</strong>的環點（通常在{BUTTON_HINT[handcam.cursor]}）。
     </p>
-    <p class="xsmall muted">判定環上有 8 個白點，1 號在右上，順時針到 8 號。被手擋住就按「跳過」。</p>
+    <p class="xsmall muted help">判定環上有 8 個白點，1 號在右上，順時針到 8 號。被手擋住就按「跳過」。</p>
     <div class="row row-wrap">
       <button class="btn" onclick={() => handcam.skip()}>跳過這點</button>
       <button class="btn" onclick={() => handcam.undo()} disabled={handcam.cursor === 0}>上一點</button>
@@ -148,7 +148,7 @@
       <button class="btn btn--primary" onclick={() => handcam.finishMarking()} disabled={handcam.pointCount < 4}>完成</button>
     </div>
   {:else}
-    <ol class="hc-steps small">
+    <ol class="hc-steps small help">
       <li>暫停在判定環上白點清楚、手沒擋住的一格（例如開始前的空白盤面）。</li>
       <li>按「開始標點」，依序點 1–8 號鍵的白點；至少 4 點。</li>
       <li>確認畫面上的黃色圓與鍵號對得上實際盤面。</li>
@@ -192,7 +192,7 @@
   {:else}
     <label class="check">
       <input type="checkbox" bind:checked={handcam.refine} />
-      <span>自動微調對齊<span class="field-hint">依手的位置把偏移修正到最吻合的值（建議開啟）</span></span>
+      <span>自動微調對齊<span class="field-hint help">依手的位置把偏移修正到最吻合的值（建議開啟）</span></span>
     </label>
     {#if blockers.length > 0}
       <ul class="hc-steps xsmall muted">
@@ -218,7 +218,7 @@
         <ul class="hc-steps">
           {#each r.warnings as text (text)}<li>{text}</li>{/each}
         </ul>
-        <span class="xsmall">推估仍可參考，但錯誤會比平常多，請多抽查。</span>
+        <span class="xsmall help">推估仍可參考，但錯誤會比平常多，請多抽查。</span>
       </div>
     {/if}
     {#if r.shiftAtEdge}
@@ -248,7 +248,7 @@
       <dt>耗時</dt>
       <dd>{Math.round(r.seconds)} 秒・{r.frames} 格・{r.backend === 'webgpu' ? 'GPU' : 'CPU'}</dd>
     </dl>
-    <p class="xsmall muted">
+    <p class="xsmall muted help">
       研究中機位良好的影片：高信心這層約 98% 正確，高＋中合計約 95%。不同機位會有差異，套用後請照影片抽查幾顆。
     </p>
     <div class="row row-wrap">
@@ -259,7 +259,7 @@
         <span class="small">已填入 {handcam.applied} 顆</span>
       {/if}
     </div>
-    <p class="xsmall muted">只填還沒標的步驟；原本是預填的會改成影片的結果；真人標註不動。</p>
+    <p class="xsmall muted help">只填還沒標的步驟；原本是預填的會改成影片的結果；真人標註不動。</p>
   </section>
 {/if}
 

@@ -1,11 +1,12 @@
 // 真人手順標註的編輯狀態：跟著目前開啟的譜面紀錄，改動後自動寫回紀錄。
 
-import { CANCELLED, evaluateAnnotation, nextRequestId } from '../lib/api';
+import { CANCELLED, appVersion, evaluateAnnotation, nextRequestId } from '../lib/api';
 import {
   type AnnotationBranch,
   type AnnotationDraft,
   CONFIDENCE_LABEL,
   cleanDraft,
+  cleanRoute,
   composeMark,
   emptyDraft,
   firstPart,
@@ -17,7 +18,9 @@ import {
   lineAt,
   lineMarks,
   lineName,
+  lineRoute,
   MAIN_LINE,
+  MAIN_NAME,
   merge,
   modelMarks,
   sameGroup,
@@ -27,8 +30,13 @@ import {
   nextBranchName,
   partFields,
   partHands,
+  pickRoute,
   prefilledParts,
+  routeBranches,
+  routeLineAt,
   routeMarks,
+  routeSections,
+  sameRoute,
   serialize,
   setPrefilled,
   setTrackConfidence,
@@ -40,8 +48,8 @@ import {
   type StepPart,
   type MergeResult,
 } from '../lib/annotation';
-import { configEquals, projectConfig } from '../lib/contract';
-import { hashText } from '../lib/db';
+import { configEquals, projectConfig, withScoring, type ScoringChoice } from '../lib/contract';
+import { STORE_EVALUATIONS, dbDeleteKeys, dbGetAllByIndex, dbPut, hashText, quickHash, stableJson } from '../lib/db';
 import { recallAlignment, rememberAlignment, type HandcamMark, type VideoLink } from '../lib/video';
 import type {
   Confidence,
@@ -52,11 +60,13 @@ import type {
   Note,
   NoteAnnotation,
   NoteGroup,
+  RouteAnnotation,
+  SolverConfig,
   TrackHand,
 } from '../lib/types';
 import { playback } from './playback.svelte';
 import { recordTitle, records, type ChartRecord } from './records.svelte';
-import { session } from './session.svelte';
+import { SCORING_REVISION, SOLVER_REVISION, session } from './session.svelte';
 import { toasts } from './toasts.svelte';
 
 const ANNOTATOR_KEY = 'maimotion.annotator.v1';
@@ -104,6 +114,85 @@ export function isStepDone(step: Step, mark: NoteAnnotation | undefined): boolea
   return step.part === 'hand' ? mark.hand !== undefined : mark.track !== undefined;
 }
 
+/** 每筆紀錄最多留幾份比對暫存（參數 × 模型）；超過時刪掉最舊的。 */
+const EVALUATION_LIMIT = 32;
+
+/**
+ * 比對有打法分支時的暫存格名稱：每一段的走法都比、每段挑一種，採用整首吻合率最高的組合，和目前路線無關。
+ * 2026-11-09 起改成每段各挑，換了格子名稱：之前的 'best' 格子是整首只挑一條，不再沿用。
+ * 沒有分支時仍用 MAIN_LINE，以前的暫存照樣有效。
+ */
+const BEST_ROUTE_SLOT = 'sections';
+
+/**
+ * 比對暫存（2026-11-08 使用者要求）：某筆紀錄、某組參數（含模型）最後一次比對的結果。
+ * 比對頁換模型時先顯示這份；標註之後改過（marks 不同）就標成舊的；
+ * App 版本、求解或評分修訂、原文任一不同就作廢（和分析快取同一套條件）。
+ */
+interface StoredEvaluation {
+  /** 資料庫鍵：`${recordId}|${slot}`。 */
+  key: string;
+  recordId: string;
+  /** 路線（沒有分支為 main，有分支為 sections）＋起始秒數＋已投影的參數（含模型）。 */
+  slot: string;
+  /** App 版本＋求解與評分修訂。 */
+  version: string;
+  sourceHash: string;
+  /** 比對時送出的標註指紋（routesPrint）。 */
+  marks: string;
+  createdAt: number;
+  response: EvaluateResponse;
+}
+
+/** 模型選單上顯示的暫存吻合率。 */
+export interface AgreementPreview {
+  /** 吻合百分比（一位小數）；沒有可比對的步驟時為 null。 */
+  percent: number | null;
+  /** 標註在那次比對之後改過。 */
+  outdated: boolean;
+}
+
+async function evaluationVersion(): Promise<string> {
+  return `${await appVersion()}|${SOLVER_REVISION}+${SCORING_REVISION}`;
+}
+
+/** 標註指紋：只看會影響比對的欄位，改備註或換標註者不算改過。 */
+function markPrint(marks: NoteAnnotation[]): string {
+  return quickHash(
+    JSON.stringify(
+      marks.map((mark) => [
+        mark.key,
+        mark.hand ?? null,
+        mark.track ?? null,
+        mark.handovers ?? null,
+        mark.confidence ?? null,
+        mark.trackConfidence ?? null,
+      ]),
+    ),
+  );
+}
+
+/** 比對送出的所有路線的指紋：沒有分支時和以前一樣只看主線（以前的暫存照樣有效）。 */
+function routesPrint([main, ...others]: RouteAnnotation[]): string {
+  const head = markPrint(main?.notes ?? []);
+  if (others.length === 0) return head;
+  return [head, ...others.map((route) => `${route.id}:${markPrint(route.notes)}`)].join('|');
+}
+
+/** 只留最新的 EVALUATION_LIMIT 份，回傳留下的與要刪的鍵。 */
+function pruneEvaluations(entries: StoredEvaluation[]): { kept: StoredEvaluation[]; dropped: string[] } {
+  if (entries.length <= EVALUATION_LIMIT) return { kept: entries, dropped: [] };
+  const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+  return {
+    kept: sorted.slice(0, EVALUATION_LIMIT),
+    dropped: sorted.slice(EVALUATION_LIMIT).map((entry) => entry.key),
+  };
+}
+
+function bySlot(entries: StoredEvaluation[]): Record<string, StoredEvaluation> {
+  return Object.fromEntries(entries.map((entry) => [entry.slot, entry]));
+}
+
 export class AnnotationStore {
   /** 目前紀錄的草稿。 */
   draft = $state<AnnotationDraft>(emptyDraft());
@@ -114,9 +203,15 @@ export class AnnotationStore {
   autoAdvance = $state(readLocal(ADVANCE_KEY) !== 'off');
   filter = $state<ListFilter>('all');
 
-  evaluation = $state<EvaluateResponse | null>(null);
-  evaluating = $state(false);
-  evaluationError = $state<string | null>(null);
+  /** 目前紀錄的比對暫存，以 slot 為鍵（見 StoredEvaluation）；比對結果、進度與錯誤的 getter 在檔尾。 */
+  #evaluations = $state.raw<Record<string, StoredEvaluation>>({});
+  /** 正在比對的 slot；null 表示沒有比對在跑。 */
+  #running = $state<string | null>(null);
+  #runToken = 0;
+  #error = $state.raw<{ slot: string; message: string } | null>(null);
+  /** 比對頁換了模型，正在等盤面的分析（載入快取或重新分析）與接著的比對。 */
+  switching = $state(false);
+  #switchToken = 0;
 
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -175,8 +270,15 @@ export class AnnotationStore {
     this.draft = (record && cleanDraft(record.annotation)) ?? emptyDraft(record ? recordTitle(record) : '');
     if (record && !this.draft.title) this.draft.title = recordTitle(record);
     if (this.#syncAlignment()) this.#scheduleSave();
-    this.evaluation = null;
-    this.evaluationError = null;
+    // 比對暫存跟著紀錄走：先清掉上一筆的，再從資料庫讀這一筆的。
+    // 上一筆還在跑的比對照樣寫進資料庫，只是不顯示在這一筆。
+    this.#evaluations = {};
+    this.#error = null;
+    this.#running = null;
+    this.#runToken += 1;
+    this.#switchToken += 1;
+    this.switching = false;
+    if (record) void this.#loadEvaluations(record.id);
   }
 
   setAnnotator(name: string): void {
@@ -211,14 +313,22 @@ export class AnnotationStore {
   // 分支以「步驟」為單位：有起點的 Slide，起點與滑行可以由不同的線負責。
   // 讀取時把各步的標註組成一顆（composeMark），寫入時依欄位拆回負責那一步的線。
 
-  /** 目前路線：選定的線一路往上到主線。 */
+  // 目前路線是一組分支選擇（draft.route）：不同段落可以各走各的分支，沒選到的段落走主線。
 
-  /** 目前路線展開後的手順（進度、篩選、比對都看這份）。 */
+  /** 目前路線展開後的手順（進度、篩選都看這份；比對則主線與每條路線都送）。 */
   routed = $derived<Record<string, NoteAnnotation>>(routeMarks(this.draft, this.ordered));
+
+  /** 目前路線有走到的分支。 */
+  routeLines = $derived(routeBranches(this.draft.branches, this.draft.route));
+
+  /** 目前路線在這個時間走哪條線。 */
+  routeAt(time: number): string {
+    return routeLineAt(this.draft.branches, this.draft.route, time);
+  }
 
   /** 這一步在目前路線上歸哪條線管；編輯會寫到那條線。 */
   lineOfStep(note: Note, part: StepPart): string {
-    return lineAt(this.draft.branches, this.draft.active, stepTime(note, part));
+    return this.routeAt(stepTime(note, part));
   }
 
   /** 這顆音符第一步歸哪條線。 */
@@ -301,12 +411,12 @@ export class AnnotationStore {
     return [MAIN_LINE, ...this.draft.branches.filter((branch) => inBranch(branch, step.time)).map((b) => b.id)];
   }
 
-  /** 在這一步的各種打法之間輪流切換（快捷鍵 B／Shift+B）。 */
+  /** 在這一步的各種打法之間輪流切換（快捷鍵 B／Shift+B）；只換這一段，其他段落選的分支不變。 */
   cycleLine(step: Step, direction: 1 | -1): void {
     const lines = this.linesAt(step);
     if (lines.length < 2) return;
     const index = lines.indexOf(this.lineOfStep(step.note, step.part));
-    this.setActive(lines[(index + direction + lines.length) % lines.length]);
+    this.pickLine(lines[(index + direction + lines.length) % lines.length], step.time);
   }
 
   // ---- 標記新分支：先標起點，再選終點（以步驟為單位） ----
@@ -385,7 +495,7 @@ export class AnnotationStore {
 
   /** 目前路線上負責這一步的線，它對這顆音符的那一筆標註。 */
   #source(note: Note, part: StepPart): NoteAnnotation | undefined {
-    return stepSource(this.draft, this.draft.active, note, part);
+    return stepSource(this.draft, this.draft.route, note, part);
   }
 
   /** 這一步自己的標註（是否預填、是否已確認看這一筆）。 */
@@ -396,6 +506,16 @@ export class AnnotationStore {
   /** 這顆音符在目前路線上的標註（各步組合而成）。 */
   mark(note: Note | null): NoteAnnotation | undefined {
     return note ? composeMark(note, (part) => this.#source(note, part)) : undefined;
+  }
+
+  /** 這顆音符沿某條路線的標註（比對結果用：比對採用的路線不一定是目前選的那條）。 */
+  markOn(note: Note, line: string): NoteAnnotation | undefined {
+    return composeMark(note, (part) => this.#sourceOnLine(line, note, part));
+  }
+
+  /** 這顆音符照某組選擇（例如比對採用的組合）走時的標註。 */
+  markOnRoute(note: Note, picks: readonly string[]): NoteAnnotation | undefined {
+    return composeMark(note, (part) => stepSource(this.draft, picks, note, part));
   }
 
   /** 這顆音符需要的步驟。 */
@@ -885,6 +1005,7 @@ export class AnnotationStore {
       this.draft.groups = [];
       this.draft.memo = '';
       this.draft.branches = [];
+      this.draft.route = [];
       this.draft.active = MAIN_LINE;
     } else {
       this.draft.notes = keep(before.notes);
@@ -903,17 +1024,53 @@ export class AnnotationStore {
 
   // ---- 打法分支操作 ----
 
-  /** 切換目前路線；不影響任何手順。 */
-  setActive(id: string): void {
-    const next = id === MAIN_LINE || this.branch(id) ? id : MAIN_LINE;
-    if (next === this.draft.active) return;
-    this.draft.active = next;
+  // 切換路線都不影響任何手順。
+
+  /** 換路線並記下正在設定的線；有變才存。 */
+  #setRoute(route: string[], active: string): void {
+    const same = route.length === this.draft.route.length && route.every((line, index) => line === this.draft.route[index]);
+    if (same && active === this.draft.active) return;
+    this.draft.route = route;
+    this.draft.active = active;
     this.#scheduleSave();
   }
 
-  /** 沿某條線的路線看這一步的標註。 */
+  /**
+   * 在 time 這一步改走 line（主線也可以）：只換這一段，其他段落選的分支照舊；
+   * 這一段原本走的分支、和 line 同一段衝突的分支才換掉。分支圖、這一步的打法與 B 鍵用這個。
+   */
+  pickLine(line: string, time: number): void {
+    if (line !== MAIN_LINE && !this.branch(line)) return;
+    this.#setRoute(pickRoute(this.draft.branches, this.draft.route, line, time), line);
+  }
+
+  /** 「打法」分頁點一條線：分支就是走它（它自己那一段）；主線是所有分支都不走。 */
+  focusLine(line: string): void {
+    const branch = this.branch(line);
+    if (branch) this.pickLine(line, branch.from);
+    else this.useRoute(MAIN_LINE);
+  }
+
+  /** 路線改成只走這一條線（主線：所有分支都不走），例如「打法」分頁路線圖的開頭與結尾。 */
+  useRoute(line: string): void {
+    const next = line === MAIN_LINE || this.branch(line) ? line : MAIN_LINE;
+    this.#setRoute(lineRoute(next), next);
+  }
+
+  /** 路線改成這組選擇（比對結果的「切到這條／這組」）；「打法」分頁設定最後一個選的分支。 */
+  usePicks(picks: readonly string[]): void {
+    const route = cleanRoute(this.draft.branches, picks);
+    this.#setRoute(route, route.at(-1) ?? MAIN_LINE);
+  }
+
+  /** 目前路線和這組選擇每個時刻走的線都一樣。 */
+  isRoute(picks: readonly string[]): boolean {
+    return sameRoute(this.draft.branches, this.draft.route, picks);
+  }
+
+  /** 只走某一條線時這一步的標註。 */
   #sourceOnLine(line: string, note: Note, part: StepPart): NoteAnnotation | undefined {
-    return stepSource(this.draft, line, note, part);
+    return stepSource(this.draft, lineRoute(line), note, part);
   }
 
   /** 把 source 這一步負責的欄位複製進 marks 裡這顆的那一筆（深拷貝換手）；這一步是否預填跟著 source。 */
@@ -974,9 +1131,8 @@ export class AnnotationStore {
     if (steps.length === 0) return null;
     const lo = steps[0].time;
     const hi = steps[steps.length - 1].time;
-    const active = this.draft.active;
-    const parent = links.parent && this.#covers(links.parent, lo) ? links.parent : lineAt(this.draft.branches, active, lo);
-    const merge = links.merge && this.#covers(links.merge, hi) ? links.merge : lineAt(this.draft.branches, active, hi);
+    const parent = links.parent && this.#covers(links.parent, lo) ? links.parent : this.routeAt(lo);
+    const merge = links.merge && this.#covers(links.merge, hi) ? links.merge : this.routeAt(hi);
     const marks: Record<string, NoteAnnotation> = {};
     for (const step of steps) this.#copyPart(marks, step.note, step.part, this.#source(step.note, step.part));
     const branch: AnnotationBranch = {
@@ -992,6 +1148,8 @@ export class AnnotationStore {
       notes: marks,
     };
     this.draft.branches = sortBranches([...this.draft.branches, branch]);
+    // 這一段改走新分支，其他段落選的分支不變。
+    this.draft.route = pickRoute(this.draft.branches, this.draft.route, branch.id, lo);
     this.draft.active = branch.id;
     this.#touch();
     return this.branch(branch.id) ?? null;
@@ -1033,6 +1191,8 @@ export class AnnotationStore {
     if (!this.#covers(branch.merge, branch.to)) branch.merge = lineAt(this.draft.branches, branch.merge, branch.to);
     this.#fitInside(branch);
     this.draft.branches = sortBranches(this.draft.branches);
+    // 範圍變了可能和路線上另一段的分支重疊：衝突時留後選的。
+    this.draft.route = cleanRoute(this.draft.branches, this.draft.route);
     this.#touch();
     return before;
   }
@@ -1067,13 +1227,14 @@ export class AnnotationStore {
     if (links.parent !== undefined) branch.parent = links.parent;
     if (links.merge !== undefined) branch.merge = links.merge;
     this.draft.branches = sortBranches(this.draft.branches);
+    this.draft.route = cleanRoute(this.draft.branches, this.draft.route);
     this.#touch();
     return true;
   }
 
   /**
    * 刪除分支；從它分出或併入它的分支改接它原本的路線（那個時間實際走的線）。
-   * 目前路線是它時改走它分出的線。回傳刪除前的草稿供復原。
+   * 目前路線有選它時，那一段改走它分出的線（其他段落選的分支不變）。回傳刪除前的草稿供復原。
    */
   removeBranch(id: string): AnnotationDraft | null {
     const branch = this.branch(id);
@@ -1086,6 +1247,10 @@ export class AnnotationStore {
     }
     if (this.draft.active === id) this.draft.active = branch.parent;
     this.draft.branches = sortBranches(others);
+    this.draft.route = cleanRoute(
+      this.draft.branches,
+      this.draft.route.map((line) => (line === id ? branch.parent : line)),
+    );
     this.#touch();
     return before;
   }
@@ -1629,17 +1794,202 @@ export class AnnotationStore {
     return false;
   }
 
-  /** 比對：Rust 求模型最佳解與照標註的最佳解。只送有人確認過的步驟（預填的步驟拿掉）。 */
+  // ---- 比對與比對暫存 ----
+
+  /** 照某組選擇走時展開後有人確認過的步驟（預填的步驟拿掉）。 */
+  #confirmedFor(picks: readonly string[]): NoteAnnotation[] {
+    const marks = routeMarks(this.draft, this.ordered, picks);
+    return this.ordered
+      .map((note) => humanMark(note.key ? marks[note.key] : undefined))
+      .filter((mark): mark is NoteAnnotation => mark !== undefined);
+  }
+
+  /** 比對的走法（2026-11-09 起）：每段主線以外的組合；id 是選的分支以 + 連接（只選一條時就是分支 id）。 */
+  #compareOptions = $derived(
+    routeSections(this.draft.branches).map((option) => ({ ...option, id: option.picks.join('+') })),
+  );
+
+  /**
+   * 比對送出的手順：主線在最前，接著每段的每種走法各自展開（只換那一段、其他照主線）並帶段號；
+   * Rust 每段挑一種，採用整首吻合率最高的組合，所以和目前路線無關。
+   */
+  #compareRoutes = $derived<RouteAnnotation[]>([
+    { id: MAIN_LINE, name: MAIN_NAME, notes: this.#confirmedFor([]) },
+    ...this.#compareOptions.map((option) => ({
+      id: option.id,
+      name: option.picks.map((id) => this.lineName(id)).join('＋'),
+      notes: this.#confirmedFor(option.picks),
+      group: option.section,
+    })),
+  ]);
+
+  /** 比對結果裡某種走法選的分支：照這次送出的對照；之後刪掉或改過的，照 id 拆開、只留還在的分支。 */
+  optionPicks(id: string): string[] {
+    if (id === MAIN_LINE) return [];
+    const option = this.#compareOptions.find((item) => item.id === id);
+    return option ? option.picks : id.split('+').filter((pick) => this.branch(pick) !== undefined);
+  }
+
+  /** 這種走法選的分支都還在。 */
+  optionExists(id: string): boolean {
+    return id === MAIN_LINE || this.#compareOptions.some((item) => item.id === id) || id.split('+').every((pick) => this.branch(pick) !== undefined);
+  }
+
+  /** 走法名稱：選的分支名稱以「＋」連接；有分支已經刪掉時用比對當時的名稱。 */
+  optionName(id: string, saved = ''): string {
+    if (id === MAIN_LINE) return MAIN_NAME;
+    const picks = id.split('+');
+    return picks.every((pick) => this.branch(pick)) ? picks.map((pick) => this.lineName(pick)).join('＋') : saved || id;
+  }
+
+  /** 走法的顏色：最後選的那條分支（同段裡最裡層的）。 */
+  optionColor(id: string): string {
+    return this.lineColor(this.optionPicks(id).at(-1) ?? MAIN_LINE);
+  }
+
+  /** 比對採用的幾種走法合成一組路線選擇。 */
+  chosenPicks(ids: readonly string[]): string[] {
+    return cleanRoute(
+      this.draft.branches,
+      ids.flatMap((id) => this.optionPicks(id)),
+    );
+  }
+
+  #marksPrint = $derived(routesPrint(this.#compareRoutes));
+
+  #sourceHash = $derived(records.get(this.recordId)?.sourceHash ?? null);
+
+  /** 比對暫存的格子：路線（沒有分支為主線，有分支為全部比過取最高）＋起始秒數（和 toFile 取同一個）＋已投影的參數。 */
+  #slotFor(config: SolverConfig): string {
+    const firstSeconds = session.result?.firstSeconds ?? session.firstSeconds;
+    const route = this.draft.branches.length > 0 ? BEST_ROUTE_SLOT : MAIN_LINE;
+    return `${route}|${firstSeconds}|${stableJson(config)}`;
+  }
+
+  /** 目前參數（含模型）的格子。 */
+  #slot = $derived(this.#slotFor(session.requestConfig));
+
+  #entry = $derived.by<StoredEvaluation | null>(() => {
+    const entry = this.#evaluations[this.#slot];
+    return entry && entry.sourceHash === this.#sourceHash ? entry : null;
+  });
+
+  /** 目前參數與模型的比對結果；可能是先前暫存的。 */
+  get evaluation(): EvaluateResponse | null {
+    return this.#entry?.response ?? null;
+  }
+
+  /** 顯示的比對結果是標註改過之前做的。 */
+  get evaluationOutdated(): boolean {
+    return this.#entry !== null && this.#entry.marks !== this.#marksPrint;
+  }
+
+  /** 目前這一格正在比對。 */
+  get evaluating(): boolean {
+    return this.#running !== null && this.#running === this.#slot;
+  }
+
+  get evaluationError(): string | null {
+    return this.#error?.slot === this.#slot ? this.#error.message : null;
+  }
+
+  /** 模型選單用：在目前參數下換成這個評分方式時暫存的吻合率（有分支時是採用的那條）；沒比對過回傳 null。 */
+  agreementFor(choice: ScoringChoice): AgreementPreview | null {
+    const entry = this.#evaluations[this.#slotFor(projectConfig(withScoring(session.config, choice)))];
+    if (!entry || entry.sourceHash !== this.#sourceHash) return null;
+    const { agreed, compared } = entry.response;
+    return {
+      percent: compared > 0 ? Math.round((1000 * agreed) / compared) / 10 : null,
+      outdated: entry.marks !== this.#marksPrint,
+    };
+  }
+
+  /** 設定裡清除暫存之後呼叫：記憶體裡的比對暫存一起丟掉。 */
+  forgetEvaluations(): void {
+    this.#evaluations = {};
+    this.#error = null;
+  }
+
+  /** 讀進這筆紀錄的比對暫存；版本或原文對不上的直接刪掉。 */
+  async #loadEvaluations(recordId: string): Promise<void> {
+    const [version, stored] = await Promise.all([
+      evaluationVersion(),
+      dbGetAllByIndex<StoredEvaluation>(STORE_EVALUATIONS, 'recordId', recordId),
+    ]);
+    const sourceHash = records.get(recordId)?.sourceHash;
+    if (this.recordId !== recordId || !sourceHash) return;
+    const valid: StoredEvaluation[] = [];
+    const invalid: string[] = [];
+    for (const entry of stored) {
+      if (entry.version === version && entry.sourceHash === sourceHash && typeof entry.slot === 'string' && entry.response) {
+        valid.push(entry);
+      } else {
+        invalid.push(entry.key);
+      }
+    }
+    // 載入期間剛比對完的比資料庫裡的新。
+    const { kept, dropped } = pruneEvaluations(Object.values({ ...bySlot(valid), ...this.#evaluations }));
+    this.#evaluations = bySlot(kept);
+    void dbDeleteKeys(STORE_EVALUATIONS, [...invalid, ...dropped]);
+  }
+
+  /** 把一次比對存成暫存：資料庫一定寫；還是同一筆紀錄才放進記憶體。 */
+  async #remember(entry: StoredEvaluation): Promise<void> {
+    let dropped: string[] = [];
+    if (this.recordId === entry.recordId) {
+      const pruned = pruneEvaluations(Object.values({ ...this.#evaluations, [entry.slot]: entry }));
+      this.#evaluations = bySlot(pruned.kept);
+      dropped = pruned.dropped;
+    }
+    if (await dbPut(STORE_EVALUATIONS, entry)) await dbDeleteKeys(STORE_EVALUATIONS, dropped);
+  }
+
+  /**
+   * 比對頁的模型選單：換評分方式（和參數頁是同一個設定），畫面立刻顯示這個模型暫存的比對；
+   * 盤面跟著換成這個模型的分析（有分析快取直接載入，沒有才重新分析），
+   * 沒有暫存或標註之後改過時再比對一次。瀏覽器預覽沒有核心，只換設定。
+   */
+  async compareWith(choice: ScoringChoice): Promise<void> {
+    session.setScoring(choice);
+    const token = ++this.#switchToken;
+    const source = session.result?.source ?? session.source;
+    if (!session.desktop || !source || session.configIssues.length > 0) {
+      this.switching = false;
+      return;
+    }
+    this.switching = true;
+    try {
+      if (session.stale || !session.result) {
+        await session.load(source);
+        if (token !== this.#switchToken) return;
+      }
+      // 分析失敗或被別的動作取代：不自動比對，留給「開始比對」。
+      if (session.stale || !session.result || session.result.response.status !== 'ok') return;
+      if (this.#compareRoutes.every((route) => route.notes.length === 0)) return;
+      if (this.#entry && !this.evaluationOutdated) return;
+      await this.evaluate();
+    } finally {
+      if (token === this.#switchToken) this.switching = false;
+    }
+  }
+
+  /**
+   * 比對：Rust 求模型最佳解，主線與每條打法路線各自和它比，採用吻合率最高的那條求照標註的最佳解。
+   * 只送有人確認過的步驟（預填的步驟拿掉）。
+   */
   async evaluate(): Promise<void> {
     const file = await this.toFile();
-    if (!file) return;
-    // Rust 只認單一份手順：送目前路線展開後的結果，不送分支。
-    file.notes = this.ordered
-      .map((note) => humanMark(note.key ? this.routed[note.key] : undefined))
-      .filter((mark): mark is NoteAnnotation => mark !== undefined);
+    const recordId = this.recordId;
+    if (!file || !recordId) return;
+    // Rust 不認分支結構：主線放在 notes，其他路線各自展開後放在 routes。
+    const sent = $state.snapshot(this.#compareRoutes) as RouteAnnotation[];
+    const [main, ...routes] = sent;
+    file.notes = main.notes;
     delete file.branches;
     delete file.groups;
     const solverConfig = projectConfig(session.config);
+    const slot = this.#slotFor(solverConfig);
+    const marks = routesPrint(sent);
     // 目前的分析就是同一份原文、同一組設定時，直接用它的第一名當模型解，省掉重算
     // （Temoto 重算一次要十秒以上）。動作軌跡比對用不到，不送。
     const result = session.result;
@@ -1652,27 +2002,41 @@ export class AnnotationStore {
       configEquals(result.config, solverConfig)
         ? { ...$state.snapshot(top), leftSegments: [], rightSegments: [], palmPlacements: [] }
         : undefined;
-    // 比對期間換了譜面：結果屬於舊譜面，丟掉。
-    const recordId = this.recordId;
-    this.evaluating = true;
-    this.evaluationError = null;
+    const token = ++this.#runToken;
+    this.#running = slot;
+    if (this.#error?.slot === slot) this.#error = null;
     try {
-      const evaluation = await evaluateAnnotation({
-        requestId: nextRequestId(),
-        source: file.chart.source,
-        firstSeconds: file.chart.firstSeconds,
-        solverConfig,
-        annotation: file,
-        modelSolution,
+      const [response, version] = await Promise.all([
+        evaluateAnnotation({
+          requestId: nextRequestId(),
+          source: file.chart.source,
+          firstSeconds: file.chart.firstSeconds,
+          solverConfig,
+          annotation: file,
+          modelSolution,
+          routes,
+        }),
+        evaluationVersion(),
+      ]);
+      // 比對期間換了譜面：結果照樣存成那一筆的暫存，不顯示在現在這一筆。
+      // 記憶體裡的暫存立刻更新，寫資料庫不必等。
+      void this.#remember({
+        key: `${recordId}|${slot}`,
+        recordId,
+        slot,
+        version,
+        sourceHash: file.chart.sha256,
+        marks,
+        createdAt: Date.now(),
+        response,
       });
-      if (this.recordId === recordId) this.evaluation = evaluation;
     } catch (error) {
-      // 換譜或重新分析取代了這次比對，不算錯誤。
+      // 換譜、換模型或重新分析取代了這次比對，不算錯誤。
       if (error !== CANCELLED && this.recordId === recordId) {
-        this.evaluationError = typeof error === 'string' ? error : String(error);
+        this.#error = { slot, message: typeof error === 'string' ? error : String(error) };
       }
     } finally {
-      this.evaluating = false;
+      if (token === this.#runToken) this.#running = null;
     }
   }
 }

@@ -771,7 +771,7 @@
             {/if}
           {:else if !chart.recordId}
             <p>主視窗還沒有開啟譜面。</p>
-            <p class="small muted">先在主視窗左側開啟一筆譜面紀錄，影片會跟著那份譜面的標註保存。</p>
+            <p class="small muted help">先在主視窗左側開啟一筆譜面紀錄，影片會跟著那份譜面的標註保存。</p>
           {:else if missing && link}
             <p>這部影片還沒下載</p>
             <p class="small muted truncate">{link.title}</p>
@@ -803,7 +803,7 @@
             <button class="btn" onclick={() => void openLocal()}><Icon name="folder-open" size={14} />重新選擇影片</button>
           {:else}
             <p>還沒有選影片</p>
-            <p class="small muted">搜尋 YouTube 上的手元影片，或開啟自己錄的影片。</p>
+            <p class="small muted help">搜尋 YouTube 上的手元影片，或開啟自己錄的影片。</p>
             <div class="row row-wrap center">
               <button class="btn btn--primary" onclick={() => ((side = 'find'), (autoSide = false))}>
                 <Icon name="search" size={14} />找影片
@@ -937,7 +937,7 @@
             <span class="xsmall mono" class:muted={!synced}>{synced ? `偏移 ${formatDelta(offset ?? 0)} 秒` : '尚未對齊'}</span>
           </div>
           {#if !synced}
-            <ol class="steps small">
+            <ol class="steps small help">
               <li>播放或逐格（← →）把影片停在第一顆音符被打到的那一格。</li>
               <li>按「設為第一顆」。之後在主視窗選任何音符，影片都會跳到對應位置。</li>
             </ol>
@@ -959,7 +959,7 @@
                 <button class="btn-group-item" onclick={() => nudge(-0.01)}>−10ms</button>
                 <button class="btn-group-item" onclick={() => nudge(0.01)}>+10ms</button>
               </div>
-              <span class="field-hint">判定那一格看起來還沒打到就按「+1 格」，已經打完就按「−1 格」。</span>
+              <span class="field-hint help">判定那一格看起來還沒打到就按「+1 格」，已經打完就按「−1 格」。</span>
             </div>
             <div class="field">
               <span class="field-label">檢查</span>
@@ -968,7 +968,7 @@
                 <button class="btn-group-item" onclick={() => showAt(chart?.selected?.time)} disabled={!chart?.selected}>選取的音符</button>
                 <button class="btn-group-item" onclick={() => showAt(chart?.lastTime)} disabled={chart?.lastTime === null}>最後一顆</button>
               </div>
-              <span class="field-hint">最後一顆也對得上，整首就沒有跑掉。</span>
+              <span class="field-hint help">最後一顆也對得上，整首就沒有跑掉。</span>
             </div>
           {/if}
         </section>
@@ -979,7 +979,7 @@
             {#each CUE_MODES as mode (mode.id)}
               <label class="check">
                 <input type="radio" name="cue-mode" value={mode.id} bind:group={cue.mode} />
-                <span>{mode.label}<span class="field-hint">{mode.hint}</span></span>
+                <span>{mode.label}<span class="field-hint help">{mode.hint}</span></span>
               </label>
             {/each}
           </div>
@@ -1018,7 +1018,7 @@
           {/if}
         </section>
 
-        <section class="section stack-sm" aria-labelledby="sync-keys">
+        <section class="section stack-sm help" aria-labelledby="sync-keys">
           <div class="section-title" id="sync-keys">快捷鍵</div>
           <p class="xsmall muted keys">
             <kbd>Space</kbd> 播放　<kbd>←</kbd><kbd>→</kbd> 逐格　<kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 1 秒　<kbd>R</kbd> 重播這顆<br />

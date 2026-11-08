@@ -607,16 +607,24 @@
   {/if}
 {/snippet}
 
+{#snippet adxLink()}
+  <a
+    class="url-link"
+    href="https://adxdls.saop.cc"
+    target="_blank"
+    rel="noopener noreferrer"
+    onclick={(event) => void openPageUrl(event, 'https://adxdls.saop.cc')}>adxdls</a
+  >
+{/snippet}
+
 <div bind:this={root} class="panel" aria-busy={busy || anyLoading}>
+  <!-- 簡潔模式只留來源與授權：adxdls 的目錄資料是 CC BY 4.0，要標出處（使用者：「這邊在簡潔模式下也精簡文字」）。 -->
   <p class="source-note xsmall muted">
-    同時搜尋 simai Wiki（使用者轉錄的文字譜）與
-    <a
-      class="url-link"
-      href="https://adxdls.saop.cc"
-      target="_blank"
-      rel="noopener noreferrer"
-      onclick={(event) => void openPageUrl(event, 'https://adxdls.saop.cc')}>adxdls</a
-    >（AstroDX 譜面目錄，目錄資料 CC BY 4.0），同一首歌合成一筆。譜面版權屬原權利人，note 位置與 timing 不保證與官方完全一致。
+    <span class="help">
+      同時搜尋 simai Wiki（使用者轉錄的文字譜）與 {@render adxLink()}（AstroDX 譜面目錄，目錄資料 CC BY
+      4.0），同一首歌合成一筆。譜面版權屬原權利人，note 位置與 timing 不保證與官方完全一致。
+    </span>
+    <span class="concise">來源：simai Wiki、{@render adxLink()}（CC BY 4.0）</span>
   </p>
 
   <div class="index-bar" role="status">
@@ -709,8 +717,8 @@
         </button>
       </div>
       {#if failure.kind === 'rejected'}
-        <p class="xsmall muted">
-          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}盤面與譜面紀錄維持原狀，可以改選別的難度或另一個來源。
+        <p class="xsmall muted" class:help={!(rejectedStatus && STATUS_HINT[rejectedStatus])}>
+          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}<span class="help">盤面與譜面紀錄維持原狀，可以改選別的難度或另一個來源。</span>
         </p>
         {#if failure.response.diagnostics.length > 0}
           <div class="feedback-list scroll">
@@ -719,7 +727,7 @@
         {/if}
       {:else}
         <p class="small">{failure.message}</p>
-        <p class="xsmall muted">盤面與譜面紀錄維持原狀，可以重試、改選別的難度或另一個來源。</p>
+        <p class="xsmall muted help">盤面與譜面紀錄維持原狀，可以重試、改選別的難度或另一個來源。</p>
       {/if}
       {#if failure.kind !== 'download'}
         {@const current = failure}
@@ -733,7 +741,7 @@
   <div class="body">
     <div class="results scroll" aria-live="polite">
       {#if submitted.length === 0}
-        <p class="state small muted">
+        <p class="state small muted help">
           輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄、simai Wiki 與 adxdls。兩邊都有的歌合成一筆，選一首後在右側選來源與難度載入：譜面交給核心分析成功後才加入譜面紀錄。Standard 與 DX 是不同的譜面，分開列出。
         </p>
       {:else}
@@ -999,7 +1007,7 @@
               {/each}
             </tbody>
           </table>
-          <p class="xsmall muted preview-note">
+          <p class="xsmall muted preview-note help">
             {#if source === 'wiki'}
               unavailable 表示 Wiki 索引沒有該難度的連結；實際能否取得以 Rust 回傳為準。
             {:else}

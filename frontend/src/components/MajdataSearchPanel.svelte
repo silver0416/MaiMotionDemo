@@ -387,8 +387,8 @@
         </button>
       </div>
       {#if failure.kind === 'rejected'}
-        <p class="xsmall muted">
-          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}盤面與譜面紀錄維持原狀，可以改選別筆。
+        <p class="xsmall muted" class:help={!(rejectedStatus && STATUS_HINT[rejectedStatus])}>
+          {rejectedStatus && STATUS_HINT[rejectedStatus] ? `${STATUS_HINT[rejectedStatus]} ` : ''}<span class="help">盤面與譜面紀錄維持原狀，可以改選別筆。</span>
         </p>
         {#if failure.response.diagnostics.length > 0}
           <div class="feedback-list scroll">
@@ -397,7 +397,7 @@
         {/if}
       {:else}
         <p class="small">{failure.message}</p>
-        <p class="xsmall muted">盤面與譜面紀錄維持原狀，可以重試或改選別筆。</p>
+        <p class="xsmall muted help">盤面與譜面紀錄維持原狀，可以重試或改選別筆。</p>
       {/if}
       {#if failure.kind !== 'download'}
         {@const current = failure}
@@ -412,7 +412,7 @@
 
   <div class="results scroll" aria-live="polite">
     {#if submitted.length === 0}
-      <p class="state small muted">
+      <p class="state small muted help">
         輸入關鍵字後按 Enter，會同時搜尋本機譜面紀錄與 Majdata。匯入會下載 maidata.txt，交給核心分析成功後才加入譜面紀錄；有多個難度時分析編號最大的那一個。已經匯入過的譜面不會重複下載，會直接開啟本機紀錄。
       </p>
     {:else}

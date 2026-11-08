@@ -8,7 +8,10 @@ pub mod scoring_v3;
 mod solver;
 pub mod temoto;
 
-pub use annotation::{evaluate_annotation, EvaluateRequest, EvaluateResponse, HandAnnotation};
+pub use annotation::{
+    evaluate_annotation, EvaluateRequest, EvaluateResponse, HandAnnotation, RouteAnnotation,
+    RouteScore, MAIN_ROUTE,
+};
 /// 依 Slide 判定佇列模擬手部折線（測試與驗證用）。
 #[doc(hidden)]
 pub use judge::{finger_reach, simulate_route};

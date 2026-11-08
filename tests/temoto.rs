@@ -62,8 +62,14 @@ fn builtin_models_load() {
         );
     }
     // konruri（紺瑠璃）與 shoubu（菖蒲，しょうぶ）：同樣兩個網路（共用模型檔）改配 V4.1 的權重，門檻 0.5；
-    // yamabuki（山吹，TemotoAI-2）：只用手標譜面訓練的分組架構，模型檔本身附 V4.1 的權重，門檻 0.5
-    for id in ["temoto-1-konruri", "temoto-1-shoubu", "temoto-2-yamabuki"] {
+    // yamabuki（山吹）與 entan（鉛丹，山吹再補影片的 Touch／Slide 標籤），都是 TemotoAI-2：
+    // 分組架構，模型檔本身附 V4.1 的權重，門檻 0.5
+    for id in [
+        "temoto-1-konruri",
+        "temoto-1-shoubu",
+        "temoto-2-yamabuki",
+        "temoto-2-entan",
+    ] {
         let model = TemotoModel::builtin(id).unwrap();
         assert!(model.grouped(), "{id}");
         assert_eq!(model.flip_at(), 0.5, "{id}");
@@ -87,6 +93,7 @@ fn base_label_follows_model_tuning() {
         ("temoto-1-konruri", "V4.1"),
         ("temoto-1-shoubu", "V4.1"),
         ("temoto-2-yamabuki", "V4.1"),
+        ("temoto-2-entan", "V4.1"),
     ] {
         assert_eq!(
             TemotoModel::builtin(id).unwrap().base_label(),

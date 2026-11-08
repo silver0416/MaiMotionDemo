@@ -10,6 +10,7 @@
   import Icon from './Icon.svelte';
   import LaneGraph, { laneColumnWidth } from './LaneGraph.svelte';
   import LineChips from './LineChips.svelte';
+  import ModelPicker from './ModelPicker.svelte';
   import VirtualList from './VirtualList.svelte';
   import ResizeHandle from './ResizeHandle.svelte';
   import {
@@ -21,6 +22,7 @@
     isWifi,
     laneRows,
     MAIN_LINE,
+    MAIN_NAME,
     modelMarks as modelMarksOf,
     neededParts,
     parseFile,
@@ -29,6 +31,7 @@
     spansByTime,
     stepConfidence,
   } from '../lib/annotation';
+  import { scoringOf, type ScoringChoice } from '../lib/contract';
   import { copyText } from '../lib/debug';
   import { formatClock } from '../lib/format';
   import { noteLabel, stepLabel } from '../lib/notes';
@@ -657,7 +660,10 @@
 
   const rowHeight = (row: RowView) => (hasFlags(row) ? ROW_FLAGS_HEIGHT : ROW_HEIGHT);
 
-  /** 目前這一步在清單的位置；盤面點選、快捷鍵前進時捲進可視範圍。 */
+  /**
+   * 目前這一步在清單的位置；盤面點選、快捷鍵前進或換篩選時捲進可視範圍。
+   * 切換打法路線不捲（2026-11-08 使用者回報：在清單點線切換時會跳回選取那格）。
+   */
   const focusIndex = $derived.by(() => {
     const key = current?.key;
     if (!key) return null;
@@ -834,9 +840,56 @@
 
   // ---- 比對 ----
   const evaluation = $derived(annotation.evaluation);
-  const agreement = $derived(
-    evaluation && evaluation.compared > 0 ? Math.round((1000 * evaluation.agreed) / evaluation.compared) / 10 : null,
+  /** 模型選單對齊這一列（選單和側欄內容同寬，卡片才會是參數頁的半寬）。 */
+  let compareRow: HTMLElement | null = $state(null);
+  const scoring = $derived(scoringOf(session.config));
+  /** 正在做的事；有暫存時結果照樣顯示，這行說明它是暫存的。 */
+  const compareBusy = $derived(
+    session.phase === 'analyzing'
+      ? '正在分析這個模型'
+      : session.fetching
+        ? '正在載入這個模型的分析'
+        : annotation.evaluating
+          ? '正在比對'
+          : null,
   );
+  const compareStatus = $derived.by(() => {
+    if (compareBusy) return evaluation ? `先顯示暫存的結果，${compareBusy}…` : `${compareBusy}…`;
+    if (evaluation && annotation.evaluationOutdated) {
+      return '標註在這次比對之後改過，這是之前的結果；按「重新比對」更新。';
+    }
+    return '';
+  });
+
+  /** 比對頁換模型：和參數頁同一個設定，盤面與比對一起換（見 annotation.compareWith）。 */
+  function switchModel(choice: ScoringChoice) {
+    if (showingHuman) {
+      session.showHuman(null);
+      toasts.dismiss('human-view');
+    }
+    void annotation.compareWith(choice);
+  }
+  /** 吻合百分比（一位小數）；沒有可比對的步驟時為 null。 */
+  function agreementRate(agreed: number, compared: number): number | null {
+    return compared > 0 ? Math.round((1000 * agreed) / compared) / 10 : null;
+  }
+  const agreement = $derived(evaluation ? agreementRate(evaluation.agreed, evaluation.compared) : null);
+  /**
+   * 有打法分支時 Rust 每段挑一種走法，採用整首吻合率最高的組合（chosenRoutes，全走主線時為空）。
+   * 2026-11-09 以前的暫存只有 route（整首一條），再更早的都沒有，等同主線。
+   */
+  const chosenIds = $derived(
+    evaluation?.chosenRoutes ?? (evaluation?.route && evaluation.route !== MAIN_LINE ? [evaluation.route] : []),
+  );
+  const chosenPicks = $derived(annotation.chosenPicks(chosenIds));
+  const routeScores = $derived(evaluation?.routeScores ?? []);
+  const chosenName = $derived(
+    chosenIds.length === 0
+      ? MAIN_NAME
+      : chosenIds.map((id) => annotation.optionName(id, routeScores.find((item) => item.id === id)?.name)).join('、'),
+  );
+  /** 採用的走法都還在、但目前路線不是這樣走：可以切過去看那些標註（路線改成採用的組合）。 */
+  const canSwitchToChosen = $derived(chosenIds.every((id) => annotation.optionExists(id)) && !annotation.isRoute(chosenPicks));
   const gap = $derived(
     evaluation?.model && evaluation.human ? evaluation.human.cost - evaluation.model.cost : null,
   );
@@ -847,12 +900,12 @@
   const modelSkipped = $derived(evaluation?.diagnostics.filter((item) => item.code === 'model_skipped') ?? []);
   const showingHuman = $derived(session.humanView !== null && session.humanView === evaluation?.humanSolution);
 
-  /** 擱著的那幾顆：音符說明，與標記者原本標的手（接觸優先，沒有就看滑行）。 */
+  /** 擱著的那幾顆：音符說明，與標記者原本標的手（照比對採用的路線；接觸優先，沒有就看滑行）。 */
   function skippedNotes(ids: string[]): { what: string; hands: string } {
     const notes = ids.map((id) => session.noteById.get(id)).filter((note): note is Note => note !== undefined);
     const hands = new Set<TrackHand>();
     for (const note of notes) {
-      const mark = annotation.mark(note);
+      const mark = annotation.markOnRoute(note, chosenPicks);
       const hand = mark?.hand ?? mark?.track;
       if (hand) hands.add(hand);
     }
@@ -934,7 +987,7 @@
 
   {#if !session.chart}
     <div class="section">
-      <p class="small muted">先在左側開啟或新增譜面並完成分析，才能開始標註。也可以到「分享」匯入別人給的標註檔，會連同原譜一起建立紀錄。</p>
+      <p class="small muted">先在左側開啟或新增譜面並完成分析，才能開始標註。<span class="help">也可以到「分享」匯入別人給的標註檔，會連同原譜一起建立紀錄。</span></p>
     </div>
   {:else if !annotation.keysReady}
     <div class="section stack-sm">
@@ -945,7 +998,7 @@
     </div>
   {:else if !records.activeId}
     <div class="section">
-      <p class="small muted">標註會存在譜面紀錄裡。請先從左側清單開啟一筆紀錄。</p>
+      <p class="small muted"><span class="help">標註會存在譜面紀錄裡。</span>請先從左側清單開啟一筆紀錄。</p>
     </div>
   {/if}
 
@@ -956,8 +1009,13 @@
           <div class="route">
             <span class="field-label">這一步的打法</span>
             {#if stepLines.length > 1}
-              <LineChips lines={stepLines} current={stepLine} label="這一步的打法，按下切換路線" />
-              <span class="xsmall muted"><kbd>B</kbd> 切換</span>
+              <LineChips
+                lines={stepLines}
+                current={stepLine}
+                label="這一步的打法，按下這一段改走那條線"
+                onPick={(line) => current && annotation.pickLine(line, current.time)}
+              />
+              <span class="xsmall muted help"><kbd>B</kbd> 切換</span>
             {:else}
               <span class="small">只有{annotation.lineName(stepLine)}</span>
             {/if}
@@ -1084,9 +1142,9 @@
             <button class="btn btn--ghost" onclick={() => note && annotation.clear(note)} disabled={!mark}>清除這顆</button>
           </div>
         {:else}
-          <p class="small muted">在盤面或下方清單點選音符，或按 N 跳到下一顆還沒確認的音符。</p>
+          <p class="small muted">在盤面或下方清單點選音符<span class="help">，或按 N 跳到下一顆還沒確認的音符</span>。</p>
         {/if}
-        <p class="xsmall muted keys">
+        <p class="xsmall muted keys help">
           <kbd>A</kbd> 左手　<kbd>D</kbd> 右手（Slide 起點與滑行分兩步）　<kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 整顆同一手　<kbd>S</kbd> 這一步的信心　<kbd>Enter</kbd> 確認這一步的預填　<kbd>Del</kbd> 清除　<kbd>N</kbd> 下一步未確認<br />
           清單上 <kbd>Ctrl</kbd>／<kbd>Shift</kbd>+點選可以多選，選取時 <kbd>A</kbd>/<kbd>D</kbd> 一次標全部選取、<kbd>Esc</kbd> 結束
         </p>
@@ -1246,6 +1304,7 @@
         heightOf={rowHeight}
         keyOf={(row) => row.step.key}
         {focusIndex}
+        focusToken={`${annotation.recordId}|${annotation.filter}`}
         label="音符標註清單"
       >
         {#snippet row(row: RowView, _index: number, style: string)}
@@ -1274,7 +1333,7 @@
             oncontextmenu={(event) => openMenu(step, event)}
             onkeydown={(event) => onRowKeydown(step, event)}
           >
-            {#if listLanes[row.index]}<LaneGraph row={listLanes[row.index]} lanes={laneCount} />{/if}
+            {#if listLanes[row.index]}<LaneGraph row={listLanes[row.index]} lanes={laneCount} time={step.time} />{/if}
             {#each rowBars[row.index] ?? [] as bar (bar.index)}
               <span
                 class="group-bar"
@@ -1340,8 +1399,8 @@
       <label class="field">
         <span class="field-label">你的名字</span>
         <input class="input" value={annotation.annotator} placeholder="協作時用來區分是誰標的" onchange={(event) => annotation.setAnnotator(event.currentTarget.value)} />
-        <span class="field-hint">
-          記在每一顆的標註上。{annotation.draft.annotators.length > 0 ? `這份標註的參與者：${annotation.draft.annotators.join('、')}` : ''}
+        <span class="field-hint" class:help={annotation.draft.annotators.length === 0}>
+          <span class="help">記在每一顆的標註上。</span>{annotation.draft.annotators.length > 0 ? `這份標註的參與者：${annotation.draft.annotators.join('、')}` : ''}
         </span>
       </label>
       <label class="field">
@@ -1367,7 +1426,7 @@
           </button>
         </div>
       {:else}
-        <p class="small muted">還沒有區段備註。可以記「這段真人會交叉」「這段兩種打法都常見」之類的說明。</p>
+        <p class="small muted">還沒有區段備註。<span class="help">可以記「這段真人會交叉」「這段兩種打法都常見」之類的說明。</span></p>
       {/each}
       <div class="row">
         <input class="input mono" aria-label="開始秒數" placeholder="開始秒" bind:value={rangeFrom} />
@@ -1381,11 +1440,11 @@
     </section>
     <section class="section stack-sm" aria-label="分組">
       <div class="section-title">分組</div>
-      <p class="xsmall muted">
+      <p class="xsmall muted help">
         看譜時覺得「這幾顆是一組」就標起來：在「逐顆標註」清單選這組的第一顆按 <kbd>G</kbd>（或右鍵「從這顆開始分組」），
         再選最後一顆按一次。之後可以在清單按右鍵把單顆移出或加入。名稱可以不填；分組會跟著標註一起匯出，用來研究人怎麼拆解譜面，目前不影響模型。
       </p>
-      <p class="xsmall muted">
+      <p class="xsmall muted help">
         「逐顆標註」的「自動預填分組」可以先切一份草稿；標「預填」的組要確認、改名或增減音符後才算你的分組。
       </p>
       {#each annotation.groupList as item (item.index)}
@@ -1423,7 +1482,7 @@
   {#if view === 'memo'}
     <section class="section stack-sm" aria-label="一次清除">
       <div class="section-title">一次清除</div>
-      <p class="xsmall muted">只影響目前這份譜面的標註。清除後可在提示上按「復原」。</p>
+      <p class="xsmall muted help">只影響目前這份譜面的標註。清除後可在提示上按「復原」。</p>
       {#if confirmingClear}
         <div class="clear-confirm alert alert--warn" role="alertdialog" aria-label="確認清除">
           <p class="small">{CLEAR_TEXT[confirmingClear].ask(counts)}</p>
@@ -1455,7 +1514,7 @@
   {#if view === 'share'}
     <section class="section stack-sm">
       <div class="section-title">分享這份標註</div>
-      <p class="small muted">標註連同原譜一起轉成標註檔（maimotion-hand-annotation），每顆音符一行。複製後可以直接貼給其他人，對方匯入就能合併。</p>
+      <p class="small muted help">標註連同原譜一起轉成標註檔（maimotion-hand-annotation），每顆音符一行。複製後可以直接貼給其他人，對方匯入就能合併。</p>
       <div class="row row-wrap">
         <button class="btn btn--primary" disabled={!annotation.keysReady || !session.chart} onclick={copyAll}>
           <Icon name="copy" size={14} />複製標註
@@ -1491,21 +1550,30 @@
       {#if importMessage}
         <div class="alert" class:alert--error={importMessage.tone === 'error'} role="status">{importMessage.text}</div>
       {/if}
-      <p class="xsmall muted">匯入時以原譜比對：已有同一份譜面的紀錄就合併進去，沒有就連同原譜新增一筆紀錄。備註與區段備註兩邊都會保留。</p>
+      <p class="xsmall muted help">匯入時以原譜比對：已有同一份譜面的紀錄就合併進去，沒有就連同原譜新增一筆紀錄。備註與區段備註兩邊都會保留。</p>
     </section>
   {/if}
 
   {#if view === 'compare'}
     <section class="section stack-sm">
       <div class="section-title">和模型比對</div>
-      <p class="small muted">用「參數」分頁目前的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認的步驟：「確定」比手是否相同，「皆可」兩隻手都算吻合，「不確定」不列入（Slide 的起點與滑行分開看）。</p>
+      <p class="small muted help">選一個模型，其餘照「參數」分頁的設定，分別求出模型最佳解與「照你的標註打」的最佳解。只用已確認的步驟：「確定」比手是否相同，「皆可」兩隻手都算吻合，「不確定」不列入（Slide 的起點與滑行分開看）。</p>
       {#if hasBranches}
-        <p class="small">比對的路線：<strong>{annotation.lineName(annotation.draft.active)}</strong>（到「打法」分頁切換）</p>
+        <p class="small help">有打法分支時，每一段的各種打法都會和模型比，每段挑一種，結果採用整首吻合率最高的組合。</p>
       {/if}
-      <button class="btn btn--primary" disabled={!session.desktop || annotation.evaluating || session.phase === 'analyzing' || stats.done === 0} onclick={() => void annotation.evaluate()}>
-        <Icon name={annotation.evaluating ? 'loader' : 'compare'} size={14} spin={annotation.evaluating} />
-        {annotation.evaluating ? '比對中…' : '開始比對'}
-      </button>
+      <div class="compare-row" bind:this={compareRow}>
+        <ModelPicker value={scoring} anchor={compareRow} rate={(choice) => annotation.agreementFor(choice)} onChange={switchModel} />
+        <button
+          class="btn btn--primary"
+          disabled={!session.desktop || annotation.evaluating || session.loading || stats.done === 0}
+          onclick={() => void annotation.evaluate()}
+        >
+          <Icon name={annotation.evaluating ? 'loader' : 'compare'} size={14} spin={annotation.evaluating} />
+          {annotation.evaluating ? '比對中…' : evaluation ? '重新比對' : '開始比對'}
+        </button>
+      </div>
+      <p class="xsmall muted compare-status" role="status">{compareStatus}</p>
+      <p class="xsmall muted help">換模型時盤面跟著換；比對過的結果會暫存，換回來先顯示，改了參數就要重新比對。</p>
       {#if !session.desktop}
         <p class="xsmall muted">瀏覽器預覽沒有 Rust 核心，比對只能在桌面版執行。</p>
       {:else if stats.done === 0}
@@ -1519,6 +1587,15 @@
     {#if evaluation}
       <section class="section stack-sm" aria-label="比對結果">
         <dl class="kv">
+          {#if routeScores.length > 1}
+            <dt>採用的打法</dt>
+            <dd class="route-pick">
+              <span>{chosenName}</span>
+              {#if canSwitchToChosen}
+                <button class="linkish" onclick={() => annotation.usePicks(chosenPicks)}>{chosenIds.length > 1 ? '切到這組' : '切到這條'}</button>
+              {/if}
+            </dd>
+          {/if}
           <dt>參與比對</dt>
           <dd>{evaluation.matched} 顆{evaluation.unmatchedKeys.length > 0 ? `（${evaluation.unmatchedKeys.length} 顆對不上音符）` : ''}</dd>
           <dt>吻合</dt>
@@ -1538,17 +1615,17 @@
             <dd>{gap >= 0 ? '+' : ''}{gap.toFixed(3)}</dd>
           {/if}
         </dl>
-        <p class="xsmall muted">分數越低越好。差距越小，代表目前參數越認同真人的打法；若照標註反而更低，是搜尋沒找到真人打法。</p>
+        <p class="xsmall muted help">分數越低越好。差距越小，代表目前參數越認同真人的打法；若照標註反而更低，是搜尋沒找到真人打法。</p>
         {#if modelSkipped.length > 0}
           <div class="alert alert--warn" role="status">
             <div class="alert-title">有 {modelSkipped.length} 處模型走不下去，那幾顆沒有比對</div>
-            <p>模型本身做不到的音符先略過，照標註求解時也一起略過，兩邊才是同一份譜面；那幾顆的標記不列入吻合，位置列在下方。</p>
+            <p class="help">模型本身做不到的音符先略過，照標註求解時也一起略過，兩邊才是同一份譜面；那幾顆的標記不列入吻合，位置列在下方。</p>
           </div>
         {/if}
         {#if skipped.length > 0 && evaluation.humanSolution}
           <div class="alert alert--warn" role="status">
             <div class="alert-title">有 {skipped.length} 處照標註走不下去，已先略過</div>
-            <p>那幾顆的標記先擱著、照模型的手接下去，後面的標註照常求解，位置列在下方。照標註的分數因此只供參考。</p>
+            <p class="help">那幾顆的標記先擱著、照模型的手接下去，後面的標註照常求解，位置列在下方。照標註的分數因此只供參考。</p>
           </div>
         {/if}
         {#if infeasible}
@@ -1568,6 +1645,25 @@
           </button>
         {/if}
       </section>
+      {#if routeScores.length > 1}
+        <section class="section stack-sm">
+          <div class="section-title">各種打法的吻合</div>
+          <dl class="kv route-scores">
+            {#each routeScores as item (item.id)}
+              {@const rate = agreementRate(item.agreed, item.compared)}
+              <dt class="route-name">
+                <span class="route-dot" style={`background:${annotation.optionColor(item.id)}`}></span>
+                <span class="route-label">{annotation.optionName(item.id, item.name)}</span>
+                {#if item.id === MAIN_LINE ? chosenIds.length === 0 : chosenIds.includes(item.id)}<span class="badge">採用</span>{/if}
+              </dt>
+              <dd>{rate === null ? '—' : `${item.agreed}／${item.compared}（${rate}%）`}</dd>
+            {/each}
+          </dl>
+          <p class="xsmall muted help">
+            每一列是只把那一段換成這種打法、其他照主線的吻合。每段挑一種，採用整首吻合率最高的組合；同樣吻合率時取比對步數多的，再一樣就取主線或排在前面的打法。
+          </p>
+        </section>
+      {/if}
       {#if skipped.length > 0}
         <section class="section stack-sm">
           <div class="section-title">照標註略過的地方（{skipped.length}）</div>
@@ -2066,5 +2162,51 @@
 
   .divergences {
     margin: 0 calc(-1 * var(--space-4));
+  }
+
+  /* 比對：模型選單＋比對鈕同一列；選單打開時和這一列同寬。 */
+  .compare-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .compare-status:empty {
+    display: none;
+  }
+
+  /* 比對結果的打法：名稱用一般字，數字才用等寬。 */
+  .route-pick {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: inherit;
+  }
+
+  /* 名稱太長時省略，吻合數字靠右一欄不被擠掉。 */
+  .route-scores {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .route-name {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .route-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .route-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 </style>

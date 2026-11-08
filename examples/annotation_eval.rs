@@ -23,6 +23,7 @@ fn main() {
         solver_config,
         annotation,
         model_solution: None,
+        routes: vec![],
     };
     let start = std::time::Instant::now();
     let r = evaluate_annotation(request);

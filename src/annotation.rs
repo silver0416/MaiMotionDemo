@@ -67,7 +67,7 @@ pub enum StepPart {
     Track,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoverMark {
     /// 換手的時刻（秒）。
@@ -201,6 +201,41 @@ pub struct EvaluateRequest {
     /// 不再重算；呼叫端要確保它對應這份原文與設定。只用到指派、換手與分數。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_solution: Option<Solution>,
+    /// 主線以外的打法走法（2026-11-08 起）：每種走法展開後的手順（前端照那種選法走的樣子）。
+    /// 有的話和 annotation.notes（主線，id 為 [`MAIN_ROUTE`]）一起和模型比。2026-11-09 起每種走法帶
+    /// group（段）：同一段的走法只能選一種、不同段各自選，挑出讓整首吻合率最高的組合（同率取比對步數多的，
+    /// 再同就取前面的，主線最前）；沒帶 group 的全部算同一段，也就是整首只挑一條（2026-11-08 的算法）。
+    /// 每種走法只能在自己那段和主線不同。照標註求解、不同處與吻合數都照挑出來的組合。
+    /// 要先有模型解才能選，所以沒給 model_solution 時模型與照標註不同時跑。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routes: Vec<RouteAnnotation>,
+}
+
+/// 主線（標註檔本身的 notes）的路線 id。
+pub const MAIN_ROUTE: &str = "main";
+
+/// 一種打法走法展開後的手順。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteAnnotation {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub notes: Vec<NoteAnnotation>,
+    /// 屬於哪一段（2026-11-09 起）：同一段的走法只能選一種，不同段各自選；省略的全部算同一段。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<usize>,
+}
+
+/// 一條路線和模型的吻合（參與比對的步數與吻合數，算法同 EvaluateResponse 的 compared／agreed）。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteScore {
+    pub id: String,
+    pub name: String,
+    pub compared: usize,
+    pub agreed: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -246,6 +281,14 @@ pub struct EvaluateResponse {
     pub human: Option<EvaluatedSolution>,
     /// 照標註求得的完整方案，可在盤面上檢視。
     pub human_solution: Option<Solution>,
+    /// 採用的走法：都沒採用（全走主線）為 [`MAIN_ROUTE`]，否則是 chosen_routes 以 + 連接（只採用一種時就是它的 id）。
+    /// 上面的 labeled、compared、divergences、human 等都照採用的組合。
+    pub route: String,
+    /// 採用的走法（request.routes 裡的 id，每段至多一種，依送來的順序；2026-11-09 起）；全走主線時為空。
+    pub chosen_routes: Vec<String>,
+    /// 有送 routes 時每種走法和模型的吻合（只換那一段、其他照主線；主線在最前，名稱留空）；
+    /// 沒送或模型沒有解時為空。
+    pub route_scores: Vec<RouteScore>,
 }
 
 fn evaluated(solution: &Solution) -> EvaluatedSolution {
@@ -303,6 +346,193 @@ fn as_track(hand: Hand) -> TrackHand {
     } else {
         TrackHand::R
     }
+}
+
+/// 對得到音符的標記（音符索引, 標記），以及對不到的鍵。
+fn matched_marks<'a>(
+    by_key: &HashMap<&str, usize>,
+    notes: &'a [NoteAnnotation],
+) -> (Vec<(usize, &'a NoteAnnotation)>, Vec<String>) {
+    let mut marks = vec![];
+    let mut unmatched = vec![];
+    for mark in notes {
+        match by_key.get(mark.key.as_str()) {
+            Some(index) => marks.push((*index, mark)),
+            None => unmatched.push(mark.key.clone()),
+        }
+    }
+    (marks, unmatched)
+}
+
+/// 標記和模型比：（參與比對的步數, 吻合數, 不同處）。「確定」的那一步比手；「皆可」不論模型用
+/// 哪隻手都算吻合；「不確定」不比；模型在那一步沒有手（略過）時不比。
+fn agreement(
+    chart: &Chart,
+    marks: &[(usize, &NoteAnnotation)],
+    model: &Solution,
+) -> (usize, usize, Vec<Divergence>) {
+    let (mut compared, mut agreed, mut divergences) = (0, 0, vec![]);
+    let counted = |c: Confidence| c != Confidence::Unsure;
+    for (index, mark) in marks {
+        let note = &chart.notes[*index];
+        let (contact, track) = model_hands(model, &note.id);
+        let mut compare = |part: &str, human: TrackHand, either: bool, model: Option<TrackHand>| {
+            let Some(model) = model else {
+                return;
+            };
+            compared += 1;
+            if either || human == model {
+                agreed += 1;
+            } else {
+                divergences.push(Divergence {
+                    note_id: note.id.clone(),
+                    key: note.key.clone(),
+                    time_seconds: note.time_seconds,
+                    part: part.into(),
+                    human,
+                    model,
+                });
+            }
+        };
+        if let Some(hand) = mark.hand.filter(|_| counted(mark.confidence)) {
+            let either = mark.confidence == Confidence::Either;
+            compare("hand", as_track(hand), either, contact.map(as_track));
+        }
+        if let Some(track_hand) = mark.track.filter(|_| counted(mark.slide_confidence())) {
+            let either = mark.slide_confidence() == Confidence::Either;
+            compare("track", track_hand, either, track);
+        }
+    }
+    (compared, agreed, divergences)
+}
+
+/// 每一段挑一種走法（或主線），讓整首的吻合率最高；同率取比對步數多的，再同就取前面的（主線最前）。
+/// 沒有比對步數的最差。scores[0] 是主線的（吻合數, 比對步數），scores[i + 1] 是第 i 種走法的；
+/// groups[i] 是它的段，None 的全部算同一段。回傳採用的走法（走法的索引，依順序）。
+///
+/// 每種走法只在自己那段和主線不同，整首就是主線加上各段選的走法和主線的差。吻合率是比值，用
+/// Dinkelbach 法求最大：固定目標比值 p/q 時，每段各挑（吻合數差 × q − p × 比對步數差, 比對步數差）
+/// 最大的，整首的比值比 p/q 高就換成新的比值再挑，直到不再變高；最後那次挑的就是比值最高、
+/// 同率時比對步數最多的組合。
+fn choose_routes(scores: &[(usize, usize)], groups: &[Option<usize>]) -> Vec<usize> {
+    let (a0, c0) = (scores[0].0 as i128, scores[0].1 as i128);
+    let mut sections: Vec<(Option<usize>, Vec<usize>)> = vec![];
+    for (i, group) in groups.iter().enumerate() {
+        match sections.iter_mut().find(|(g, _)| g == group) {
+            Some((_, members)) => members.push(i),
+            None => sections.push((*group, vec![i])),
+        }
+    }
+    let delta = |i: usize| {
+        let (a, c) = scores[i + 1];
+        (a as i128 - a0, c as i128 - c0)
+    };
+    let pick = |p: i128, q: i128| -> Vec<usize> {
+        sections
+            .iter()
+            .filter_map(|(_, members)| {
+                // 主線是 (0, 0)；要嚴格勝過才換，所以同分取前面的、主線最前。
+                let mut best = None;
+                let mut top = (0i128, 0i128);
+                for &i in members {
+                    let (da, dc) = delta(i);
+                    let value = (da * q - p * dc, dc);
+                    if value > top {
+                        (best, top) = (Some(i), value);
+                    }
+                }
+                best
+            })
+            .collect()
+    };
+    let (mut p, mut q) = if c0 > 0 { (a0, c0) } else { (0, 1) };
+    loop {
+        let chosen = pick(p, q);
+        let (a, c) = chosen.iter().fold((a0, c0), |(a, c), &i| {
+            let (da, dc) = delta(i);
+            (a + da, c + dc)
+        });
+        // 比值每次都嚴格變高，組合有限，一定會停。
+        if c > 0 && a * q > p * c {
+            (p, q) = (a, c);
+        } else {
+            return chosen;
+        }
+    }
+}
+
+/// 主線換上採用的走法：每種走法只在自己那段和主線不同，逐顆、逐步（接觸、滑行）把和主線不同的地方換過去；
+/// 不同段的步驟不重疊，換的順序不影響結果。接觸與滑行的信心分開保留（滑行的信心寫進 track_confidence，
+/// 換接觸那一步的信心時才不會連帶改到滑行）。走法那段沒有可比標記的步驟，組合裡也沒有。
+fn compose_routes<'a>(
+    main: &[NoteAnnotation],
+    chosen: impl IntoIterator<Item = &'a [NoteAnnotation]>,
+) -> Vec<NoteAnnotation> {
+    let contact = |m: Option<&NoteAnnotation>| m.and_then(|m| m.hand.map(|h| (h, m.confidence)));
+    let track = |m: Option<&NoteAnnotation>| {
+        m.and_then(|m| {
+            m.track
+                .map(|t| (t, m.slide_confidence(), m.handovers.clone()))
+        })
+    };
+    let base: HashMap<&str, &NoteAnnotation> = main.iter().map(|m| (m.key.as_str(), m)).collect();
+    let mut out: Vec<NoteAnnotation> = main.to_vec();
+    let mut index: HashMap<String, usize> = out
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.key.clone(), i))
+        .collect();
+    for route in chosen {
+        let own: HashMap<&str, &NoteAnnotation> =
+            route.iter().map(|m| (m.key.as_str(), m)).collect();
+        let keys: Vec<&str> = route
+            .iter()
+            .map(|m| m.key.as_str())
+            .chain(
+                main.iter()
+                    .map(|m| m.key.as_str())
+                    .filter(|k| !own.contains_key(k)),
+            )
+            .collect();
+        for key in keys {
+            let (was, now) = (base.get(key).copied(), own.get(key).copied());
+            let hand_differs = contact(was) != contact(now);
+            let track_differs = track(was) != track(now);
+            if !hand_differs && !track_differs {
+                continue;
+            }
+            let i = match index.get(key) {
+                Some(&i) => i,
+                None => {
+                    let Some(mark) = now else { continue };
+                    let mut fresh = mark.clone();
+                    fresh.hand = None;
+                    fresh.track = None;
+                    fresh.handovers.clear();
+                    fresh.track_confidence = None;
+                    out.push(fresh);
+                    index.insert(key.to_string(), out.len() - 1);
+                    out.len() - 1
+                }
+            };
+            let slot = &mut out[i];
+            if hand_differs {
+                slot.track_confidence = Some(slot.slide_confidence());
+                slot.hand = now.and_then(|m| m.hand);
+                if let Some(mark) = now {
+                    slot.confidence = mark.confidence;
+                }
+            }
+            if track_differs {
+                slot.track = now.and_then(|m| m.track);
+                slot.handovers = now.map(|m| m.handovers.clone()).unwrap_or_default();
+                slot.track_confidence =
+                    Some(now.map_or(slot.slide_confidence(), |m| m.slide_confidence()));
+            }
+        }
+    }
+    out.retain(|m| m.hand.is_some() || m.track.is_some());
+    out
 }
 
 /// 把確定的標註轉成求解限制（音符 id）；接觸與滑行各看自己那一步的信心。
@@ -445,6 +675,9 @@ fn evaluate_inner(
         model: None,
         human: None,
         human_solution: None,
+        route: MAIN_ROUTE.into(),
+        chosen_routes: vec![],
+        route_scores: vec![],
     };
     let annotation = &request.annotation;
     if annotation.format != ANNOTATION_FORMAT || annotation.version != ANNOTATION_VERSION {
@@ -475,23 +708,29 @@ fn evaluate_inner(
         .map(|(i, n)| (n.key.as_str(), i))
         .collect();
     // 預填的步驟不是真人資料：同一顆的真人步驟照樣比對，預填的那一步拿掉。
-    let confirmed: Vec<NoteAnnotation> = annotation
-        .notes
-        .iter()
-        .filter_map(NoteAnnotation::confirmed)
-        .collect();
-    let mut marks: Vec<(usize, &NoteAnnotation)> = vec![];
-    for mark in &confirmed {
-        response.labeled += 1;
-        match by_key.get(mark.key.as_str()) {
-            Some(index) => marks.push((*index, mark)),
-            None => response.unmatched_keys.push(mark.key.clone()),
-        }
-    }
-    response.matched = marks.len();
+    // 每種走法（主線在最前）：（id, 名稱, 確認過的標記）；段另外放在 groups（不含主線）。
+    let confirmed = |notes: &[NoteAnnotation]| -> Vec<NoteAnnotation> {
+        notes.iter().filter_map(NoteAnnotation::confirmed).collect()
+    };
+    let candidates: Vec<(String, String, Vec<NoteAnnotation>)> = std::iter::once((
+        MAIN_ROUTE.to_string(),
+        String::new(),
+        confirmed(&annotation.notes),
+    ))
+    .chain(request.routes.iter().map(|route| {
+        (
+            route.id.clone(),
+            route.name.clone(),
+            confirmed(&route.notes),
+        )
+    }))
+    .collect();
+    let groups: Vec<Option<usize>> = request.routes.iter().map(|route| route.group).collect();
+    let several = candidates.len() > 1;
 
     let config = &request.solver_config;
-    let mut rules = rules(&chart, &marks, config);
+    let (main_marks, _) = matched_marks(&by_key, &candidates[0].2);
+    let mut rules = rules(&chart, &main_marks, config);
     // 模型（部分解）略過的音符，照標註求解時一樣略過，兩邊才是同一份譜面。
     let skipped_by = |model: &Solved| {
         model
@@ -500,12 +739,14 @@ fn evaluate_inner(
             .and_then(|solutions| solutions.first())
             .map_or(vec![], |best| best.skipped.clone())
     };
+    // 有好幾條路線時，要先有模型解才知道照哪條求解：照標註那一邊等選好路線再跑（None）。
     let (model, human) = match supplied {
         Some(solution) => {
             rules.skip = solution.skipped.clone();
-            (Ok(vec![solution]), solve_human(&chart, config, &rules))
+            let human = (!several).then(|| solve_human(&chart, config, &rules));
+            (Ok(vec![solution]), human)
         }
-        None if parallel => {
+        None if parallel && !several => {
             // 另一個執行緒要帶上這次工作的取消旗標與評分權重（兩者都放在執行緒區域變數）。
             let cancel = solver::current_cancel();
             let tuning = crate::scoring_v3::current_override();
@@ -527,24 +768,17 @@ fn evaluate_inner(
                 let model = model
                     .join()
                     .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-                (model, human)
+                (model, Some(human))
             })
         }
         None => {
             let model = solve_model(&chart, config);
             rules.skip = skipped_by(&model);
-            let human = solve_human(&chart, config, &rules);
+            let human = (!several).then(|| solve_human(&chart, config, &rules));
             (model, human)
         }
     };
-    // 同時跑的照標註求解不知道模型略過了哪些：模型是部分解時照著重解。
     let skipped = skipped_by(&model);
-    let human = if rules.skip == skipped {
-        human
-    } else {
-        rules.skip = skipped.clone();
-        solve_human(&chart, config, &rules)
-    };
     response
         .diagnostics
         .extend(solver::skipped_diagnostics(&chart, &skipped));
@@ -556,41 +790,72 @@ fn evaluate_inner(
             None
         }
     };
+
+    // 選走法：每種都和模型比，每段挑一種，讓整首的吻合率最高（同率取比對步數多的，再同就取前面的，
+    // 主線最前）；沒帶段的全部算同一段，也就是整首只挑一條。模型沒有解時沒得比，照主線。
+    let mut chosen: Vec<usize> = vec![];
+    if let (true, Some(best)) = (several, &model) {
+        let mut scores = vec![];
+        for (id, name, notes) in &candidates {
+            let (marks, _) = matched_marks(&by_key, notes);
+            let (compared, agreed, _) = agreement(&chart, &marks, best);
+            response.route_scores.push(RouteScore {
+                id: id.clone(),
+                name: name.clone(),
+                compared,
+                agreed,
+            });
+            scores.push((agreed, compared));
+        }
+        chosen = choose_routes(&scores, &groups)
+            .into_iter()
+            .map(|i| i + 1)
+            .collect();
+    }
+    // 採用一種時就是它展開後的手順；好幾種時在主線上逐步換上各段（依音符先後排，不同處才照時間列）。
+    let composed;
+    let notes: &[NoteAnnotation] = match chosen.as_slice() {
+        [] => &candidates[0].2,
+        [only] => &candidates[*only].2,
+        many => {
+            let mut notes = compose_routes(
+                &candidates[0].2,
+                many.iter().map(|&i| candidates[i].2.as_slice()),
+            );
+            notes.sort_by_key(|m| by_key.get(m.key.as_str()).copied().unwrap_or(usize::MAX));
+            composed = notes;
+            &composed
+        }
+    };
+    let (marks, unmatched) = matched_marks(&by_key, notes);
+    response.chosen_routes = chosen.iter().map(|&i| candidates[i].0.clone()).collect();
+    response.route = if chosen.is_empty() {
+        MAIN_ROUTE.into()
+    } else {
+        response.chosen_routes.join("+")
+    };
+    response.labeled = notes.len();
+    response.matched = marks.len();
+    response.unmatched_keys = unmatched;
+    if !chosen.is_empty() {
+        let skip = std::mem::take(&mut rules.skip);
+        rules = self::rules(&chart, &marks, config);
+        rules.skip = skip;
+    }
+    // 照標註求解：還沒跑的照選好的路線跑；同時跑的不知道模型略過了哪些，模型是部分解時照著重解。
+    let human = match human {
+        Some(human) if rules.skip == skipped => human,
+        _ => {
+            rules.skip = skipped.clone();
+            solve_human(&chart, config, &rules)
+        }
+    };
     if let Some(model) = &model {
         response.model = Some(evaluated(model));
-        for (index, mark) in &marks {
-            let note = &chart.notes[*index];
-            let (contact, track) = model_hands(model, &note.id);
-            let mut compare =
-                |part: &str, human: TrackHand, either: bool, model: Option<TrackHand>| {
-                    let Some(model) = model else {
-                        return;
-                    };
-                    response.compared += 1;
-                    if either || human == model {
-                        response.agreed += 1;
-                    } else {
-                        response.divergences.push(Divergence {
-                            note_id: note.id.clone(),
-                            key: note.key.clone(),
-                            time_seconds: note.time_seconds,
-                            part: part.into(),
-                            human,
-                            model,
-                        });
-                    }
-                };
-            // 「確定」的那一步比手；「皆可」不論模型用哪隻手都算吻合；「不確定」不比。
-            let counted = |c: Confidence| c != Confidence::Unsure;
-            if let Some(hand) = mark.hand.filter(|_| counted(mark.confidence)) {
-                let either = mark.confidence == Confidence::Either;
-                compare("hand", as_track(hand), either, contact.map(as_track));
-            }
-            if let Some(track_hand) = mark.track.filter(|_| counted(mark.slide_confidence())) {
-                let either = mark.slide_confidence() == Confidence::Either;
-                compare("track", track_hand, either, track);
-            }
-        }
+        let (compared, agreed, divergences) = agreement(&chart, &marks, model);
+        response.compared = compared;
+        response.agreed = agreed;
+        response.divergences = divergences;
     }
 
     let (human, skipped) = human;

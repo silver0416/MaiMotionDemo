@@ -33,7 +33,12 @@ export interface AnnotationDraft {
   video?: VideoLink;
   /** 其他打法的分支 */
   branches: AnnotationBranch[];
-  /** 目前走哪條線（MAIN_LINE 或分支 id）；只存在本機，不寫進標註檔 */
+  /**
+   * 目前路線選了哪些分支（依選的先後，空陣列是全走主線）；不同段落可以各選一條（2026-11-08 起）。
+   * 只存在本機，不寫進標註檔。舊草稿沒有這一欄，讀進來時由 active 換算。
+   */
+  route: string[];
+  /** 「打法」分頁正在設定的線（MAIN_LINE 或分支 id），也是最後點選的線；只存在本機 */
   active: string;
   /** 主線在分支圖上的顏色；只存在本機 */
   mainColor: string;
@@ -93,6 +98,7 @@ export function emptyDraft(title = ''): AnnotationDraft {
     groups: [],
     updatedAt: 0,
     branches: [],
+    route: [],
     active: MAIN_LINE,
     mainColor: LINE_COLORS[0],
   };
@@ -457,7 +463,13 @@ export function cleanDraft(value: unknown): AnnotationDraft | null {
   const notes = cleanNotes(raw.notes);
   const video = cleanLink(raw.video);
   const branches = cleanBranches(raw.branches);
-  const active = text(raw.active);
+  const active = branches.some((branch) => branch.id === text(raw.active)) ? text(raw.active) : MAIN_LINE;
+  // 舊草稿只記一條線：路線就是那一條。
+  const route = Array.isArray(raw.route)
+    ? raw.route.filter((id): id is string => typeof id === 'string')
+    : active === MAIN_LINE
+      ? []
+      : [active];
   return {
     title: text(raw.title),
     annotators: Array.isArray(raw.annotators) ? raw.annotators.filter((a): a is string => typeof a === 'string' && a !== '') : [],
@@ -468,15 +480,18 @@ export function cleanDraft(value: unknown): AnnotationDraft | null {
     updatedAt: finite(raw.updatedAt) ? raw.updatedAt : 0,
     ...(video ? { video } : {}),
     branches,
-    active: branches.some((branch) => branch.id === active) ? active : MAIN_LINE,
+    route: cleanRoute(branches, route),
+    active,
     mainColor: isColor(raw.mainColor) ? raw.mainColor : LINE_COLORS[0],
   };
 }
 
 // ---- 打法分支與路線 ----
 //
-// 每條分支只管 from～to 這段；選定一條線就等於選了一條路線：
-// 在它的範圍內用它的手順，範圍之前沿著分出的線、之後沿著併入的線繼續找，最後回到主線。
+// 每條分支只管 from～to 這段。單選一條線時（lineAt）：在它的範圍內用它的手順，
+// 範圍之前沿著分出的線、之後沿著併入的線繼續找，最後回到主線。
+// 目前路線可以同時選好幾條（route，2026-11-08 起）：不同段落各走各的分支，
+// 每個選擇照單選展開，同一時間取最裡層的那條（見 routeLineAt）。
 
 const TIME_EPS = 1e-4;
 
@@ -516,29 +531,177 @@ export function dependsOn(branches: AnnotationBranch[], line: string, id: string
   return false;
 }
 
+/** 只走一條線的路線（主線是什麼分支都不選）。 */
+export function lineRoute(line: string): string[] {
+  return line === MAIN_LINE ? [] : [line];
+}
+
+/**
+ * 選擇的走法可能改變的時間點：各分支的起訖，以及相鄰兩點之間的中點。
+ * lineAt 在兩點之間不會變，查這些時間就涵蓋了所有情況。
+ */
+function probeTimes(branches: AnnotationBranch[]): number[] {
+  const edges = [...new Set(branches.flatMap((branch) => [branch.from, branch.to]))].sort((a, b) => a - b);
+  return edges.flatMap((time, index) => (index + 1 < edges.length ? [time, (time + edges[index + 1]) / 2] : [time]));
+}
+
+/** 同一時間走這兩條線不衝突：有一條是主線、同一條，或一條是從另一條往下分出的。 */
+function nests(branches: AnnotationBranch[], a: string, b: string): boolean {
+  return a === MAIN_LINE || b === MAIN_LINE || a === b || dependsOn(branches, a, b) || dependsOn(branches, b, a);
+}
+
+/** 兩個選擇在某段各走不同、互不包含的分支（同一段的兩種打法），不能同時選。 */
+function clashes(branches: AnnotationBranch[], a: string, b: string, times: number[]): boolean {
+  return times.some((time) => !nests(branches, lineAt(branches, a, time), lineAt(branches, b, time)));
+}
+
+/** 整理路線的選擇：拿掉不存在或重複的分支；互相衝突時留後選的。 */
+export function cleanRoute(branches: AnnotationBranch[], route: readonly string[]): string[] {
+  const ids = new Set(branches.map((branch) => branch.id));
+  const times = probeTimes(branches);
+  const kept: string[] = [];
+  for (const line of [...route].reverse()) {
+    if (!ids.has(line) || kept.includes(line)) continue;
+    if (kept.some((other) => clashes(branches, line, other, times))) continue;
+    kept.push(line);
+  }
+  return kept.reverse();
+}
+
+/**
+ * 走 route 這組選擇時，這個時間的步驟歸哪條線：每個選擇照 lineAt 展開，
+ * 同一時間有好幾個選擇走到分支時取最裡層的（往下分出的優先），分不出裡外時取後選的；都沒走到就是主線。
+ */
+export function routeLineAt(branches: AnnotationBranch[], route: readonly string[], time: number): string {
+  let best = MAIN_LINE;
+  for (const pick of route) {
+    const line = lineAt(branches, pick, time);
+    if (line === MAIN_LINE || line === best) continue;
+    if (best === MAIN_LINE || !dependsOn(branches, best, line)) best = line;
+  }
+  return best;
+}
+
+/**
+ * 在 time 這一步改走 line（主線也可以），回傳新的選擇。其他段落選的分支照舊，只拿掉：
+ * 這一步原本走別條分支的選擇（line 是從那條往下分出的就保留），以及和 line 同一段衝突的選擇。
+ */
+export function pickRoute(branches: AnnotationBranch[], route: readonly string[], line: string, time: number): string[] {
+  const branch = branches.find((item) => item.id === line);
+  if (line !== MAIN_LINE && !branch) return [...route];
+  // 點到分支範圍外的列（例如分支開始前就在滑的 Slide 滑行步驟）時，看分支範圍內最近的時間。
+  const at = branch ? Math.min(Math.max(time, branch.from), branch.to) : time;
+  const times = probeTimes(branches);
+  const kept = route.filter((pick) => {
+    if (pick === line) return false;
+    const here = lineAt(branches, pick, at);
+    if (here !== MAIN_LINE && here !== line && !(branch && dependsOn(branches, line, here))) return false;
+    return !branch || !clashes(branches, pick, line, times);
+  });
+  return branch ? [...kept, line] : kept;
+}
+
+/** 路線有走到的分支（主線不列）。 */
+export function routeBranches(branches: AnnotationBranch[], route: readonly string[]): Set<string> {
+  const used = new Set<string>();
+  for (const time of probeTimes(branches)) {
+    const line = routeLineAt(branches, route, time);
+    if (line !== MAIN_LINE) used.add(line);
+  }
+  return used;
+}
+
+/** 兩組選擇在每個時刻走的線都一樣（例如 [D] 和 [B, D]，D 是從 B 分出的）。 */
+export function sameRoute(branches: AnnotationBranch[], a: readonly string[], b: readonly string[]): boolean {
+  return probeTimes(branches).every((time) => routeLineAt(branches, a, time) === routeLineAt(branches, b, time));
+}
+
+/** 比對時某一段主線以外的一種走法：section 是第幾段（依分支順序，從 0 起），picks 是選的分支（依分支順序）。 */
+export interface RouteOption {
+  section: number;
+  picks: string[];
+}
+
+/** 一段的分支多到組合列不完時（實際標註一段最多 4 條），只列前面這麼多種。 */
+const SECTION_OPTION_LIMIT = 4096;
+
+/**
+ * 比對用（2026-11-09 起）：互不影響的每一段，以及每段主線以外可以走的組合，規則同 pickRoute：
+ * 同一時刻各走不同、互不包含的分支不能同時選；選了從分支再分出的分支，那段也走它的上一層。
+ * 影響範圍（走那條線時不是主線的時刻）重疊的分支算同一段；每個時刻走的線都一樣的組合只留先找到的那種
+ * （例如 B、B＋D 都列，D 單獨就是 B＋D，不另列）。每種走法只在自己那段和主線不同，
+ * 所以 Rust 每段各挑一種就能找出整首最好的組合。和固定評測的 bench.route_groups 同一套規則。
+ */
+export function routeSections(branches: AnnotationBranch[]): RouteOption[] {
+  const times = probeTimes(branches);
+  const ids = branches.map((branch) => branch.id);
+  const reach = new Map(
+    ids.map((id) => [id, new Set(times.flatMap((time, k) => (lineAt(branches, id, time) === MAIN_LINE ? [] : [k])))]),
+  );
+  const root = new Map(ids.map((id) => [id, id]));
+  const find = (id: string): string => {
+    let cursor = id;
+    while (root.get(cursor) !== cursor) cursor = root.get(cursor)!;
+    return cursor;
+  };
+  for (let a = 0; a < ids.length; a += 1) {
+    for (let b = a + 1; b < ids.length; b += 1) {
+      const other = reach.get(ids[b])!;
+      if ([...reach.get(ids[a])!].some((k) => other.has(k))) root.set(find(ids[a]), find(ids[b]));
+    }
+  }
+  // Map 依插入順序：每段第一次出現在它最前面的分支，段就依分支順序排。
+  const sections = new Map<string, string[]>();
+  for (const id of ids) sections.set(find(id), [...(sections.get(find(id)) ?? []), id]);
+  const out: RouteOption[] = [];
+  [...sections.values()].forEach((members, section) => {
+    const probes = [...new Set(members.flatMap((id) => [...reach.get(id)!]))].sort((a, b) => a - b);
+    const seen = new Set<string>();
+    let visited = 0;
+    const walk = (start: number, picks: string[]) => {
+      visited += 1;
+      const signature = probes.map((k) => routeLineAt(branches, picks, times[k])).join('\n');
+      if (!seen.has(signature)) {
+        seen.add(signature);
+        if (picks.length > 0) out.push({ section, picks });
+      }
+      for (let next = start; next < members.length && visited < SECTION_OPTION_LIMIT; next += 1) {
+        if (picks.some((pick) => clashes(branches, pick, members[next], times))) continue;
+        walk(next + 1, [...picks, members[next]]);
+      }
+    };
+    walk(0, []);
+  });
+  return out;
+}
+
 /** 某條線自己的手順表。 */
 export function lineMarks(draft: AnnotationDraft, id: string): Record<string, NoteAnnotation> | undefined {
   if (id === MAIN_LINE) return draft.notes;
   return draft.branches.find((branch) => branch.id === id)?.notes;
 }
 
-/** 沿著某條路線，這顆音符這一步的標註（負責那一步的線上的那一筆）。 */
+/** 沿著某條路線（選了哪些分支），這顆音符這一步的標註（負責那一步的線上的那一筆）。 */
 export function stepSource(
   draft: AnnotationDraft,
-  line: string,
+  route: readonly string[],
   note: Note,
   part: StepPart,
 ): NoteAnnotation | undefined {
   if (!note.key) return undefined;
-  return lineMarks(draft, lineAt(draft.branches, line, stepTime(note, part)))?.[note.key];
+  return lineMarks(draft, routeLineAt(draft.branches, route, stepTime(note, part)))?.[note.key];
 }
 
-/** 走某條路線時每顆音符的手順（依步驟組合成單一份，用於進度、比對與送給 Rust）。 */
-export function routeMarks(draft: AnnotationDraft, notes: Note[], active = draft.active): Record<string, NoteAnnotation> {
+/** 走某條路線時每顆音符的手順（依步驟組合成單一份，用於進度、比對與送給 Rust）。預設是目前路線。 */
+export function routeMarks(
+  draft: AnnotationDraft,
+  notes: Note[],
+  route: readonly string[] = draft.route,
+): Record<string, NoteAnnotation> {
   const out: Record<string, NoteAnnotation> = {};
   for (const note of notes) {
     if (!note.key) continue;
-    const mark = composeMark(note, (part) => stepSource(draft, active, note, part));
+    const mark = composeMark(note, (part) => stepSource(draft, route, note, part));
     if (mark) out[note.key] = mark;
   }
   return out;
@@ -1085,6 +1248,7 @@ export function merge(mine: AnnotationDraft, file: HandAnnotation, mode: 'fill' 
   }
   // parent 可能是對方檔案裡才有的分支；重新整理確保都接得回主線。
   draft.branches = cleanBranches(draft.branches);
+  draft.route = cleanRoute(draft.branches, mine.route);
   for (const range of file.ranges) {
     const exists = draft.ranges.some(
       (item) => item.from === range.from && item.to === range.to && item.memo === range.memo,

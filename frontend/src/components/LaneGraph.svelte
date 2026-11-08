@@ -14,10 +14,11 @@
   /**
    * 一列的打法分支圖（像 git 分支圖／電車路線）：主線在最左，分支在右側並排。
    * 路線經過的線段用那條線自己的顏色，停靠點畫圓圈；路線沒走到的線是灰色。
-   * 灰線可以直接點選切換到那條線，滑鼠停著時整條線以它的顏色預覽。
+   * 點一條線，這一列（time）所在的那一段就改走那條線，其他段落選的分支不變；
+   * 滑鼠停著時整條線以它的顏色預覽。
    * 由外層決定列高，這裡撐滿整列並往下多畫 1px 蓋過列與列之間的分隔線。
    */
-  let { row, lanes }: { row: LaneRow; lanes: number } = $props();
+  let { row, lanes, time }: { row: LaneRow; lanes: number; time: number } = $props();
 
   const width = $derived(laneColumnWidth(lanes));
   const x = (lane: number) => 2 + lane * LANE_WIDTH + LANE_WIDTH / 2;
@@ -51,7 +52,7 @@
   function pick(event: MouseEvent, line: string) {
     event.preventDefault();
     event.stopPropagation();
-    annotation.setActive(line);
+    annotation.pickLine(line, time);
   }
 </script>
 
@@ -71,7 +72,7 @@
         onmouseenter={() => (annotation.hoverLine = cell.line)}
         onmouseleave={() => (annotation.hoverLine = null)}
       >
-        <title>{cell.on ? annotation.lineName(cell.line) : `切換到「${annotation.lineName(cell.line)}」`}</title>
+        <title>{cell.on ? annotation.lineName(cell.line) : `這一段改走「${annotation.lineName(cell.line)}」`}</title>
       </path>
     {/each}
   </svg>

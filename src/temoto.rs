@@ -32,7 +32,9 @@ const RANK_COL: usize = 15;
 /// （2026-11-05 使用者定名並換成主卡；rurikon、ayame 收進「顯示更多模型」）。
 /// yamabuki（山吹）是 TemotoAI-2：只用 79 首手標譜面從頭訓練的分組架構，配 V4.1
 /// （2026-11-07 使用者定名並加進主卡；紺瑠璃、菖蒲仍是主卡，排在山吹下一排）。
-pub const MODEL_IDS: [&str; 8] = [
+/// entan（鉛丹）也是 TemotoAI-2：山吹的設定，訓練時另外加入影片自動辨識的 Touch／Slide 標籤
+/// （每批五成視窗取自影片，研究 run r4_aug_ts_sh5），配 V4.1（2026-11-09 使用者定名，主卡放在山吹旁）。
+pub const MODEL_IDS: [&str; 9] = [
     "temoto-1-tokiwa",
     "temoto-1-akane",
     "temoto-1-ruri",
@@ -41,6 +43,7 @@ pub const MODEL_IDS: [&str; 8] = [
     "temoto-1-konruri",
     "temoto-1-shoubu",
     "temoto-2-yamabuki",
+    "temoto-2-entan",
 ];
 
 /// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
@@ -333,7 +336,7 @@ impl TemotoModel {
     /// rurikon、ayame（分組架構，基座 V4）與 konruri、shoubu（基座 V4.1）也是 0.5。
     ///
     /// konruri、shoubu 和 rurikon、ayame 共用模型檔，只把附帶的權重換成 V4.1（不另存一份網路）。
-    /// yamabuki（TemotoAI-2）的模型檔本身就附 V4.1 權重，門檻 0.5（研究評測時也沒寫 flipAt）。
+    /// yamabuki、entan（TemotoAI-2）的模型檔本身就附 V4.1 權重，門檻 0.5（研究評測時也沒寫 flipAt）。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
         const RURIKON_FILE: &[u8] = include_bytes!("../models/temoto-1-rurikon.temoto");
         const AYAME_FILE: &[u8] = include_bytes!("../models/temoto-1-ayame.temoto");
@@ -345,6 +348,7 @@ impl TemotoModel {
         static KONRURI: OnceLock<TemotoModel> = OnceLock::new();
         static SHOUBU: OnceLock<TemotoModel> = OnceLock::new();
         static YAMABUKI: OnceLock<TemotoModel> = OnceLock::new();
+        static ENTAN: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
                 Self {
@@ -379,6 +383,10 @@ impl TemotoModel {
             "temoto-2-yamabuki" => Some(YAMABUKI.get_or_init(|| {
                 Self::load(include_bytes!("../models/temoto-2-yamabuki.temoto"))
                     .expect("內建模型 yamabuki")
+            })),
+            "temoto-2-entan" => Some(ENTAN.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-2-entan.temoto"))
+                    .expect("內建模型 entan")
             })),
             _ => None,
         }

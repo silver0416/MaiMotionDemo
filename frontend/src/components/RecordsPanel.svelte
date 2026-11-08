@@ -958,14 +958,18 @@
     {#if !records.loaded && records.items.length === 0}
       <p class="empty small muted">讀取紀錄中…</p>
     {:else if records.items.length === 0}
-      <p class="empty small muted">還沒有譜面。按「新增」貼上 simai 或 maidata.txt，或從 Majdata、simai Wiki 搜尋匯入。</p>
+      <p class="empty small muted">還沒有譜面。<span class="help">按「新增」貼上 simai 或 maidata.txt，或從 Majdata、simai Wiki 搜尋匯入。</span></p>
     {:else if visible.length === 0}
       <p class="empty small muted">
-        {hiddenHere > 0
-          ? '這裡的紀錄都被隱藏了。點標籤列上畫虛線的標籤，或按「全部顯示」可以再顯示。'
-          : filtering
-            ? '沒有符合篩選的紀錄。'
-            : folderView === 'none' ? '所有紀錄都已放進資料夾。' : '這個資料夾還是空的。可以把紀錄拖到上方的資料夾，或在紀錄上按右鍵「移到資料夾」。'}
+        {#if hiddenHere > 0}
+          這裡的紀錄都被隱藏了。<span class="help">點標籤列上畫虛線的標籤，或按「全部顯示」可以再顯示。</span>
+        {:else if filtering}
+          沒有符合篩選的紀錄。
+        {:else if folderView === 'none'}
+          所有紀錄都已放進資料夾。
+        {:else}
+          這個資料夾還是空的。<span class="help">可以把紀錄拖到上方的資料夾，或在紀錄上按右鍵「移到資料夾」。</span>
+        {/if}
       </p>
     {:else}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -1184,7 +1188,7 @@
         />
         {#if pickerError}<span class="xsmall error-text">{pickerError}</span>{/if}
         {#if p.kind === 'rename-tag'}
-          <span class="field-hint">改成已有的標籤名稱時，兩個標籤會合併。</span>
+          <span class="field-hint help">改成已有的標籤名稱時，兩個標籤會合併。</span>
         {/if}
         <div class="row">
           <span class="spacer"></span>

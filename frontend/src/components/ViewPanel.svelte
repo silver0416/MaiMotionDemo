@@ -113,7 +113,7 @@
         <input type="checkbox" bind:checked={view.showFullTrack} />
         <span>
           顯示整段軌跡
-          <span class="field-hint">長譜面會在盤面留下大量細線。</span>
+          <span class="field-hint help">長譜面會在盤面留下大量細線。</span>
         </span>
       </label>
       <label class="check">
@@ -128,7 +128,7 @@
         <input type="checkbox" bind:checked={view.showPalms} />
         <span>
           顯示手掌覆蓋區
-          <span class="field-hint">
+          <span class="field-hint help">
             核心判定為一掌覆蓋時才會出現；畫在音符與手軌跡下層，覺得擋到就關掉。
           </span>
         </span>
@@ -141,14 +141,14 @@
         <input type="checkbox" bind:checked={view.showFireworks} />
         <span>
           顯示煙火效果
-          <span class="field-hint">時間完全跟著播放時鐘，拖曳到同一時間畫面相同。</span>
+          <span class="field-hint help">時間完全跟著播放時鐘，拖曳到同一時間畫面相同。</span>
         </span>
       </label>
     </div>
 
     <div style="margin-top: var(--space-4)">
       <div class="field-label" id="sensor-mode-label">Touch 落點標記</div>
-      <p class="field-hint" style="margin: 2px 0 var(--space-2)">
+      <p class="field-hint help" style="margin: 2px 0 var(--space-2)">
         核心輸出的 33 個 simai 可指名落點；預設關閉，需要對照時再打開。
       </p>
       <div class="seg" role="group" aria-labelledby="sensor-mode-label" use:segmented>
@@ -184,9 +184,10 @@
     </div>
   </section>
 
-  <section class="section">
+  <!-- 圖例整區都算說明：關掉說明文字時連標題一起隱藏（2026-11-09 使用者：時間軸圖例「這裡也要拿掉」）。 -->
+  <section class="section help">
     <div class="section-title"><span>Touch 區圖例</span></div>
-    <p class="field-hint" style="margin-bottom: var(--space-3)">
+    <p class="field-hint help" style="margin-bottom: var(--space-3)">
       位置與編號都取自核心輸出的落點座標。這是 Demo 的可辨識落點，不是實機感應區的精確輪廓。
     </p>
     <div class="legend">
@@ -218,13 +219,13 @@
         </svg>
         <div class="legend-text">
           <span class="legend-name mono">{item.name}</span>
-          <span class="field-hint">{item.hint}</span>
+          <span class="field-hint help">{item.hint}</span>
         </div>
       {/each}
     </div>
   </section>
 
-  <section class="section">
+  <section class="section help">
     <div class="section-title"><span>手掌覆蓋圖例</span></div>
     <div class="legend">
       <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
@@ -233,7 +234,7 @@
       </svg>
       <div class="legend-text">
         <span class="legend-name mono">手掌覆蓋區</span>
-        <span class="field-hint">
+        <span class="field-hint help">
           大圓虛線＋掌心十字，用該手顏色（左手粉紅、右手藍）；覆蓋到的 Touch 外圍再加一圈同色虛線。
         </span>
       </div>
@@ -242,10 +243,10 @@
       </svg>
       <div class="legend-text">
         <span class="legend-name mono">Touch 落點參考</span>
-        <span class="field-hint">小型多邊形、灰色細線，只用來辨識 33 個落點，與覆蓋範圍無關。</span>
+        <span class="field-hint help">小型多邊形、灰色細線，只用來辨識 33 個落點，與覆蓋範圍無關。</span>
       </div>
     </div>
-    <p class="field-hint" style="margin-top: var(--space-3)">
+    <p class="field-hint help" style="margin-top: var(--space-3)">
       覆蓋範圍、掌心與時間都取自核心輸出，畫面只負責畫出來。{PALM_APPROX_HINT}
     </p>
   </section>
@@ -268,7 +269,7 @@
       <input type="checkbox" bind:checked={view.approach} disabled={view.noteMode !== 'window'} />
       <span>
         音符飛入動畫
-        <span class="field-hint">
+        <span class="field-hint help">
           Tap／Hold／Slide 由中心飛向鍵位，Touch 原地由外往落點收攏。純視覺效果，不改變判定時間。
         </span>
       </span>
@@ -291,7 +292,7 @@
 
   <section class="section">
     <div class="section-title"><span>盤面校準與縮放</span></div>
-    <p class="field-hint" style="margin-bottom: var(--space-3)">
+    <p class="field-hint help" style="margin-bottom: var(--space-3)">
       盤面底圖是向量繪製、和音符一起移動；這裡只改變畫面上的位置與大小，不影響座標與搜尋結果。
     </p>
 
@@ -350,7 +351,7 @@
     </button>
   </section>
 
-  <section class="section">
+  <section class="section help">
     <div class="section-title"><span>鍵盤操作</span></div>
     <dl class="kv">
       <dt>空白鍵</dt>

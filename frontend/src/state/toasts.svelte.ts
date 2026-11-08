@@ -19,6 +19,17 @@ export interface Toast {
   action?: ToastAction;
   /** 0–100：在文字下方顯示進度條。 */
   progress?: number;
+  /** 精簡模式下一般通知的內文算說明、不顯示；這則的內文就是重點時設 true（例：精簡模式介紹）。 */
+  keepBody?: boolean;
+  /** 通知上的開關（畫成 switch），例：精簡模式介紹上的「詳細模式」。 */
+  toggle?: ToastToggle;
+}
+
+export interface ToastToggle {
+  label: string;
+  /** 目前是否打開；在畫面上讀取，狀態改了開關跟著變。 */
+  checked: () => boolean;
+  set: (on: boolean) => void;
 }
 
 const AUTO_DISMISS_MS = 4000;

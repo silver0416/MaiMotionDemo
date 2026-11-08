@@ -208,7 +208,7 @@
   </div>
 
   <footer class="dialog-foot">
-    <span class="muted xsmall">Enter 搜尋・Esc 關閉</span>
+    <span class="muted xsmall help">Enter 搜尋・Esc 關閉</span>
     <span class="spacer"></span>
     <button class="btn" onclick={requestClose} disabled={locked}>
       <Icon name="x" />關閉

@@ -30,6 +30,7 @@ fn evaluate_with(source: &str, notes: serde_json::Value, c: SolverConfig) -> Eva
         solver_config: c,
         annotation: annotation(source, notes),
         model_solution: None,
+        routes: vec![],
     })
 }
 
@@ -472,6 +473,7 @@ fn wrong_format_is_rejected_with_a_message() {
         solver_config: SolverConfig::v3(),
         annotation: a,
         model_solution: None,
+        routes: vec![],
     });
     assert_eq!(r.status, "invalid");
     assert!(r.diagnostics[0]
@@ -576,6 +578,7 @@ fn supplied_model_solution_gives_the_same_evaluation() {
         solver_config: SolverConfig::v3(),
         annotation: annotation(source, notes.clone()),
         model_solution: Some(serde_json::from_value(top).unwrap()),
+        routes: vec![],
     });
     let solved = evaluate(source, notes);
     let summary = |r: &EvaluateResponse| {
@@ -591,6 +594,250 @@ fn supplied_model_solution_gives_the_same_evaluation() {
     assert_eq!(solved.status, "ok", "{:?}", solved.diagnostics);
     assert!(solved.compared > 0);
     assert_eq!(summary(&supplied), summary(&solved));
+}
+
+/// 打法路線（2026-11-08）：主線和各條分支各自和模型比，取吻合率最高的那條；
+/// 吻合數、不同處與照標註求解都照那條。同分時取前面的（主線最前）。
+#[test]
+fn best_matching_route_is_used() {
+    let source = "(120){8}1,8,2,7,3,6,E";
+    let c = chart(source);
+    let analyzed = analyze_chart(AnalyzeRequest {
+        request_id: "a".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+    });
+    let model = &analyzed.solutions[0];
+    let hand_of = |id: &str| {
+        model
+            .assignments
+            .iter()
+            .find(|a| a.note_id == id)
+            .unwrap()
+            .hand
+    };
+    let name = |h: Hand| if h == Hand::L { "L" } else { "R" };
+    let other = |h: Hand| if h == Hand::L { "R" } else { "L" };
+    // 主線前兩顆和模型相反；分支 b 全部和模型相同；分支 c 和主線一樣。
+    let main: Vec<_> = c
+        .notes
+        .iter()
+        .enumerate()
+        .map(|(i, n)| {
+            let h = hand_of(&n.id);
+            json!({"key": n.key, "hand": if i < 2 { other(h) } else { name(h) }})
+        })
+        .collect();
+    let agree: Vec<_> = c
+        .notes
+        .iter()
+        .map(|n| json!({"key": n.key, "hand": name(hand_of(&n.id))}))
+        .collect();
+    let route = |id: &str, notes: &Vec<serde_json::Value>| -> RouteAnnotation {
+        serde_json::from_value(json!({"id": id, "name": id, "notes": notes})).unwrap()
+    };
+    let request = |routes: Vec<RouteAnnotation>| EvaluateRequest {
+        request_id: "routes".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+        annotation: annotation(source, json!(main)),
+        model_solution: None,
+        routes,
+    };
+
+    let r = evaluate_annotation(request(vec![route("c", &main), route("b", &agree)]));
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_eq!(r.route, "b");
+    let scores: Vec<_> = r
+        .route_scores
+        .iter()
+        .map(|s| (s.id.as_str(), s.agreed, s.compared))
+        .collect();
+    assert_eq!(scores, [(MAIN_ROUTE, 4, 6), ("c", 4, 6), ("b", 6, 6)]);
+    assert_eq!((r.agreed, r.compared, r.divergences.len()), (6, 6, 0));
+    assert_eq!((r.labeled, r.matched), (6, 6));
+    let human = r.human_solution.as_ref().unwrap();
+    for n in &c.notes {
+        let hand = human
+            .assignments
+            .iter()
+            .find(|a| a.note_id == n.id)
+            .unwrap()
+            .hand;
+        assert_eq!(hand, hand_of(&n.id), "{}", n.key);
+    }
+
+    // 只有和主線一樣的分支：同分取主線。
+    let tie = evaluate_annotation(request(vec![route("c", &main)]));
+    assert_eq!(tie.route, MAIN_ROUTE);
+    assert_eq!((tie.agreed, tie.compared, tie.divergences.len()), (4, 6, 2));
+    // 沒有分支：照舊只比主線，不列各條路線的分數。
+    let single = evaluate(source, json!(main));
+    assert_eq!(single.route, MAIN_ROUTE);
+    assert!(single.chosen_routes.is_empty());
+    assert!(single.route_scores.is_empty());
+    assert_eq!((single.agreed, single.compared), (4, 6));
+}
+
+/// 每一段各挑（2026-11-09）：不同段的走法各自挑，合起來是整首吻合率最高的組合；同率取比對步數多的。
+/// 沒帶段的走法照舊整首只挑一條。
+#[test]
+fn each_section_picks_its_best_route() {
+    let source = "(120){8}1,8,2,7,3,6,E";
+    let c = chart(source);
+    let analyzed = analyze_chart(AnalyzeRequest {
+        request_id: "a".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+    });
+    let model = &analyzed.solutions[0];
+    let hand_of = |id: &str| {
+        model
+            .assignments
+            .iter()
+            .find(|a| a.note_id == id)
+            .unwrap()
+            .hand
+    };
+    let name = |h: Hand| if h == Hand::L { "L" } else { "R" };
+    let other = |h: Hand| if h == Hand::L { "R" } else { "L" };
+    // 主線第 1、2 顆與第 5、6 顆和模型相反（2／6）。第一段的 b 改對第 1、2 顆；第二段的 c 改對第 5、6 顆、
+    // d 只改對第 5 顆、e 把第 5、6 顆標成不確定（不比對，b＋e 也是 100%，但比對步數比 b＋c 少）。
+    let marks = |right: &[usize], unsure: &[usize]| -> Vec<serde_json::Value> {
+        c.notes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                let h = hand_of(&n.id);
+                let wrong = matches!(i, 0 | 1 | 4 | 5) && !right.contains(&i);
+                let mut mark =
+                    json!({"key": n.key, "hand": if wrong { other(h) } else { name(h) }});
+                if unsure.contains(&i) {
+                    mark["confidence"] = json!("unsure");
+                }
+                mark
+            })
+            .collect()
+    };
+    let route =
+        |id: &str, group: Option<usize>, notes: Vec<serde_json::Value>| -> RouteAnnotation {
+            serde_json::from_value(json!({"id": id, "name": id, "notes": notes, "group": group}))
+                .unwrap()
+        };
+    let request = |groups: [Option<usize>; 4]| EvaluateRequest {
+        request_id: "sections".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+        annotation: annotation(source, json!(marks(&[], &[]))),
+        model_solution: None,
+        routes: vec![
+            route("b", groups[0], marks(&[0, 1], &[])),
+            route("e", groups[1], marks(&[], &[4, 5])),
+            route("d", groups[2], marks(&[4], &[])),
+            route("c", groups[3], marks(&[4, 5], &[])),
+        ],
+    };
+
+    let r = evaluate_annotation(request([Some(0), Some(1), Some(1), Some(1)]));
+    assert_eq!(r.status, "ok", "{:?}", r.diagnostics);
+    assert_eq!(r.chosen_routes, ["b", "c"]);
+    assert_eq!(r.route, "b+c");
+    let scores: Vec<_> = r
+        .route_scores
+        .iter()
+        .map(|s| (s.id.as_str(), s.agreed, s.compared))
+        .collect();
+    assert_eq!(
+        scores,
+        [
+            (MAIN_ROUTE, 2, 6),
+            ("b", 4, 6),
+            ("e", 2, 4),
+            ("d", 3, 6),
+            ("c", 4, 6)
+        ]
+    );
+    assert_eq!((r.agreed, r.compared, r.divergences.len()), (6, 6, 0));
+    assert_eq!((r.labeled, r.matched), (6, 6));
+    let human = r.human_solution.as_ref().unwrap();
+    for n in &c.notes {
+        let hand = human
+            .assignments
+            .iter()
+            .find(|a| a.note_id == n.id)
+            .unwrap()
+            .hand;
+        assert_eq!(hand, hand_of(&n.id), "{}", n.key);
+    }
+
+    // 沒帶段：整首只挑一條（2026-11-08 的算法）；b 和 c 都是 4／6，取前面的 b。
+    let single = evaluate_annotation(request([None; 4]));
+    assert_eq!(single.chosen_routes, ["b"]);
+    assert_eq!(single.route, "b");
+    assert_eq!((single.agreed, single.compared), (4, 6));
+}
+
+/// 一顆 Slide 的起點與滑行分屬不同段時，組合裡起點照起點那段挑的走法、滑行照滑行那段挑的走法。
+#[test]
+fn slide_parts_follow_their_own_sections() {
+    let source = "(120){4}1-5[4:1],,,,3,E";
+    let c = chart(source);
+    let analyzed = analyze_chart(AnalyzeRequest {
+        request_id: "a".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+    });
+    let model = &analyzed.solutions[0];
+    let slide = c.notes.iter().find(|n| n.kind == "slide").unwrap();
+    let tap = c.notes.iter().find(|n| n.kind != "slide").unwrap();
+    let first = |id: &str, slide_part: bool| {
+        model
+            .assignments
+            .iter()
+            .filter(|a| a.note_id == id && (a.part == "slide") == slide_part)
+            .min_by(|a, b| a.start_seconds.total_cmp(&b.start_seconds))
+            .unwrap()
+            .hand
+    };
+    let name = |h: Hand| if h == Hand::L { "L" } else { "R" };
+    let other = |h: Hand| if h == Hand::L { "R" } else { "L" };
+    let (contact, track) = (first(&slide.id, false), first(&slide.id, true));
+    let marks = |contact_right: bool, track_right: bool| {
+        json!([
+            {"key": slide.key, "hand": if contact_right { name(contact) } else { other(contact) },
+             "track": if track_right { name(track) } else { other(track) }},
+            {"key": tap.key, "hand": name(first(&tap.id, false))},
+        ])
+    };
+    let route = |id: &str, group: usize, notes: serde_json::Value| -> RouteAnnotation {
+        serde_json::from_value(json!({"id": id, "name": id, "notes": notes, "group": group}))
+            .unwrap()
+    };
+    let r = evaluate_annotation(EvaluateRequest {
+        request_id: "slide".into(),
+        source: source.into(),
+        first_seconds: 0.0,
+        solver_config: SolverConfig::v3(),
+        annotation: annotation(source, marks(false, false)),
+        model_solution: None,
+        routes: vec![
+            route("start", 0, marks(true, false)),
+            route("slide", 1, marks(false, true)),
+        ],
+    });
+    assert_eq!(r.chosen_routes, ["start", "slide"]);
+    let scores: Vec<_> = r
+        .route_scores
+        .iter()
+        .map(|s| (s.agreed, s.compared))
+        .collect();
+    assert_eq!(scores, [(1, 3), (2, 3), (2, 3)]);
+    assert_eq!((r.agreed, r.compared, r.divergences.len()), (3, 3, 0));
 }
 
 /// Comet Panto Men! 111.529：同時的相鄰兩鍵都標同一隻手，那隻手張開、落在兩鍵中間一起按。

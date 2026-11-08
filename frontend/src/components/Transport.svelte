@@ -470,7 +470,7 @@
       title={markers.available && markers.items.length === 0 ? '雙擊加標籤' : undefined}
     >
       {#if markers.available && markers.items.length === 0}
-        <span class="lane-hint" aria-hidden="true">雙擊這裡或按 M 加標籤</span>
+        <span class="lane-hint help" aria-hidden="true">雙擊這裡或按 M 加標籤</span>
       {/if}
       {#each chips as chip (chip.marker.id)}
         <button
@@ -659,7 +659,7 @@
     </div>
 
     <!-- 寬度固定：播放時狀態文字一直變，版面不能跟著換行跳動。 -->
-    <div class="hands" aria-live="off">
+    <div class="hands" class:help={session.hasHands} aria-live="off">
       {#if session.hasHands}
         <span class="hand-state">
           <span class="badge badge--left">L</span>
@@ -675,7 +675,7 @@
     </div>
   </div>
 
-  <div class="row row-wrap xsmall muted legend">
+  <div class="row row-wrap xsmall muted legend help">
     <span><span class="swatch swatch--left"></span>左手 L</span>
     <span><span class="swatch swatch--right"></span>右手 R</span>
     <span><span class="swatch swatch--accent"></span>換手</span>
@@ -683,7 +683,7 @@
       <span>時間軸上緣細條：該手的手掌覆蓋區間</span>
     {/if}
     {#if markers.items.length > 0}
-      <span>標籤：點擊跳轉・拖曳移動・雙擊改名・右鍵更多・[ ] 切換</span>
+      <span class="help">標籤：點擊跳轉・拖曳移動・雙擊改名・右鍵更多・[ ] 切換</span>
     {/if}
   </div>
 </div>

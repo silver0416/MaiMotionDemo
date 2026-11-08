@@ -111,6 +111,7 @@ fn main() {
                         solver_config: config.clone(),
                         annotation: annotation.clone(),
                         model_solution: None,
+                        routes: vec![],
                     });
                     let notes: Vec<Value> = model
                         .chart

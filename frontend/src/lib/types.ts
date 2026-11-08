@@ -167,12 +167,13 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
 }
 
 /**
- * Temoto 模型（修正基座的手順）。介面上只顯示系列名稱「TemotoAI-2」（主卡山吹色，只用手標譜面訓練）或
+ * Temoto 模型（修正基座的手順）。介面上只顯示系列名稱「TemotoAI-2」（主卡山吹色、鉛丹色，以手標譜面訓練）或
  * 「TemotoAI-1」（學玩家手元影片；主卡紺瑠璃、菖蒲色しょうぶいろ，更多模型裡的瑠璃紺、菖蒲色あやめいろ、瑠璃色、茜色、常磐色），
  * 各變體只用顏色區分，不顯示 id。
  */
 export type MlModelId =
   | 'temoto-2-yamabuki'
+  | 'temoto-2-entan'
   | 'temoto-1-konruri'
   | 'temoto-1-shoubu'
   | 'temoto-1-rurikon'
@@ -642,6 +643,30 @@ export interface EvaluateRequest {
   annotation: HandAnnotation;
   /** 同一份原文、同一組設定的現有分析第一名；有的話 Rust 直接拿來比，不再重算模型。 */
   modelSolution?: Solution;
+  /**
+   * 主線以外的打法走法，各自展開後的手順（annotation.notes 是主線）。
+   * Rust 每種都和模型比，每一段（group）挑一種，挑出整首吻合率最高的組合
+   * （同率取比對步數多的，再同就取前面的，主線最前）；沒帶 group 的全部算同一段（整首只挑一條）。
+   */
+  routes?: RouteAnnotation[];
+}
+
+/** 一種打法走法展開後的手順（只留有人確認過的步驟）；只能在自己那段和主線不同。 */
+export interface RouteAnnotation {
+  id: string;
+  name: string;
+  notes: NoteAnnotation[];
+  /** 屬於哪一段（2026-11-09 起）：同一段的走法只能選一種，不同段各自選。 */
+  group?: number;
+}
+
+/** 一條路線和模型的吻合，算法同 EvaluateResponse 的 compared／agreed。 */
+export interface RouteScore {
+  id: string;
+  /** 送出時的名稱；主線留空。 */
+  name: string;
+  compared: number;
+  agreed: number;
 }
 
 export interface EvaluatedSolution {
@@ -678,4 +703,13 @@ export interface EvaluateResponse {
   model: EvaluatedSolution | null;
   human: EvaluatedSolution | null;
   humanSolution: Solution | null;
+  /**
+   * 採用的走法：全走主線為 'main'，否則是 chosenRoutes 以 + 連接；上面的吻合、不同處與照標註的解都照採用的組合。
+   * 2026-11-08 以前的比對暫存沒有這一項（當時沒有分支的紀錄才會沿用，等同主線）。
+   */
+  route?: string;
+  /** 採用的走法（routes 裡的 id，每段至多一種）；全走主線時為空。2026-11-09 以前的暫存沒有這一項。 */
+  chosenRoutes?: string[];
+  /** 有送 routes 時每種走法的吻合（只換那一段、其他照主線；主線在最前）；沒送或模型沒有解時為空。舊暫存沒有這一項。 */
+  routeScores?: RouteScore[];
 }

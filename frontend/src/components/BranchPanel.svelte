@@ -8,7 +8,6 @@
     branchDepths,
     laneRows,
     LINE_COLORS,
-    lineAt,
     MAIN_LINE,
     MAIN_NAME,
     nextBranchName,
@@ -23,7 +22,8 @@
 
   /**
    * 打法分支：像電車路線圖一樣，從某條線在某段分出其他打法，段落結束後併入某條線（可以和分出的線不同）。
-   * 選一條線就是選一條路線，逐顆標註、進度與比對都照這條路線。範圍一律以「第幾顆」表示。
+   * 目前路線可以同時走好幾條分支（不同段落各選一條）；逐顆標註與進度照目前路線。
+   * 下方的設定是正在設定的那條線（最後點的線）。範圍一律以「第幾顆」表示。
    */
 
   const branches = $derived(annotation.draft.branches);
@@ -33,6 +33,8 @@
   const laneCount = $derived(Math.max(1, ...lanes.values()) + 1);
   const total = $derived(annotation.ordered.length);
   const allLines = $derived([MAIN_LINE, ...branches.map((branch) => branch.id)]);
+  /** 路線按鈕的按下狀態：路線走到的分支；一條都沒走時是主線。 */
+  const routeChips = $derived(annotation.routeLines.size > 0 ? [...annotation.routeLines] : [MAIN_LINE]);
 
   type Station = { key: string; time: number; kind: 'head' | 'fork' | 'merge' | 'tail'; line: string; depth: number };
   const KIND_ORDER = { head: 0, fork: 1, merge: 2, tail: 3 };
@@ -73,7 +75,7 @@
       spans,
       branches,
       lanes,
-      times.map((time) => lineAt(branches, activeId, time)),
+      times.map((time) => annotation.routeAt(time)),
     );
   });
 
@@ -117,9 +119,14 @@
     }
   }
 
+  /** 分出／併回的站：那一段改走這條分支並跳過去；開頭與結尾：全部改走主線。 */
   function choose(station: Station) {
-    annotation.setActive(station.line);
-    if (station.kind === 'fork' || station.kind === 'merge') playback.seek(station.time);
+    if (station.kind === 'head' || station.kind === 'tail') {
+      annotation.useRoute(MAIN_LINE);
+      return;
+    }
+    annotation.pickLine(station.line, station.time);
+    playback.seek(station.time);
   }
 
   /** 目前這一步的編號（Slide 滑行那一步為「↳編號」）；沒有選取時用播放時間之前最近的一步。 */
@@ -235,9 +242,9 @@
 </script>
 
 <section class="section stack-sm">
-  <p class="small muted">
+  <p class="small muted help">
     同一段有不同打法時，從某條線拉出一條分支；分支只管那一段，結束後併入某條線（可以和分出的線不同），也可以從分支再分出分支。
-    點路線圖上的站或灰色的線就能切換路線，逐顆標註、進度與比對都照目前這條路線。
+    點路線圖上的站或灰色的線，那一段就改走那條線；不同段落可以各走各的分支。逐顆標註與進度照目前的路線。
   </p>
 
   <div class="map" role="list" aria-label="打法路線圖">
@@ -250,9 +257,9 @@
           class:is-active={station.line === activeId && station.kind !== 'head' && station.kind !== 'tail'}
           style={`padding-left:calc(var(--space-4) + ${laneColumnWidth(laneCount) + 8}px)`}
           onclick={() => choose(station)}
-          title={`${formatClock(station.time)}　${station.kind === 'head' || station.kind === 'tail' ? '切到主線' : `切到「${annotation.lineName(station.line)}」並跳到這一站`}`}
+          title={`${formatClock(station.time)}　${station.kind === 'head' || station.kind === 'tail' ? '全部改走主線' : `這一段改走「${annotation.lineName(station.line)}」並跳到這一站`}`}
         >
-          {#if row}<LaneGraph {row} lanes={laneCount} />{/if}
+          {#if row}<LaneGraph {row} lanes={laneCount} time={station.time} />{/if}
           <span class="mono xsmall muted num">第 {stationRef(station)} 顆</span>
           <span class="small what">{stationText(station)}</span>
           {#if station.kind === 'fork' && info}
@@ -265,14 +272,17 @@
     {/each}
   </div>
   {#if branches.length === 0}
-    <p class="xsmall muted">目前只有主線。在下方選起點和終點建立第一條分支，或在「逐顆標註」清單上按右鍵標記。</p>
+    <p class="xsmall muted">目前只有主線。<span class="help">在下方選起點和終點建立第一條分支，或在「逐顆標註」清單上按右鍵標記。</span></p>
   {/if}
 </section>
 
 <section class="section stack-sm" aria-label="目前路線">
   <div class="section-title">目前路線</div>
   {#if branches.length > 0}
-    <LineChips lines={allLines} current={activeId} label="切換路線" />
+    <LineChips lines={allLines} current={routeChips} label="目前路線" />
+    <p class="xsmall muted help">
+      按下的是目前路線走到的線。按一條分支，那一段就改走它，其他段落選的分支不變；按主線全部改走主線。下面是最後按的那條線的設定。
+    </p>
   {/if}
 
   {#if active}
@@ -322,7 +332,7 @@
       </div>
     </div>
   {:else}
-    <p class="small">{MAIN_NAME}{branches.length > 0 ? '（不走任何分支）' : ''}</p>
+    <p class="small">{MAIN_NAME}{branches.length > 0 && annotation.routeLines.size === 0 ? '（不走任何分支）' : ''}</p>
   {/if}
 
   <div class="field">
@@ -343,7 +353,7 @@
         <span class="xsmall">自訂</span>
       </label>
     </div>
-    <span class="field-hint">路線走到這條線時用這個顏色，沒走到的線一律是灰色。</span>
+    <span class="field-hint help">路線走到這條線時用這個顏色，沒走到的線一律是灰色。</span>
   </div>
 
   {#if active}
@@ -390,7 +400,7 @@
     <input class="input" aria-label="分支名稱" placeholder={nextBranchName(branches)} bind:value={newName} />
     <button class="btn" disabled={!playback.loopEnabled} onclick={useLoop} title="取循環播放的範圍">取循環範圍</button>
   </div>
-  <p class="xsmall muted">
+  <p class="xsmall muted" class:help={createCount === 0}>
     {createCount > 0
       ? `共 ${createCount} 步，從${annotation.lineName(annotation.pendingFromLine)}分出、併入${annotation.lineName(intoLine)}，並複製這段現在的手順當起點。`
       : '在清單選一步後按「取目前」（「↳64」是第 64 顆 Slide 的滑行）；也可以在「逐顆標註」清單按右鍵標記起點與終點。從標起點時的路線分出、併入目前路線在終點走的線。'}

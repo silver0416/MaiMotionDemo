@@ -9,7 +9,8 @@
     TEMOTO_MODELS,
     v3Label,
   } from '../lib/contract';
-  import { STORE_ANALYSES, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
+  import { STORE_ANALYSES, STORE_EVALUATIONS, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
+  import { annotation } from '../state/annotation.svelte';
   import { copyText } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
   import { FAILURE_KIND_LABEL, errorLog } from '../state/errorLog.svelte';
@@ -55,6 +56,8 @@
   let version = $state('');
   /** 分析快取筆數；null = 讀不到資料庫。 */
   let cacheCount = $state<number | null>(null);
+  /** 標註比對的暫存筆數；null = 讀不到資料庫。 */
+  let evaluationCount = $state<number | null>(null);
   /** 桌面核心保存的 simai Wiki 快取；瀏覽器預覽或讀取失敗時為 null。 */
   let wikiCache = $state<WikiCacheInfo | null>(null);
   /** 危險操作要按兩次：第一次只切成確認狀態。 */
@@ -109,6 +112,7 @@
     version = await appVersion();
     await updateState.init();
     cacheCount = await dbCount(STORE_ANALYSES);
+    evaluationCount = await dbCount(STORE_EVALUATIONS);
     wikiCache = session.desktop ? await wikiCacheInfo().catch(() => null) : null;
     if (session.desktop) {
       await videos.init();
@@ -157,7 +161,9 @@
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  const hasCache = $derived((cacheCount ?? 0) > 0 || (wikiCache?.files ?? 0) > 0);
+  const hasCache = $derived(
+    (cacheCount ?? 0) > 0 || (evaluationCount ?? 0) > 0 || (wikiCache?.files ?? 0) > 0,
+  );
 
   /** 清除 Wiki 磁碟快取；瀏覽器預覽沒有核心，直接視為成功。回傳錯誤訊息或 null。 */
   async function clearWiki(): Promise<string | null> {
@@ -257,7 +263,8 @@
       return;
     }
     working = true;
-    const ok = await dbClear(STORE_ANALYSES);
+    const ok = await dbClear(STORE_ANALYSES, STORE_EVALUATIONS);
+    if (ok) annotation.forgetEvaluations();
     const wikiError = await clearWiki();
     working = false;
     confirming = null;
@@ -282,7 +289,7 @@
       return;
     }
     working = true;
-    const ok = await dbClear(STORE_RECORDS, STORE_SETTINGS, STORE_ANALYSES);
+    const ok = await dbClear(STORE_RECORDS, STORE_SETTINGS, STORE_ANALYSES, STORE_EVALUATIONS);
     // Wiki 快取不是使用者資料，清不掉也不擋住重設；下次清除暫存可再試。
     await clearWiki();
     try {
@@ -437,7 +444,7 @@
             </div>
             <p class="field-hint mono">{updateState.percent}%</p>
           {:else}
-            <p class="field-hint">會下載到目前程式所在的資料夾，完成後重新啟動就換成新版。</p>
+            <p class="field-hint help">會下載到目前程式所在的資料夾，完成後重新啟動就換成新版。</p>
           {/if}
           {#if updateState.downloadError}
             <p class="field-error">{updateState.downloadError}</p>
@@ -478,10 +485,10 @@
         </p>
       {:else if updateState.error}
         <p class="field-error">{updateState.error}</p>
-        <p class="field-hint">離線或 GitHub 忙碌時會檢查失敗，不影響使用，稍後再試即可。</p>
+        <p class="field-hint help">離線或 GitHub 忙碌時會檢查失敗，不影響使用，稍後再試即可。</p>
       {:else}
         <p class="field-hint">
-          尚未檢查。每次開啟都會自動檢查一次，也可隨時按「檢查更新」。
+          尚未檢查。<span class="help">每次開啟都會自動檢查一次，也可隨時按「檢查更新」。</span>
         </p>
       {/if}
     </section>
@@ -505,8 +512,8 @@
           {/each}
         </div>
         <p class="field-hint">
-          目前是{theme.scheme === 'light' ? '淺色' : '深色'}。淺色固定使用「{LIGHT_PALETTE.label}」：{LIGHT_PALETTE.hint}
-          主視窗與影片同步視窗一起切換。
+          目前是{theme.scheme === 'light' ? '淺色' : '深色'}。<span class="help">淺色固定使用「{LIGHT_PALETTE.label}」：{LIGHT_PALETTE.hint}
+          主視窗與影片同步視窗一起切換。</span>
         </p>
       </section>
 
@@ -531,13 +538,26 @@
                 {item.label}
                 {#if theme.dark === item.id}<Icon name="check" size={14} />{/if}
               </span>
-              <span class="palette-hint">{item.hint}</span>
+              <span class="palette-hint help">{item.hint}</span>
             </button>
           {/each}
         </div>
         {#if theme.scheme === 'light'}
-          <p class="field-hint">目前是淺色模式；切回深色時才會用這裡選的配色。</p>
+          <p class="field-hint help">目前是淺色模式；切回深色時才會用這裡選的配色。</p>
         {/if}
+      </section>
+
+      <section class="block" aria-labelledby="settings-help">
+        <div class="block-head">
+          <h3 id="settings-help">說明文字</h3>
+        </div>
+        <label class="check">
+          <input type="checkbox" checked={theme.help} onchange={(event) => theme.setHelp(event.currentTarget.checked)} />
+          <span>
+            詳細模式
+            <span class="field-hint help">顯示操作說明、欄位提示、圖例與通知內文。關掉是精簡模式（預設），只留標題、數字、狀態與錯誤警告；主視窗與影片同步視窗一起切換。</span>
+          </span>
+        </label>
       </section>
     {/if}
 
@@ -552,7 +572,7 @@
           <Icon name="copy" />複製並清除
         </button>
       </div>
-      <p class="field-hint">
+      <p class="field-hint help">
         譜面匯入失敗（下載失敗、呼叫核心失敗、語法錯誤或未支援）會自動記在這裡，相同的錯誤只記一筆並累計次數。
         複製後貼給開發者，紀錄會自動清除，避免下次重複回報。
       </p>
@@ -596,7 +616,7 @@
                 偵測中…
               {/if}
             </p>
-            <p class="field-hint">搜尋與下載 YouTube 影片用。YouTube 改版後舊版常會失效，下載失敗時先更新。</p>
+            <p class="field-hint help">搜尋與下載 YouTube 影片用。YouTube 改版後舊版常會失效，下載失敗時先更新。</p>
           </div>
           <div class="data-actions">
             <button class="btn" onclick={() => void updateTool('yt-dlp')} disabled={!!videos.installing['yt-dlp'] || !videos.status?.installable}>
@@ -618,7 +638,7 @@
                 偵測中…
               {/if}
             </p>
-            <p class="field-hint">yt-dlp 需要它才能通過 YouTube 的檢查。已安裝 Node.js 或 Deno 就不用另外下載。</p>
+            <p class="field-hint help">yt-dlp 需要它才能通過 YouTube 的檢查。已安裝 Node.js 或 Deno 就不用另外下載。</p>
           </div>
           <div class="data-actions">
             {#if !videos.status?.runtime || videos.status.runtime.managed}
@@ -636,7 +656,7 @@
             <p class="xsmall muted mono usage">
               <span>{videos.entries.length} 部・{formatBytes(videos.cache?.bytes ?? 0)}</span>
             </p>
-            <p class="field-hint">刪除後標註裡的影片連結與對齊都會保留，需要時再下載一次即可。</p>
+            <p class="field-hint help">刪除後標註裡的影片連結與對齊都會保留，需要時再下載一次即可。</p>
             {#if confirming === 'videos'}
               <p class="field-error">再按一次「確定清除」才會刪除全部影片。</p>
             {/if}
@@ -686,7 +706,7 @@
           <div class="data-text">
             <div class="data-title">預設匯出資料夾</div>
             <p class="xsmall muted mono path">{exportPrefs.dir || '未指定（另存新檔從系統預設位置開始）'}</p>
-            <p class="field-hint">匯出標記檔時，另存新檔會先開在這個資料夾。</p>
+            <p class="field-hint help">匯出標記檔時，另存新檔會先開在這個資料夾。</p>
           </div>
           <div class="data-actions">
             <button class="btn" onclick={() => void exportPrefs.pickDir()}>
@@ -709,7 +729,7 @@
           />
           <span>
             不再詢問位置，直接存到預設資料夾
-            <span class="field-hint">同名檔案已存在時自動加上編號，不會覆寫。需要先指定預設資料夾。</span>
+            <span class="field-hint help">同名檔案已存在時自動加上編號，不會覆寫。需要先指定預設資料夾。</span>
           </span>
         </label>
       </section>
@@ -728,13 +748,14 @@
           </div>
           <p class="xsmall muted mono usage">
             {#if cacheCount !== null}<span>分析快取 {cacheCount} 筆</span>{/if}
+            {#if evaluationCount !== null}<span>比對暫存 {evaluationCount} 筆</span>{/if}
             {#if wikiCache}
               <span>譜面網站快取 {wikiCache.files} 個檔案・{formatBytes(wikiCache.bytes)}</span>
             {/if}
           </p>
-          <p class="field-hint">
-            刪除已保存的分析結果{session.desktop ? '，以及 simai Wiki、adxdls 的索引與譜面快取' : ''}。
-            譜面紀錄、參數與顯示設定都會保留；下次開啟譜面時重新分析{session.desktop ? '，搜尋譜面網站時重新下載索引' : ''}。
+          <p class="field-hint help">
+            刪除已保存的分析結果、標註比對的暫存{session.desktop ? '，以及 simai Wiki、adxdls 的索引與譜面快取' : ''}。
+            譜面紀錄、標註、參數與顯示設定都會保留；下次開啟譜面時重新分析{session.desktop ? '，搜尋譜面網站時重新下載索引' : ''}。
           </p>
         </div>
         <div class="data-actions">
@@ -756,7 +777,7 @@
         <div class="data-text">
           <div class="data-title">清除所有使用者資料</div>
           <p class="field-hint">
-            刪除全部譜面紀錄（{records.items.length} 筆）、參數與顯示設定、錯誤紀錄、分析與 Wiki 快取、欄寬等介面偏好，
+            刪除全部譜面紀錄（{records.items.length} 筆）、參數與顯示設定、錯誤紀錄、分析與比對暫存、Wiki 快取、欄寬等介面偏好，
             回到第一次啟動的狀態。無法復原。
           </p>
           {#if confirming === 'all'}
@@ -1069,6 +1090,11 @@
   /* 山吹色原值在淺色配色只有 1.7:1，圓點用 --c-yamabuki（深色配色是原值，淺色配色是加深的 #9c5e00）。 */
   .scoring-model--yamabuki {
     --dot: var(--c-yamabuki);
+  }
+
+  /* 鉛丹色同理：原值在淺色配色只有 2.9:1，淺色配色的 --c-entan 是加深的 #bb4025。 */
+  .scoring-model--entan {
+    --dot: var(--c-entan);
   }
 
   .scoring-model--konruri {
