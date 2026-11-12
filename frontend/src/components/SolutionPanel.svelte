@@ -216,7 +216,11 @@
         </div>
       {/if}
       <p class="small muted help" style="margin-top: var(--space-3)">
-        可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
+        {#if status === 'search_limit'}
+          可試著調小搜尋寬度或縮短片段：搜尋寬度越小，每一組同時音要算的候選越少。
+        {:else}
+          可試著調大搜尋寬度、切換交接或縮短片段。找不到方案不等於人類打不出來。
+        {/if}
       </p>
       <div class="row row-wrap" style="margin-top: var(--space-3)">
         <CopyDebugButton

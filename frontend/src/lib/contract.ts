@@ -426,7 +426,7 @@ export const STATUS_HINT: Record<AnalyzeStatus, string> = {
   invalid: '下方診斷標出行列位置。',
   unsupported: '這段語法不在支援範圍，核心不會改成 Tap 帶過。',
   no_solution: '譜面合法，但這組參數找不到可行的雙手動作，因此只顯示譜面層。',
-  search_limit: '已達計算預算；可調大搜尋寬度或縮短片段。',
+  search_limit: '已達計算預算；可調小搜尋寬度或縮短片段。',
 };
 
 export const HAND_LABEL: Record<Hand, string> = { L: '左手', R: '右手' };

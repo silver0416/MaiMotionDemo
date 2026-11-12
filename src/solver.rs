@@ -2606,12 +2606,15 @@ fn drop_part(state: &State, task: &Task, time: f64) -> State {
 
 /// 整組指派完成時驗證 Touch Group：實際接觸必須超過半數，其餘才可連帶判定。
 /// 連帶判定的 Touch 以最後一個實際接觸者的手記錄，part 為 "group"，不產生動作。
+/// 求解帶著手部限制（標註或 Temoto 的修正）時，連帶判定的 Touch 照限制的手記錄：
+/// 它沒有實際接觸，記哪隻手只是標示，不該因此判成限制走不通。
 fn settle_touch_groups(
     mut state: State,
     auto: &[bool],
     touch_groups: &[Vec<usize>],
     group: &[Task],
     chart: &Chart,
+    rules: Option<&HandRules>,
 ) -> Option<State> {
     if !auto.iter().any(|a| *a) {
         return Some(state);
@@ -2645,6 +2648,9 @@ fn settle_touch_groups(
         let hand = hand?;
         for i in members.iter().filter(|i| auto[**i]) {
             let note = &chart.notes[group[*i].note];
+            let hand = rules
+                .and_then(|r| r.contact.get(&note.id).copied())
+                .unwrap_or(hand);
             state.assignments = state.assignments.push(Assignment {
                 note_id: note.id.clone(),
                 part: "group".into(),
@@ -2658,6 +2664,260 @@ fn settle_touch_groups(
     state.lenient_in_group = true;
     Some(state)
 }
+
+/// 兩手拍下一組 Touch 時，一隻手在這一刻做的事。
+enum SlapAction {
+    Idle,
+    Touch(usize),
+    Palm(PalmCandidate),
+}
+
+/// 整組都是 Touch（Tap）時，直接列舉兩隻手各自的動作（不動、單點或一個掌面）：沒蓋到的
+/// Touch 先看手有沒有順帶擦到，其餘交給 Touch Group 過半判定。SLAP_FIRST_NOTES 顆以上的
+/// 大組直接用；較小的組照舊逐顆展開，走不下去時才用這個。
+///
+/// 逐顆展開時，手接得到的 Touch 一定要接，而且照固定順序指派，兩隻手常被排在前面的幾顆
+/// （例如中央）佔走，「兩掌各蓋外圈一團、中間交給過半判定」這類接法展不出來，整組就無解；
+/// 分支又隨顆數指數成長。這裡先用涵蓋的音符（位元遮罩）篩掉過不了半的組合才建狀態，
+/// 所以 Touch 很多也不會爆量。
+///
+/// `centered`：每個掌面只放在蓋住那幾顆的正中間（最靠近它們重心的候選掌心），不再逐一試
+/// 每個掌心。大組用這個：同一團換個掌心差別很小，候選卻會多出好幾倍。
+///
+/// 帶手部限制（標註、TemotoAI 的修正）時只回傳符合限制的狀態（擱著的標記 `aside` 不算）；
+/// 直接碰到的音符被指定給另一隻手的動作，連狀態都不建。「兩手都動找不到才讓一隻手不動」
+/// 也是看符合限制的結果。
+#[allow(clippy::too_many_arguments)]
+fn touch_slap(
+    beam: &[State],
+    group: &[Task],
+    chart: &Chart,
+    c: &SolverConfig,
+    relaxed: bool,
+    centered: bool,
+    candidates: &[PalmCandidate],
+    touch_groups: &[Vec<usize>],
+    rules: Option<&HandRules>,
+    aside: &BTreeSet<String>,
+    v2_context: Option<&v2::Context>,
+    v3_context: Option<&v3::Context>,
+) -> Result<Vec<State>, Diagnostic> {
+    let n = group.len();
+    if n > 64 {
+        return Ok(vec![]);
+    }
+    let bits = |members: &[usize]| members.iter().fold(0u64, |m, i| m | 1 << i);
+    let full = if n == 64 { u64::MAX } else { (1u64 << n) - 1 };
+    let grouped: Vec<u64> = touch_groups.iter().map(|g| bits(g)).collect();
+    let loose = grouped.iter().fold(full, |m, g| m & !g);
+    // 不在 Touch Group 裡的每顆都要碰到；每個 Touch Group 要碰到過半。
+    let enough = |hit: u64| {
+        hit & loose == loose
+            && grouped
+                .iter()
+                .all(|g| 2 * (hit & g).count_ones() > g.count_ones())
+    };
+    let mut actions: Vec<(u64, SlapAction)> = vec![(0, SlapAction::Idle)];
+    actions.extend((0..n).map(|i| (1u64 << i, SlapAction::Touch(i))));
+    for candidate in candidates {
+        let mask = bits(&candidate.covered);
+        if c.is_legacy() {
+            actions.push((
+                mask,
+                SlapAction::Palm(PalmCandidate {
+                    covered: candidate.covered.clone(),
+                    centers: candidate.centers.clone(),
+                }),
+            ));
+        } else if centered {
+            let count = candidate.covered.len() as f64;
+            let (x, y) = candidate.covered.iter().fold((0.0, 0.0), |(x, y), i| {
+                let p = chart.notes[group[*i].note].position;
+                (x + p.x, y + p.y)
+            });
+            let middle = Point {
+                x: x / count,
+                y: y / count,
+            };
+            if let Some(center) = candidate
+                .centers
+                .iter()
+                .copied()
+                .min_by(|a, b| a.distance(middle).total_cmp(&b.distance(middle)))
+            {
+                actions.push((
+                    mask,
+                    SlapAction::Palm(PalmCandidate {
+                        covered: candidate.covered.clone(),
+                        centers: vec![center],
+                    }),
+                ));
+            }
+        } else {
+            actions.extend(candidate.centers.iter().map(|center| {
+                (
+                    mask,
+                    SlapAction::Palm(PalmCandidate {
+                        covered: candidate.covered.clone(),
+                        centers: vec![*center],
+                    }),
+                )
+            }));
+        }
+    }
+    // 直接碰到的音符被限制給另一隻手：這個動作由這隻手做，建出來也會被擋掉。
+    // AI 重解時同一組大和弦每一輪都要再列舉一次，先排除可以省掉大部分的狀態。
+    let conflicts = |action: &SlapAction, hand: Hand| {
+        let Some(r) = rules else {
+            return false;
+        };
+        let touched: &[usize] = match action {
+            SlapAction::Idle => &[],
+            SlapAction::Touch(i) => std::slice::from_ref(i),
+            SlapAction::Palm(palm) => &palm.covered,
+        };
+        touched.iter().any(|&i| {
+            let id = &chart.notes[group[i].note].id;
+            !aside.contains(id) && r.contact.get(id).is_some_and(|h| *h != hand)
+        })
+    };
+    let usable: Vec<[bool; 2]> = actions
+        .iter()
+        .map(|(_, a)| [!conflicts(a, Hand::L), !conflicts(a, Hand::R)])
+        .collect();
+    let update = |before: &State, after: &mut State| -> Result<(), Diagnostic> {
+        if let Some(context) = v2_context {
+            context.update(before, after)?;
+        }
+        if let Some(context) = v3_context {
+            context.update(before, after)?;
+        }
+        Ok(())
+    };
+    let act = |state: &State,
+               action: &SlapAction,
+               hand: Hand,
+               late: bool|
+     -> Result<Vec<State>, Diagnostic> {
+        let mut out = match action {
+            SlapAction::Idle => return Ok(vec![state.clone()]),
+            SlapAction::Touch(i) => assign(state, &group[*i], hand, chart, c, late),
+            SlapAction::Palm(palm) => assign_palm(state, palm, group, hand, chart, c, late),
+        };
+        for s in &mut out {
+            s.lenient_in_group |= late;
+            update(state, s)?;
+        }
+        Ok(out)
+    };
+    let lates: &[bool] = if relaxed { &[false, true] } else { &[false] };
+    let idle = |action: &SlapAction| matches!(action, SlapAction::Idle);
+    let mut out = vec![];
+    for state in beam {
+        let before = out.len();
+        // 左手動作的結果和右手做什麼無關，同一個狀態只算一次。
+        let mut lefts: Vec<[Option<Vec<State>>; 2]> =
+            (0..actions.len()).map(|_| [None, None]).collect();
+        // 手空著就要接（同逐顆展開）：先只試兩手都有動作的組合，都不行才讓一隻手不動。
+        for with_idle in [false, true] {
+            if with_idle && out.len() > before {
+                break;
+            }
+            for (li, (left_mask, left)) in actions.iter().enumerate() {
+                for (ri, (right_mask, right)) in actions.iter().enumerate() {
+                    let hit = left_mask | right_mask;
+                    if (idle(left) || idle(right)) != with_idle
+                        || left_mask & right_mask != 0
+                        || !usable[li][0]
+                        || !usable[ri][1]
+                        || !enough(hit)
+                    {
+                        continue;
+                    }
+                    for &late in lates {
+                        let slot = &mut lefts[li][usize::from(late)];
+                        if slot.is_none() {
+                            *slot = Some(act(state, left, Hand::L, late)?);
+                        }
+                        for after_left in slot.as_deref().unwrap_or_default() {
+                            for mut s in act(after_left, right, Hand::R, late)? {
+                                if cancelled() {
+                                    return Err(Diagnostic::plain(
+                                        "cancelled",
+                                        "分析已取消".into(),
+                                    ));
+                                }
+                                let mut auto = vec![false; n];
+                                for (i, task) in group.iter().enumerate() {
+                                    if hit & 1 << i != 0 {
+                                        continue;
+                                    }
+                                    let brushed = brush_touch(&s, task, Hand::L, chart, c)
+                                        .or_else(|| brush_touch(&s, task, Hand::R, chart, c));
+                                    match brushed {
+                                        Some(mut next) => {
+                                            update(&s, &mut next)?;
+                                            s = next;
+                                        }
+                                        None => auto[i] = true,
+                                    }
+                                }
+                                let Some(mut s) = settle_touch_groups(
+                                    s,
+                                    &auto,
+                                    touch_groups,
+                                    group,
+                                    chart,
+                                    rules,
+                                ) else {
+                                    continue;
+                                };
+                                if let Some(context) = v2_context {
+                                    context.refresh(&mut s)?;
+                                }
+                                if let Some(context) = v3_context {
+                                    context.refresh(&mut s)?;
+                                }
+                                if rules.is_some_and(|r| !r.violations(&s, aside).is_empty()) {
+                                    continue;
+                                }
+                                out.push(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 這一組同時音的錯誤：標出時間、音符與原文位置，使用者才知道卡在哪裡。
+fn group_diagnostic(
+    code: &str,
+    message: String,
+    time: f64,
+    group: &[Task],
+    chart: &Chart,
+) -> Diagnostic {
+    let mut d = Diagnostic::plain(code, message);
+    d.time_seconds = Some(time);
+    d.note_ids = group
+        .iter()
+        .map(|t| chart.notes[t.note].id.clone())
+        .collect();
+    d.note_ids.sort();
+    d.note_ids.dedup();
+    d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
+    d
+}
+
+/// 同時音的候選太多、算不完時的說明。調小搜尋寬度，每一組要展開的狀態就變少。
+const SEARCH_LIMIT_MESSAGE: &str = "同時事件的候選已達計算預算，請調小搜尋寬度或縮短片段";
+
+/// 整組都是 Touch、至少這麼多顆時先用 touch_slap：逐顆展開 8 顆起一組就要零點幾秒，
+/// 13 顆要近兩秒（搜尋寬度 128），而且常因固定順序找不到接法。
+const SLAP_FIRST_NOTES: usize = 8;
 
 fn is_touch_sweep_group(group: &[Task], chart: &Chart) -> bool {
     group.len() >= MIN_TOUCH_SWEEP_NOTES
@@ -3474,8 +3734,11 @@ fn solve_traced(
             // 使用者需要看到的是後面真正卡住的地方）。
             let mut solutions =
                 solve_relaxing_holds(chart, &wider, trace, rules).map_err(|wide| {
-                    let later = wide.time_seconds.unwrap_or(f64::NEG_INFINITY)
-                        > e.time_seconds.unwrap_or(f64::INFINITY);
+                    // 備用半徑算到上限（search_limit）不算走得比較遠，仍回報原本走不下去的地方。
+                    let later =
+                        matches!(wide.code.as_str(), "no_solution" | "annotation_infeasible")
+                            && wide.time_seconds.unwrap_or(f64::NEG_INFINITY)
+                                > e.time_seconds.unwrap_or(f64::INFINITY);
                     if later {
                         let mut wide = wide;
                         wide.message = format!(
@@ -3848,11 +4111,48 @@ fn solve_with(
             let mut next = vec![];
             // 依標註剔除的狀態數；整組都被剔除時要回報是標註走不通，而不是模型本身無解。
             let mut rejected = 0usize;
+            // 整組都是 Touch 又有 Touch Group：逐顆展開走不下去時改列舉兩手的動作（touch_slap），
+            // 要用這一組開始時的 beam。
+            let slap = (drop_pass.is_none()
+                && !touch_groups.is_empty()
+                && group
+                    .iter()
+                    .all(|t| t.mode == "tap" && chart.notes[t.note].kind == "touch"))
+            .then(|| beam.clone());
+            // 顆數多的整組 Touch 直接列舉兩手的動作，找得到就不逐顆展開（逐顆展開的分支隨顆數
+            // 指數成長）：先只用每團正中間的掌心，不行再試全部掌心，都不行才逐顆展開。
+            if group.len() >= SLAP_FIRST_NOTES {
+                if let Some(saved) = &slap {
+                    for centered in [true, false] {
+                        next = touch_slap(
+                            saved,
+                            group,
+                            chart,
+                            c,
+                            relaxed,
+                            centered,
+                            &candidates,
+                            &touch_groups,
+                            rules,
+                            aside,
+                            v2_context.as_ref(),
+                            v3_context.as_ref(),
+                        )?;
+                        if !next.is_empty() {
+                            break;
+                        }
+                    }
+                }
+            }
             // 第三個欄位標記由 Touch Group 過半判定連帶完成、沒有實際接觸的 Touch。
-            let mut pending: Vec<(State, Vec<bool>, Vec<bool>)> = beam
-                .into_iter()
-                .map(|state| (state, vec![true; group.len()], vec![false; group.len()]))
-                .collect();
+            let mut pending: Vec<(State, Vec<bool>, Vec<bool>)> = if next.is_empty() {
+                std::mem::take(&mut beam)
+                    .into_iter()
+                    .map(|state| (state, vec![true; group.len()], vec![false; group.len()]))
+                    .collect()
+            } else {
+                vec![]
+            };
             while let Some((state, remaining, auto)) = pending.pop() {
                 if cancelled() {
                     return Err(Diagnostic::plain("cancelled", "分析已取消".into()));
@@ -3861,9 +4161,12 @@ fn solve_with(
                     || clock.elapsed() > BUDGET
                     || pending.len() + next.len() > MAX_GROUP_STATES
                 {
-                    return Err(Diagnostic::plain(
+                    return Err(group_diagnostic(
                         "search_limit",
-                        "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                        SEARCH_LIMIT_MESSAGE.into(),
+                        time,
+                        group,
+                        chart,
                     ));
                 }
                 // Touch Group 成員最後展開：其他音符先分到手，剩下接不到的 Touch 才交給過半判定。
@@ -3872,7 +4175,7 @@ fn solve_with(
                     .or_else(|| remaining.iter().position(|todo| *todo));
                 let Some(i) = next_task else {
                     let Some(mut state) =
-                        settle_touch_groups(state, &auto, &touch_groups, group, chart)
+                        settle_touch_groups(state, &auto, &touch_groups, group, chart, rules)
                     else {
                         continue;
                     };
@@ -4221,10 +4524,36 @@ fn solve_with(
                     || clock.elapsed() > BUDGET
                     || pending.len() + next.len() > MAX_GROUP_STATES
                 {
-                    return Err(Diagnostic::plain(
+                    return Err(group_diagnostic(
                         "search_limit",
-                        "同時事件的候選已達計算預算，請縮短片段或降低 beamWidth".into(),
+                        SEARCH_LIMIT_MESSAGE.into(),
+                        time,
+                        group,
+                        chart,
                     ));
+                }
+            }
+            // 逐顆展開（含換順序重來）都走不下去的整組 Touch：改列舉兩手的動作（大組上面試過了）。
+            if next.is_empty()
+                && retry.is_none()
+                && paired.is_none()
+                && group.len() < SLAP_FIRST_NOTES
+            {
+                if let Some(saved) = &slap {
+                    next = touch_slap(
+                        saved,
+                        group,
+                        chart,
+                        c,
+                        relaxed,
+                        false,
+                        &candidates,
+                        &touch_groups,
+                        rules,
+                        aside,
+                        v2_context.as_ref(),
+                        v3_context.as_ref(),
+                    )?;
                 }
             }
             if next.is_empty() {
@@ -4285,26 +4614,18 @@ fn solve_with(
                 if let (Some(skip), Some((_, kept))) = (skip.as_deref_mut(), stuck) {
                     skip.skipped.truncate(kept);
                 }
-                let mut d = if rejected > 0 {
-                    Diagnostic::plain(
+                let (code, message) = if rejected > 0 {
+                    (
                         "annotation_infeasible",
                         ANNOTATION_INFEASIBLE_MESSAGE.into(),
                     )
                 } else {
-                    Diagnostic::plain(
-                    "no_solution",
-                    "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。".into(),
-                )
+                    (
+                        "no_solution",
+                        "本模型未找到可行方案：兩手在此時都被佔用，或無法在判定區間內連續接觸。這不代表人類無法遊玩；可嘗試增加 beamWidth、palmRadius 或 glideDistance，或縮短片段。".into(),
+                    )
                 };
-                d.time_seconds = Some(time);
-                d.note_ids = group
-                    .iter()
-                    .map(|t| chart.notes[t.note].id.clone())
-                    .collect();
-                d.note_ids.sort();
-                d.note_ids.dedup();
-                d.source_span = Some(Box::new(chart.notes[group[0].note].source_span.clone()));
-                return Err(d);
+                return Err(group_diagnostic(code, message, time, group, chart));
             }
             if drop_pass.is_some() {
                 // 略過最少的才接下去（帶著別條一起畫的 Slide 放掉時會連帶多略過）。

@@ -84,8 +84,11 @@ interface CachedAnalysis {
  * wifi-pair-9：V3 WiFi 預設雙手 2+1，單手張開只在 2+1 做不到或另一手在滑行期間要接別的音符時使用。
  * partial-solve-10：重疊的滑星可一手畫、滑星路徑上的 Touch 由滑行的手碰掉；一手同按相鄰兩鍵、
  *   同路線兩條 Slide 一筆畫完合法；模型本身走不下去的地方先略過、其餘照常求解（部分解）。
+ * touch-slap-11：整組都是 Touch 時改列舉兩手的動作（8 顆以上直接用、較少時逐顆展開走不下去才用），
+ *   一次很多顆的 Touch 不再算到上限；搜尋達到上限時標出卡住的時間與音符。照標註或 TemotoAI 的修正求解時，
+ *   Touch Group 連帶判定的那幾顆照指定的手記錄（AI 模型的結果也會跟著變）。
  */
-export const SOLVER_REVISION = 'partial-solve-10';
+export const SOLVER_REVISION = 'touch-slap-11';
 
 /**
  * 個別評分方式的修訂號，只併入該版的快取鍵，不影響其他版本已存在的快取。
