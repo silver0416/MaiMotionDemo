@@ -148,6 +148,12 @@
     }
   }
 
+  /* 觸控沒有 hover：按下時給同樣的底色回饋。 */
+  .toc-link:active {
+    color: var(--c-text-strong);
+    background: var(--c-control);
+  }
+
   /* 目前所在的段落：選中列樣式（底色＋框），不只靠顏色。 */
   .toc-link.is-active {
     background: var(--c-control-hover);

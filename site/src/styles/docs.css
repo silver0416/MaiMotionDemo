@@ -64,6 +64,18 @@ html {
   scroll-padding-top: calc(var(--topbar-h) + var(--space-4));
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Android Chrome 等瀏覽器點按時預設會蓋一層淡藍色；關掉它，按下的回饋由各元件自己的 :active 樣式負責。 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 內文連結與標題錨點沒有底色可變，按下時用底線加粗／底色回饋（滑鼠的 hover 樣式在觸控螢幕上不會出現）。 */
+.prose a:not(.heading-anchor):not(.btn):active {
+  text-decoration-thickness: 2px;
+}
+
+.heading-anchor:active {
+  background: var(--c-control);
+  color: var(--c-text-strong);
 }
 
 body {

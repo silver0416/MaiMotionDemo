@@ -101,7 +101,10 @@
     }
   }
 
+  /* 觸控沒有 hover：按下時除了微縮，也給同樣的底色，才看得出按到哪一列。 */
   .nav-link:active {
+    background: var(--c-control);
+    color: var(--c-text-strong);
     transform: scale(0.99);
   }
 
