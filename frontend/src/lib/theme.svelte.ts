@@ -1,6 +1,6 @@
 /**
  * 外觀：深淺模式與配色。依 Claude Design「配色與字體組合」定案保留四組配色，
- * 三組深色（現狀、機台霓虹、暖墨）可選，淺色固定用「淺色工作室」。
+ * 三組深色（預設、機台霓虹、暖墨）可選，淺色固定用「淺色工作室」。
  * 另有「說明文字 → 詳細模式」（2026-11-09 使用者要求說明可以整個關掉）：關掉就是精簡模式，<html data-help="off">，
  * 標了 .help 的操作說明與提示一律不顯示（見 app.css）。v1.2.0 起預設精簡模式；
  * 從舊版更新上來的人第一次開啟時會跳一則介紹（見 state/conciseIntro.ts）。
@@ -23,16 +23,16 @@ export interface PaletteInfo<Id extends Palette = Palette> {
 
 export const DARK_PALETTES: readonly PaletteInfo<DarkPalette>[] = [
   {
+    id: 'classic',
+    label: '預設',
+    hint: '冷灰底，粉與藍，系統字型。',
+    swatches: ['#0b0d11', '#14181e', '#f2679d', '#4fb8f5', '#f0b429'],
+  },
+  {
     id: 'neon',
     label: '機台霓虹',
     hint: '偏藍紫的黑，洋紅與青更飽和，數字用 Chakra Petch。',
     swatches: ['#0a0a14', '#13131f', '#ff5fb3', '#3fd6f0', '#ffd23f'],
-  },
-  {
-    id: 'classic',
-    label: '現狀',
-    hint: '改版前的冷灰配色。',
-    swatches: ['#0b0d11', '#14181e', '#f2679d', '#4fb8f5', '#f0b429'],
   },
   {
     id: 'ink',
@@ -57,7 +57,8 @@ export const APPEARANCES: readonly { id: Appearance; label: string }[] = [
 
 const STORAGE_KEY = 'maimotion.theme.v1';
 /** help：詳細模式（顯示說明文字）。v1.2.0 起預設關掉＝精簡模式；舊存檔沒有這一項時也是精簡模式（使用者 2026-11-09 指定）。 */
-const DEFAULTS = { appearance: 'system' as Appearance, dark: 'neon' as DarkPalette, help: false };
+/** dark：深色配色預設是「預設」（classic，原本叫「現狀」）；2026-11-15 使用者指定，之前是機台霓虹。 */
+const DEFAULTS = { appearance: 'system' as Appearance, dark: 'classic' as DarkPalette, help: false };
 
 function load(): { appearance: Appearance; dark: DarkPalette; help: boolean } {
   try {

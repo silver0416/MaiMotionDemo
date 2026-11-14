@@ -37,7 +37,7 @@
 
   --font-cjk: 'Noto Sans TC', 'Microsoft JhengHei UI', 'Microsoft JhengHei', 'PingFang TC', sans-serif;
 
-  /* 1a 現狀：沒有指定配色時的底。 */
+  /* 1a 預設（classic，原本叫「現狀」）：深色的預設配色，也是沒有指定配色時的底。 */
   --font-sans: 'Segoe UI', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
   --font-display: var(--font-sans);
   --font-mono: 'Cascadia Mono', 'Consolas', 'Noto Sans Mono', var(--font-cjk), monospace;
