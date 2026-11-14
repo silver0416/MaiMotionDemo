@@ -1,0 +1,42 @@
+{
+  "name": "maimotion-docs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port 4330 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 4330 --strictPort",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "demos": "node scripts/gen-demos.mjs",
+    "index": "node scripts/build-index.mjs",
+    "eval:search": "node scripts/eval-search.mjs",
+    "worker:dev": "cd worker && cf dev",
+    "worker:build": "cd worker && cf build",
+    "worker:preview": "cd worker && vite preview",
+    "build:all": "npm run index && npm run build && npm run worker:build",
+    "deploy:dry": "cd worker && cf deploy --dry-run"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.8",
+    "@fontsource/dm-mono": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "@sveltejs/adapter-static": "^4.0.1",
+    "@sveltejs/kit": "^3.2.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "cf": "0.15.0",
+    "mdsvex": "^0.12.8",
+    "svelte": "^5.57.1",
+    "svelte-check": "^4.7.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0"
+  },
+  "allowScripts": {
+    "workerd@1.20260921.1": true,
+    "workerd@1.20260923.1": true,
+    "workerd@1.20261023.1": true
+  },
+  "dependencies": {
+    "@fontsource/m-plus-rounded-1c": "^5.3.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "maimotiondemo-docs-worker",
+  "private": true,
+  "type": "module",
+  "//": "cf 依這個檔判斷用哪種 dev server。套件實際裝在 site/node_modules（在 site/ 跑 npm.cmd install），這裡不要另外 install；版本要和 site/package.json 一致。",
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.8",
+    "cf": "0.15.0",
+    "vite": "^8.3.0"
+  }
+}

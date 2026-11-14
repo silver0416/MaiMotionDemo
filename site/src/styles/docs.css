@@ -1,0 +1,481 @@
+/* 文件站樣式：tokens 與原語（.btn、.seg、.badge、.alert、.pop…）一律來自 App 的 app.css，
+   這裡只放文件站自己的版面、閱讀排版與手機版調整。不另立風格：不透明純色、膠囊控制項、不用漸層與左側強調邊框。 */
+
+@import '../../../frontend/src/styles/app.css';
+
+/* 淺色（studio）用到的西文字型；只引 latin 子集，不用字型 CDN。 */
+@import '@fontsource/space-grotesk/latin-500.css';
+@import '@fontsource/space-grotesk/latin-600.css';
+@import '@fontsource/space-grotesk/latin-700.css';
+@import '@fontsource/dm-mono/latin-400.css';
+@import '@fontsource/dm-mono/latin-500.css';
+
+/* 站名用的圓體（M PLUS Rounded 1c ExtraBold，SIL OFL）。只給站名「MaiMotionDemo」用，
+   unicode-range 收在英文字母，瀏覽器只抓這一個小分片（約 13 kB），內文與其他標題不受影響。 */
+@font-face {
+  font-family: 'MaiMotion Brand';
+  font-weight: 800;
+  font-display: swap;
+  src: url('@fontsource/m-plus-rounded-1c/files/m-plus-rounded-1c-118-800-normal.woff2') format('woff2');
+  unicode-range: U+0041-005A, U+0061-007A;
+}
+
+/* 站名字樣：頂列與首頁標題共用同一個字型、字重與顏色。只放英文站名，不接中文。 */
+.wordmark {
+  font-family: 'MaiMotion Brand', var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--c-text-strong);
+}
+
+:root {
+  /* 文件內文的閱讀字級：文件站唯一新增的字級 token（其他沿用 App）。 */
+  --fs-prose: 16px;
+  --lh-prose: 1.75;
+  /* 約 46 個中文字的欄寬。 */
+  --prose-max: 46rem;
+
+  /* 版面常數（照 BOTPu admin 的骨架）。 */
+  --topbar-h: 56px;
+  /* 頂列捲動後的陰影：很淡、往下收，只用來和內容分開（深色用純黑，淺色見下方 studio）。 */
+  --topbar-shadow: 0 10px 20px -14px #000000;
+  --bottomnav-h: 56px;
+  --sidebar-w: 264px;
+  --toc-w: 232px;
+  --gutter: 16px;
+  /* 一般控制項高度；觸控螢幕放大到 44px。 */
+  --control-h: 32px;
+
+  --z-sticky: 10;
+  --z-nav: 20;
+}
+
+@media (width >= 768px) {
+  :root {
+    --gutter: 32px;
+  }
+}
+
+/* App 的 app.css 把 html、body 釘在 100% 高度（App 是單一視窗、內部捲動）；文件站要整頁捲動。 */
+html,
+body {
+  height: auto;
+}
+
+html {
+  scroll-padding-top: calc(var(--topbar-h) + var(--space-4));
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+@media (width < 768px) {
+  html {
+    scroll-padding-top: var(--space-4);
+  }
+}
+
+a {
+  color: inherit;
+}
+
+/* App 的按鈕都是 <button>；文件站有些按鈕是連結，拿掉連結底線。 */
+a.btn {
+  text-decoration: none;
+}
+
+/* 跳到主要內容：平常藏起來，Tab 到才出現。 */
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 100;
+  padding: 0 var(--space-4);
+  min-height: var(--control-h);
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--c-invert-bg);
+  color: var(--c-on-invert);
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
+/* App 的 hover 寫在一般規則裡；文件站自己的 hover 一律放 (hover: hover)，觸控點一下不會卡在 hover 色。 */
+
+/* 觸控螢幕：控制項至少 44px 高；輸入框字級至少 16px（iOS 點進去才不會整頁放大）。 */
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn--round {
+    width: 44px;
+    min-width: 44px;
+  }
+
+  .seg-btn {
+    height: 38px;
+  }
+
+  .input,
+  .select,
+  .textarea {
+    min-height: 44px;
+    font-size: max(16px, var(--fs-sm));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   內文排版 .prose：閱讀字級 16px、行高 1.75、欄寬約 46 個中文字。 */
+
+.prose {
+  max-width: var(--prose-max);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+  color: var(--c-text);
+  overflow-wrap: break-word;
+}
+
+.prose > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.prose > * + * {
+  margin-top: 1em;
+}
+
+.prose h2,
+.prose h3 {
+  position: relative;
+  color: var(--c-text-strong);
+  line-height: var(--lh-tight);
+  /* 跳到錨點時的上緣留白由 html 的 scroll-padding-top 負責（手機頂列不固定時會變小）；這裡不再加 scroll-margin，免得留白加倍。 */
+}
+
+/* 標題字級：內文 16px 之上兩階（22／19）。19 是 App 的 --fs-xl。 */
+.prose h2 {
+  font-size: calc(var(--fs-prose) * 1.375);
+  font-weight: 700;
+}
+
+.prose h3 {
+  font-size: var(--fs-xl);
+}
+
+.prose > h2 {
+  margin-top: 2.5em;
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--c-border);
+}
+
+.prose > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.prose > h3 {
+  margin-top: 2em;
+}
+
+.prose > h2 + *,
+.prose > h3 + * {
+  margin-top: var(--space-3);
+}
+
+/* 標題後面的錨點：滑鼠移到標題上或鍵盤聚焦才出現；觸控螢幕常駐淡色。 */
+.heading-anchor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: var(--space-1);
+  vertical-align: middle;
+  border-radius: var(--radius-pill);
+  color: var(--c-text-dim);
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease;
+}
+
+.heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  h2:hover > .heading-anchor,
+  h3:hover > .heading-anchor {
+    opacity: 1;
+  }
+
+  .heading-anchor:hover {
+    background: var(--c-control);
+    color: var(--c-text-strong);
+  }
+}
+
+@media (hover: none) {
+  .heading-anchor {
+    opacity: 0.6;
+  }
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.5em;
+}
+
+.prose li + li {
+  margin-top: 0.35em;
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.35em;
+}
+
+.prose li::marker {
+  color: var(--c-text-dim);
+}
+
+.prose strong {
+  color: var(--c-text-strong);
+  font-weight: 700;
+}
+
+/* 連結：和 App 的 .linkish 同一個樣子（主色、底線）。 */
+.prose a:not(.heading-anchor):not(.btn) {
+  color: var(--c-primary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+@media (hover: hover) {
+  .prose a:not(.heading-anchor):not(.btn):hover {
+    text-decoration-thickness: 2px;
+  }
+}
+
+/* 行內程式碼 */
+.prose :not(pre) > code {
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-md);
+  background: var(--c-control);
+  color: var(--c-text-strong);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+/* 鍵盤按鍵 */
+.prose kbd,
+kbd.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9em;
+  padding: 0 0.4em;
+  border: 1px solid var(--c-border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-md);
+  background: var(--c-control);
+  color: var(--c-text-strong);
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+/* 引言：不用左側強調邊框，改成一塊淡底。 */
+.prose blockquote {
+  margin-left: 0;
+  margin-right: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-item);
+  background: var(--c-control);
+  color: var(--c-text);
+}
+
+.prose blockquote > * + * {
+  margin-top: 0.75em;
+}
+
+.prose hr {
+  height: 1px;
+  border: none;
+  background: var(--c-border);
+  margin: 2em 0;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 程式碼區塊：等寬字原樣顯示、不上色；長行在區塊內橫向捲動（整頁不捲）。 */
+.code-block {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-item);
+  background: var(--c-panel);
+  overflow: hidden;
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) 0 var(--space-4);
+}
+
+.code-lang {
+  color: var(--c-text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.code-block .code {
+  margin: 0;
+  padding: var(--space-1) var(--space-4) var(--space-4);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.7;
+  color: var(--c-text-strong);
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong) transparent;
+  tab-size: 2;
+}
+
+.code-block .code code {
+  font: inherit;
+}
+
+.code-copy {
+  flex: none;
+}
+
+.code-copy .icon-check,
+.code-copy.is-copied .icon-copy {
+  display: none;
+}
+
+.code-copy.is-copied .icon-check {
+  display: block;
+  color: var(--c-primary);
+}
+
+/* 表格：.table-wrap 是容器；容器窄於 560px 時每列變成一段「欄名　值」（td 帶 data-label）。 */
+.table-wrap {
+  container: table / inline-size;
+  min-width: 0;
+}
+
+.prose .table {
+  font-size: var(--fs-lg);
+  line-height: var(--lh-normal);
+}
+
+.prose .table th,
+.prose .table td {
+  padding: var(--space-2) var(--space-3);
+}
+
+.prose .table th:first-child,
+.prose .table td:first-child {
+  padding-left: 0;
+}
+
+.prose .table th {
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+@container table (width < 560px) {
+  .table,
+  .table thead,
+  .table tbody,
+  .table tr,
+  .table th,
+  .table td {
+    display: block;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tr {
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--c-border);
+  }
+
+  .table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .prose .table td,
+  .table td {
+    padding: 2px 0;
+    border: none;
+  }
+
+  /* 欄名放在左邊固定寬度的一欄；內容維持一般的行內排版（行內程式碼、粗體混在一起也不會被拆開）。 */
+  .prose .table td[data-label],
+  .table td[data-label] {
+    position: relative;
+    padding-left: calc(32% + var(--space-3));
+  }
+
+  .table td[data-label]::before {
+    content: attr(data-label);
+    position: absolute;
+    top: 2px;
+    left: 0;
+    width: 32%;
+    color: var(--c-text-dim);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    line-height: inherit;
+  }
+}
+
+/* App 的 .alert 是 12px；放在內文裡時跟著閱讀字級放大一階。 */
+.prose .alert {
+  font-size: var(--fs-lg);
+  line-height: 1.7;
+  padding: var(--space-3) var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heading-anchor {
+    transition-duration: 1ms;
+  }
+}
+
+/* 淺色的頂列陰影要更淡。 */
+:root[data-palette='studio'] {
+  --topbar-shadow: 0 10px 20px -14px #00000038;
+}

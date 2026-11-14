@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d11" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#e9e9e6" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.png" type="image/png" />
+    <link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+    <script>
+      // 主題在第一次繪製前套用（不閃色）：跟隨系統／深色（classic，不設 data-palette）／淺色（studio）。
+      // 和 src/lib/shell/theme.svelte.ts 的 apply() 做同一件事，改一邊要一起改。
+      (function () {
+        var mode = 'system';
+        try {
+          var saved = localStorage.getItem('maimotion.docs.theme');
+          if (saved === 'dark' || saved === 'light') mode = saved;
+        } catch (e) {}
+        var light = mode === 'light' || (mode === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        var root = document.documentElement;
+        if (light) root.setAttribute('data-palette', 'studio');
+        root.setAttribute('data-scheme', light ? 'light' : 'dark');
+        if (mode !== 'system') {
+          var metas = document.querySelectorAll('meta[name="theme-color"]');
+          for (var i = 0; i < metas.length; i++) metas[i].setAttribute('content', light ? '#e9e9e6' : '#0b0d11');
+        }
+      })();
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

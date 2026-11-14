@@ -1,0 +1,464 @@
+/* 文件站盤面演示共用的盤面筆觸，照 App 的 DiscStage.svelte <style> 搬過來（固定色與筆寬相同）。
+   盤面永遠黑底、空心描邊；左手粉、右手藍、換手琥珀。全部收在 svg.mm-disc 底下，不影響頁面其他地方。 */
+
+.mm-frame {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.mm-disc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---- 載入中骨架（固定深灰，不隨淺色配色變亮） ---- */
+.mm-disc .skeleton-ring,
+.mm-disc .skeleton-dot {
+  animation: skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+.mm-disc .skeleton-ring {
+  fill: none;
+  stroke: #1e242d;
+  stroke-width: 26;
+}
+
+.mm-disc .skeleton-ring--inner {
+  stroke-width: 14;
+  animation-delay: 0.2s;
+}
+
+.mm-disc .skeleton-dot {
+  fill: #272f3a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-disc .skeleton-ring,
+  .mm-disc .skeleton-dot {
+    animation: none;
+  }
+}
+
+/* ---- 鍵位 ---- */
+.mm-disc .buttons circle {
+  fill: none;
+  stroke: #8d97a6;
+  stroke-width: 2;
+}
+
+.mm-disc .buttons text {
+  fill: #c8d1de;
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 5px;
+}
+
+/* ---- Slide 軌道 ---- */
+.mm-disc .slide-path-base {
+  fill: none;
+  stroke: #6d7788;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.mm-disc .slide-path-done {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.mm-disc .slide-path-branch {
+  fill: none;
+  stroke: #55606f;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.mm-disc .slide-path.is-break .slide-path-base,
+.mm-disc .slide-path.is-break .slide-path-branch {
+  stroke: #c9863a;
+}
+
+.mm-disc .chevron {
+  fill: none;
+  stroke: #9aa5b5;
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mm-disc .chevron.is-passed {
+  stroke: #ffffff;
+}
+
+/* ---- 音符 ---- */
+.mm-disc .note-ring {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 7;
+}
+
+.mm-disc .note-core {
+  fill: none;
+  stroke: #aab4c3;
+  stroke-width: 4;
+}
+
+.mm-disc .note-star {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 6;
+  stroke-linejoin: round;
+}
+
+.mm-disc .note-star.is-moving {
+  fill: #eef2f8;
+  stroke: #0b0d11;
+  stroke-width: 3;
+}
+
+.mm-disc .hold-bar {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 7;
+  stroke-linejoin: round;
+}
+
+/* Touch 落點參考標記：沿用鍵位標記的中性色。 */
+.mm-disc .sensor-outline {
+  fill: none;
+  stroke: #4d5765;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.mm-disc .sensor-label {
+  fill: #7b8595;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 4px;
+}
+
+.mm-disc .sensor.is-used .sensor-outline {
+  stroke: #8d97a6;
+  stroke-width: 3;
+}
+
+.mm-disc .sensor.is-used .sensor-label {
+  fill: #c8d1de;
+}
+
+.mm-disc .touch-petal {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.mm-disc .touch-hold-frame {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.mm-disc .touch-spark-mark {
+  fill: none;
+  stroke: var(--c-accent);
+  stroke-width: 3;
+  stroke-dasharray: 7 10;
+  stroke-linejoin: round;
+}
+
+.mm-disc .touch-hold-track {
+  fill: none;
+  stroke: #3d4551;
+  stroke-width: 4;
+}
+
+.mm-disc .touch-hold-remain {
+  fill: none;
+  stroke: #eef2f8;
+  stroke-width: 8;
+  stroke-linecap: butt;
+}
+
+.mm-disc .touch-label {
+  fill: #eef2f8;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 5px;
+}
+
+.mm-disc .touch-label.is-center {
+  font-size: 26px;
+}
+
+/* 煙火筆觸。stroke-opacity 只是短暫的筆觸淡出，不是半透明底色。 */
+.mm-disc .firework-ring {
+  fill: none;
+  stroke: var(--c-accent);
+  stroke-linejoin: round;
+}
+
+.mm-disc .firework-spark {
+  stroke: var(--c-accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.mm-disc .firework-core {
+  fill: var(--c-text-strong);
+  stroke: var(--c-accent);
+  stroke-width: 3;
+}
+
+/* Break 與 EX 只換筆觸顏色，形狀維持一致。 */
+.mm-disc .note.is-break .note-ring,
+.mm-disc .note.is-break .note-star,
+.mm-disc .note.is-break .touch-petal,
+.mm-disc .note.is-break .touch-hold-frame,
+.mm-disc .note.is-break .touch-hold-remain,
+.mm-disc .note.is-break .hold-bar {
+  stroke: #f0913a;
+}
+
+.mm-disc .note.is-ex .note-core {
+  stroke: var(--c-focus);
+  stroke-width: 6;
+}
+
+.mm-disc .note.is-ex .touch-petal {
+  stroke: var(--c-focus);
+  stroke-width: 7;
+}
+
+.mm-disc .note.is-active .note-ring,
+.mm-disc .note.is-active .hold-bar {
+  stroke-width: 9;
+}
+
+.mm-disc .note.is-active .touch-petal,
+.mm-disc .note.is-active .touch-hold-frame {
+  stroke-width: 7;
+}
+
+/* ---- 指派標籤 ---- */
+.mm-disc .note-tag {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 6px;
+}
+
+.mm-disc .note-tag.is-left {
+  fill: var(--c-left);
+}
+
+.mm-disc .note-tag.is-right {
+  fill: var(--c-right);
+}
+
+.mm-disc .note-tag.is-handover {
+  fill: var(--c-accent);
+}
+
+.mm-disc .note-tag .tag-left {
+  fill: var(--c-left);
+}
+
+.mm-disc .note-tag .tag-right {
+  fill: var(--c-right);
+}
+
+.mm-disc .note-tag .tag-plain {
+  fill: #eef2f8;
+}
+
+/* ---- 軌跡 ---- */
+.mm-disc .track {
+  fill: none;
+  stroke-width: 3;
+  opacity: 0.55;
+}
+
+.mm-disc .track--left {
+  stroke: var(--c-left);
+}
+
+.mm-disc .track--right {
+  stroke: var(--c-right);
+}
+
+.mm-disc .trail {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mm-disc .trail--left {
+  stroke: var(--c-left);
+}
+
+.mm-disc .trail--right {
+  stroke: var(--c-right);
+}
+
+/* ---- 換手 ---- */
+.mm-disc .handover-diamond {
+  fill: none;
+  stroke: var(--c-accent);
+  stroke-width: 4;
+}
+
+.mm-disc .handover.is-active .handover-diamond {
+  fill: var(--c-accent);
+}
+
+.mm-disc .handover-label {
+  fill: var(--c-accent);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 6px;
+}
+
+/* ---- 手掌覆蓋區：只用手色的虛線筆觸，不填色 ---- */
+.mm-disc .palm-edge {
+  fill: none;
+  stroke-width: 4;
+  stroke-dasharray: 24 14;
+}
+
+.mm-disc .palm-center {
+  fill: none;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.mm-disc .palm-cover {
+  fill: none;
+  stroke-width: 3;
+  stroke-dasharray: 10 8;
+}
+
+.mm-disc .palm-title,
+.mm-disc .palm-list {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 6px;
+}
+
+.mm-disc .palm-title {
+  font-size: 27px;
+}
+
+.mm-disc .palm-list {
+  font-size: 23px;
+}
+
+.mm-disc .palm.is-left .palm-edge,
+.mm-disc .palm.is-left .palm-center,
+.mm-disc .palm.is-left .palm-cover {
+  stroke: var(--c-left);
+}
+
+.mm-disc .palm.is-left .palm-title,
+.mm-disc .palm.is-left .palm-list {
+  fill: var(--c-left);
+}
+
+.mm-disc .palm.is-right .palm-edge,
+.mm-disc .palm.is-right .palm-center,
+.mm-disc .palm.is-right .palm-cover {
+  stroke: var(--c-right);
+}
+
+.mm-disc .palm.is-right .palm-title,
+.mm-disc .palm.is-right .palm-list {
+  fill: var(--c-right);
+}
+
+/* ---- 手 ---- */
+.mm-disc .hand circle {
+  fill: #11151a;
+  stroke-width: 6;
+}
+
+.mm-disc .hand text {
+  font-family: var(--font-mono);
+  font-size: 34px;
+  font-weight: 700;
+  fill: #ffffff;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 6px;
+}
+
+.mm-disc .hand .hand-mode {
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.mm-disc .hand--left circle {
+  stroke: var(--c-left);
+}
+
+.mm-disc .hand--left text {
+  fill: var(--c-left);
+}
+
+.mm-disc .hand--right circle {
+  stroke: var(--c-right);
+}
+
+.mm-disc .hand--right text {
+  fill: var(--c-right);
+}
+
+.mm-disc .hand--left.is-contact circle {
+  fill: var(--c-left);
+}
+
+.mm-disc .hand--right.is-contact circle {
+  fill: var(--c-right);
+}
+
+.mm-disc .hand.is-contact > text:not(.hand-mode) {
+  fill: #0b0d11;
+  stroke-width: 0;
+}
+
+.mm-disc .hand .contact-ring {
+  fill: none;
+  stroke-width: 3;
+  stroke-dasharray: 8 7;
+}
+
+.mm-disc .hand.is-contact circle.contact-ring {
+  fill: none;
+}
