@@ -716,6 +716,25 @@
       playback.time < note.motionEnd,
   );
 
+  /**
+   * 這條 Slide 滑行時間的正中間（取到毫秒）。盤面上的滑星照滑行時間等速走，所以也是軌跡的正中間；
+   * 「在正中間換手」用它，不用拖播放時間（2026-11-15 使用者要求）。沒有滑行區間時為 null。
+   */
+  const slideMiddle = $derived(
+    note?.kind === 'slide' && note.motionStart !== null && note.motionEnd !== null && note.motionEnd > note.motionStart
+      ? Math.round(((note.motionStart + note.motionEnd) / 2) * 1000) / 1000
+      : null,
+  );
+
+  /** 這次換手是不是在正中間（容差和 addHandover 判斷同一時刻一樣是 1 毫秒）。 */
+  function atMiddle(at: number): boolean {
+    return slideMiddle !== null && Math.abs(at - slideMiddle) <= 1e-3;
+  }
+
+  function addMiddleHandover() {
+    if (note && slideMiddle !== null) annotation.addHandover(note, slideMiddle);
+  }
+
   function onHand(hand: Hand | undefined) {
     if (note) annotation.setHand(note, hand);
   }
@@ -1076,6 +1095,7 @@
                   {#each mark?.handovers ?? [] as handover, index (index)}
                     <div class="row small">
                       <button class="linkish mono" onclick={() => seekTo(handover.at)}>{formatClock(handover.at)}</button>
+                      {#if atMiddle(handover.at)}<span class="muted">正中間</span>{/if}
                       <span>換到 {handover.to === 'L' ? '左手' : '右手'}</span>
                       <span class="spacer"></span>
                       <button class="btn btn--icon" onclick={() => annotation.removeHandover(note, index)} aria-label="移除這次換手" title="移除">
@@ -1083,14 +1103,27 @@
                       </button>
                     </div>
                   {/each}
-                  <button
-                    class="btn"
-                    disabled={!inSlide}
-                    onclick={() => annotation.addHandover(note, Math.round(playback.time * 1000) / 1000)}
-                    title="把播放時間拖到換手的那一刻再按"
-                  >
-                    <Icon name="plus" size={14} />在 {formatClock(playback.time)} 換手
-                  </button>
+                  <div class="row row-wrap">
+                    <button
+                      class="btn"
+                      disabled={!inSlide}
+                      onclick={() => annotation.addHandover(note, Math.round(playback.time * 1000) / 1000)}
+                      title="把播放時間拖到換手的那一刻再按"
+                    >
+                      <Icon name="plus" size={14} />在 {formatClock(playback.time)} 換手
+                    </button>
+                    {#if slideMiddle !== null}
+                      {@const taken = (mark?.handovers ?? []).some((item) => atMiddle(item.at))}
+                      <button
+                        class="btn"
+                        disabled={taken}
+                        onclick={addMiddleHandover}
+                        title={taken ? '正中間已經有換手' : `在滑行時間的正中間（${formatClock(slideMiddle)}）換手，不用拖播放時間`}
+                      >
+                        <Icon name="plus" size={14} />在正中間換手
+                      </button>
+                    {/if}
+                  </div>
                   {#if !inSlide}
                     <span class="field-hint">播放時間要在這條 Slide 的滑行期間內。</span>
                   {/if}

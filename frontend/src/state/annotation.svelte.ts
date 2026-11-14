@@ -89,6 +89,20 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
+/**
+ * 換手照時間排好，從 first（開始滑的手）起依序交替，每次都換到另一隻手。
+ * 改了開始滑的手也要重排：核心照每一筆的 to 換手，留著舊的 to 會變成「右手換到右手」，等於沒換。
+ */
+function alternateHandovers(list: HandoverMark[], first: Hand): HandoverMark[] {
+  let hand = first;
+  return [...list]
+    .sort((a, b) => a.at - b.at)
+    .map((item) => {
+      hand = hand === 'L' ? 'R' : 'L';
+      return { ...item, to: hand };
+    });
+}
+
 export type ListFilter = 'all' | 'todo' | 'prefilled' | 'diff' | 'memo' | 'unsure';
 
 /** 標註的一步：一般音符只有一步；有起點的 Slide 分成起點觸碰與開始滑行兩步。 */
@@ -586,6 +600,8 @@ export class AnnotationStore {
       if (track) mark.track = track;
       else delete mark.track;
       if (track === 'LR') delete mark.handovers;
+      // 先加換手（例如「在正中間換手」）再選手時，換手改從新選的手開始交替。
+      else if (track && mark.handovers) mark.handovers = alternateHandovers(mark.handovers, track);
     });
   }
 
@@ -594,7 +610,10 @@ export class AnnotationStore {
     const need = neededParts(note);
     this.#edit(note, this.#parts(note), (mark) => {
       if (need.hand) mark.hand = hand;
-      if (need.track) mark.track = hand;
+      if (need.track) {
+        mark.track = hand;
+        if (mark.handovers) mark.handovers = alternateHandovers(mark.handovers, hand);
+      }
     });
   }
 
@@ -639,27 +658,15 @@ export class AnnotationStore {
       const holder: Hand = before?.to ?? (mark.track === 'R' ? 'R' : 'L');
       if (!mark.track || mark.track === 'LR') mark.track = holder;
       list.push({ at, to: holder === 'L' ? 'R' : 'L' });
-      list.sort((a, b) => a.at - b.at);
       // 後面的換手依序交替，保持每次都是換到另一隻手。
-      let hand: Hand = mark.track as Hand;
-      for (const item of list) {
-        item.to = hand === 'L' ? 'R' : 'L';
-        hand = item.to;
-      }
-      mark.handovers = list;
+      mark.handovers = alternateHandovers(list, mark.track as Hand);
     });
   }
 
   removeHandover(note: Note, index: number): void {
     this.#edit(note, ['track'], (mark) => {
-      const list = (mark.handovers ?? []).map((item) => ({ ...item }));
-      list.splice(index, 1);
-      let hand: Hand = mark.track === 'R' ? 'R' : 'L';
-      for (const item of list) {
-        item.to = hand === 'L' ? 'R' : 'L';
-        hand = item.to;
-      }
-      if (list.length > 0) mark.handovers = list;
+      const list = (mark.handovers ?? []).filter((_, i) => i !== index);
+      if (list.length > 0) mark.handovers = alternateHandovers(list, mark.track === 'R' ? 'R' : 'L');
       else delete mark.handovers;
     });
   }
