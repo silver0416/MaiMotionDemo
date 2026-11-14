@@ -39,7 +39,6 @@
   --topbar-h: 56px;
   /* 頂列捲動後的陰影：很淡、往下收，只用來和內容分開（深色用純黑，淺色見下方 studio）。 */
   --topbar-shadow: 0 10px 20px -14px #000000;
-  --bottomnav-h: 56px;
   --sidebar-w: 264px;
   --toc-w: 232px;
   --gutter: 16px;
@@ -47,7 +46,6 @@
   --control-h: 32px;
 
   --z-sticky: 10;
-  --z-nav: 20;
 }
 
 @media (width >= 768px) {
@@ -73,9 +71,10 @@ body {
   overflow-x: clip;
 }
 
+/* 手機的頂列會收起，但跳到錨點時它可能正顯示著（例如往上跳時）：一律把它的高度（含瀏海）算進去。 */
 @media (width < 768px) {
   html {
-    scroll-padding-top: var(--space-4);
+    scroll-padding-top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px) + var(--space-4));
   }
 }
 
@@ -164,7 +163,7 @@ a.btn {
   position: relative;
   color: var(--c-text-strong);
   line-height: var(--lh-tight);
-  /* 跳到錨點時的上緣留白由 html 的 scroll-padding-top 負責（手機頂列不固定時會變小）；這裡不再加 scroll-margin，免得留白加倍。 */
+  /* 跳到錨點時的上緣留白由 html 的 scroll-padding-top 負責（已含頂列高度）；這裡不再加 scroll-margin，免得留白加倍。 */
 }
 
 /* 標題字級：內文 16px 之上兩階（22／19）。19 是 App 的 --fs-xl。 */

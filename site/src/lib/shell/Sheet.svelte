@@ -1,7 +1,35 @@
+<script lang="ts" module>
+  /**
+   * 開著對話框時鎖住整頁捲動（觸控拖曳不會捲到後面的頁面）。
+   * 只在 html 上設 overflow: hidden，捲動位置不動；原本有捲軸的話用 scrollbar-gutter 保留它的寬度，版面不會橫移。
+   * 用計數：搜尋與選單交接（一個關、一個開）時不會提早解鎖。
+   */
+  let locks = 0;
+
+  function lockScroll() {
+    locks += 1;
+    if (locks > 1) return;
+    const root = document.documentElement;
+    const gutter = window.innerWidth - root.clientWidth;
+    if (gutter > 0) root.style.scrollbarGutter = 'stable';
+    root.style.overflow = 'hidden';
+  }
+
+  function unlockScroll() {
+    if (locks === 0) return;
+    locks -= 1;
+    if (locks > 0) return;
+    const root = document.documentElement;
+    root.style.overflow = '';
+    root.style.scrollbarGutter = '';
+  }
+</script>
+
 <script lang="ts">
   import { tick, untrack, type Snippet } from 'svelte';
   import Icon from '$app/components/Icon.svelte';
   import { reducedMotion } from '$app/lib/press';
+  import { afterNavigate } from '$app/navigation';
 
   /**
    * 對話框／底部抽屜（做法照 BOTPu admin 的 Dialog，外觀照 App 的 SearchDialog）：
@@ -9,8 +37,10 @@
    * - 電腦寬度置中（placement="top" 時靠上，給搜尋用）；手機寬度（< 768px）從底部滑入，上緣圓角 --radius-dialog；
    *   mobile="full" 時鋪滿整個畫面（搜尋）。
    * - Esc、點框外、右上角關閉鈕都會關；關閉動畫用計時器收尾，不依賴 animationend。
-   * - 開啟時焦點進入（有 data-autofocus 的元素優先）；關閉時瀏覽器把焦點還給原本的按鈕。
+   * - 開啟時焦點進入（有 data-autofocus 的元素優先）；關閉時瀏覽器把焦點還給原本的按鈕
+   *   （開著時換了頁就改成聚焦新頁面的 #main）。
    * - <dialog> 本身只是鋪滿視窗的透明層，外觀與動畫在裡面的 .sheet。
+   * - 開著時鎖住整頁捲動（見上方 lockScroll）。
    */
   interface Props {
     open: boolean;
@@ -23,6 +53,8 @@
     mobile?: 'sheet' | 'full';
     /** 取代預設標題列右側的內容（例如搜尋框）。 */
     head?: Snippet;
+    /** 標題列下方、不跟著內容捲動的一排（例如手機選單的工具列）。 */
+    top?: Snippet;
     children: Snippet;
     foot?: Snippet;
     onClose?: () => void;
@@ -36,6 +68,7 @@
     placement = 'center',
     mobile = 'sheet',
     head,
+    top,
     children,
     foot,
     onClose,
@@ -74,6 +107,7 @@
         if (!element.open) {
           rendered = true;
           element.showModal();
+          setLocked(true);
           void focusInitial(element);
         }
       } else if (element.open && !closing) {
@@ -91,14 +125,36 @@
     });
   });
 
-  $effect(() => () => clearTimeout(closeTimer));
+  $effect(() => () => {
+    clearTimeout(closeTimer);
+    setLocked(false);
+  });
+
+  let locked = false;
+  function setLocked(next: boolean) {
+    if (next === locked) return;
+    locked = next;
+    if (next) lockScroll();
+    else unlockScroll();
+  }
 
   function requestClose() {
     open = false;
   }
 
+  // 開著時換了頁（點目錄連結、選搜尋結果）：關閉後焦點交給新頁面的主要內容，不回到頂列的按鈕。
+  let navigated = false;
+  afterNavigate(() => {
+    if (dialog?.open) navigated = true;
+  });
+
   function onNativeClose() {
     clearTimeout(closeTimer);
+    setLocked(false);
+    if (navigated) {
+      navigated = false;
+      document.getElementById('main')?.focus({ preventScroll: true });
+    }
     closing = false;
     rendered = false;
     if (open) open = false;
@@ -149,6 +205,9 @@
           <Icon name="x" />
         </button>
       </header>
+      {#if top}
+        <div class="sheet-top">{@render top()}</div>
+      {/if}
       <div class="sheet-body scroll">
         {@render children()}
       </div>
@@ -255,6 +314,12 @@
 
   .sheet-head.has-custom {
     padding-left: var(--space-4);
+  }
+
+  .sheet-top {
+    flex: none;
+    padding: var(--space-3);
+    border-bottom: 1px solid var(--c-border);
   }
 
   .sheet-body {

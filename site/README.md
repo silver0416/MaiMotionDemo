@@ -20,7 +20,7 @@ site/
     content/<section>/<slug>.md   內容（見「內容格式」）
     lib/
       nav.ts              章節順序與名稱
-      shell/              外框元件：側欄、底部分頁列、頁內目錄、主題切換
+      shell/              外框元件：頂列、側欄、選單抽屜、頁內目錄、主題切換
       search/             搜尋對話框（UI）與 engine.ts（字面比對＋語意結果合併）
       demos/              動畫演示（見「演示」）
   scripts/
@@ -57,11 +57,15 @@ site/
 
 | 寬度 | 版面 |
 | --- | --- |
-| `< 768px` | 手機：底部分頁列（首頁／目錄／搜尋／更多），高 56px，加 `env(safe-area-inset-bottom)`；「目錄」「更多」「搜尋」開成底部抽屜（`<dialog>`，從下滑入，上緣圓角 `--radius-dialog`；搜尋是全螢幕） |
-| `≥ 768px` | 左側欄（章節目錄，sticky，100dvh）＋內容 |
+| `< 768px` | 手機：頂列（標誌＋站名，右邊「搜尋」「選單」兩顆圓鈕），高 `--topbar-h` 加 `env(safe-area-inset-top)`，往下捲時自動收起；「選單」開成底部抽屜（標題「目錄」），「搜尋」是全螢幕。沒有底部分頁列 |
+| `≥ 768px` | 頂列常駐（sticky）＋左側欄（章節目錄，sticky，100dvh）＋內容 |
 | `≥ 1280px` | 再加右側「本頁內容」目錄（sticky）；較窄時改成內容上方可收合的一塊 |
 
-- `viewport-fit=cover`；固定在底部的東西都加 safe-area。
+- 手機頂列（`Topbar.svelte`）：`position: sticky; top: 0`。捲動位置超過一個頂列高、且這次往下累積超過 8px 時用 `transform: translateY(-100%)` 收起；往上累積超過 8px 滑回來；在頂端一定顯示。搜尋或選單開著、鍵盤焦點進到頂列裡、換頁之後也一定顯示（鍵盤焦點在頂列裡時不收起）。捲動監聽是 passive，用 `requestAnimationFrame` 節流；轉場只動 `transform`（220ms、`--ease-out`），減少動態時瞬間完成。在頂端時和背景同色，離開頂端後和桌面一樣是毛玻璃加陰影。
+- 選單抽屜（`MenuSheet.svelte`，用 `Sheet`）：最上面一排不跟著捲動的工具（外觀切換、「下載 App」、GitHub），下面是章節目錄（開啟時捲到並聚焦目前這一頁；點了連結就關）。Esc、點框外、關閉鈕都能關，焦點回到「選單」按鈕。
+- 對話框與抽屜開著時鎖住整頁捲動（`html` 設 `overflow: hidden`，原本有捲軸就用 `scrollbar-gutter: stable` 保留寬度），關閉後捲動位置不變。
+- 錨點：手機的 `scroll-padding-top` 含頂列高度（頂列可能正顯示著），跳到標題時不會被蓋住。
+- `viewport-fit=cover`；貼齊螢幕邊緣的東西都加 safe-area（頂列的上緣、頁尾的下緣、抽屜的底部）。
 - `@media (pointer: coarse)`：控制項高度 44px；輸入框字級 `max(16px, …)`（避免 iOS 放大）。
 - hover 樣式只寫在 `@media (hover: hover)` 裡。
 - 表格外包 `.table-wrap`（container query）：容器寬 `< 560px` 時每列變成一張直排清單，`td` 以 `data-label` 顯示欄名。整頁永遠不能水平捲動。

@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { afterNavigate } from '$app/navigation';
   import { SITE } from '$lib/nav';
-  import BottomNav from '$lib/shell/BottomNav.svelte';
+  import MenuSheet from '$lib/shell/MenuSheet.svelte';
   import NavTree from '$lib/shell/NavTree.svelte';
   import Topbar from '$lib/shell/Topbar.svelte';
   import { theme } from '$lib/shell/theme.svelte';
@@ -13,7 +13,7 @@
 
   /**
    * 文件站外框（斷點照 BOTPu admin）：
-   * - < 768px：頂端站名＋內容＋底部分頁列（首頁／目錄／搜尋／更多）。
+   * - < 768px：頂列（站名＋搜尋＋選單，往下捲時收起）＋內容；選單抽屜裡是外觀、下載與章節目錄。
    * - ≥ 768px：sticky 頂列＋左側章節目錄（sticky）＋內容。
    * - ≥ 1280px：內容頁再加右側「本頁內容」（由內容頁自己排）。
    */
@@ -119,7 +119,7 @@
   </div>
 </div>
 
-<BottomNav />
+<MenuSheet />
 
 <SearchDialog bind:open={ui.searchOpen} seed={ui.searchSeed} />
 
@@ -170,9 +170,14 @@
   }
 
   @media (width < 768px) {
+    /* 內容很短的頁面（404）頁尾也貼在畫面底部，下面不留一大片空白。 */
     .shell {
-      display: block;
-      min-height: 0;
+      display: flex;
+      min-height: calc(100dvh - var(--topbar-h) - env(safe-area-inset-top, 0px));
+    }
+
+    .shell-main {
+      flex: 1 1 auto;
     }
 
     .sidebar {
@@ -183,10 +188,10 @@
       padding: var(--space-4) var(--gutter) var(--space-5);
     }
 
-    /* 底部分頁列固定在下方：內容與頁尾留出它的高度＋safe-area，最後一行不會被蓋住。 */
+    /* 頁尾在最底下：一般的留白，再加上 safe-area（瀏海機型的底部橫條）。 */
     .site-foot {
       flex-direction: column;
-      padding-bottom: calc(var(--bottomnav-h) + env(safe-area-inset-bottom, 0px) + var(--space-5));
+      padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
     }
   }
 </style>
