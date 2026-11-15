@@ -19,6 +19,7 @@
   import DropOverlay from './components/DropOverlay.svelte';
   import Icon, { type IconName } from './components/Icon.svelte';
   import SkeletonList from './components/SkeletonList.svelte';
+  import { GUIDE_URL, openExternalUrl } from './lib/api';
   import { afterPaint } from './lib/frame';
   import { reducedMotion } from './lib/press';
   import { segmented } from './lib/segmented';
@@ -141,6 +142,20 @@
       // 無法保存時只影響下次啟動的欄寬。
     }
   });
+
+  /** 使用指南（文件站）：桌面版用系統瀏覽器開，瀏覽器預覽開新分頁；開不了就跳錯誤通知。 */
+  async function openGuide() {
+    try {
+      await openExternalUrl(GUIDE_URL);
+    } catch (error) {
+      toasts.show({
+        id: 'guide-open',
+        tone: 'error',
+        title: '無法開啟使用指南',
+        body: `${typeof error === 'string' ? error : String(error)}。可以直接在瀏覽器開 ${GUIDE_URL}`,
+      });
+    }
+  }
 
   async function setCollapsed(next: boolean) {
     if (collapsed === next) return;
@@ -404,6 +419,7 @@
               onCreate={createRecord}
               onEdit={editRecord}
               onSettings={() => (settingsOpen = true)}
+              onGuide={() => void openGuide()}
               onSearch={() => (searchOpen = true)}
               onCollapse={() => setCollapsed(true)}
             />

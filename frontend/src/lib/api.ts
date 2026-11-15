@@ -136,6 +136,9 @@ export async function clearWikiCache(): Promise<WikiCacheInfo> {
   return await invoke<WikiCacheInfo>('wiki_clear_cache');
 }
 
+/** 使用指南（文件站）。側欄展開時底部「設定」右邊的「使用指南」開這裡。 */
+export const GUIDE_URL = 'https://maimotiondemo.bapu.dev';
+
 /**
  * 用系統預設瀏覽器開啟外部連結。
  * 桌面版經 opener plugin 開啟（不會讓 WebView 跳頁）；瀏覽器預覽用 window.open。

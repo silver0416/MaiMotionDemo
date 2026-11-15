@@ -30,9 +30,11 @@
     onCollapse: () => void;
     onEdit: (record: ChartRecord) => void;
     onSettings: () => void;
+    /** 開啟使用指南（文件站）；放在「設定」右邊。 */
+    onGuide: () => void;
   }
 
-  let { onCreate, onSearch, onCollapse, onEdit, onSettings }: Props = $props();
+  let { onCreate, onSearch, onCollapse, onEdit, onSettings, onGuide }: Props = $props();
 
   // ---- 檢視：資料夾、標籤篩選、文字篩選、排序（本機記住） ----
 
@@ -1054,7 +1056,7 @@
   </div>
 
   <div class="records-foot">
-    <button class="btn btn--ghost btn--wide" onclick={onSettings}>
+    <button class="btn btn--ghost settings" onclick={onSettings}>
       <span class="lead"><Icon name="settings" size={16} /></span>設定
       {#if errorLog.entries.length > 0}
         <span class="spacer"></span>
@@ -1062,6 +1064,9 @@
           {errorLog.entries.length}<span class="sr-only"> 筆錯誤紀錄</span>
         </span>
       {/if}
+    </button>
+    <button class="btn btn--ghost btn--round guide" onclick={onGuide} aria-label="使用指南" title="使用指南">
+      <Icon name="circle-help" size={16} />
     </button>
   </div>
 </div>
@@ -1674,7 +1679,12 @@
     background: var(--c-control-hover);
   }
 
+  /* 底部入口：「設定」吃掉剩下的寬度，右邊一顆只有圖示的「使用指南」。
+     左欄最窄 180px，兩顆帶字的鈕並排放不下。 */
   .records-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
     padding: var(--space-2);
     border-top: 1px solid var(--c-border);
   }
@@ -1684,6 +1694,27 @@
     padding: 0 var(--space-2);
     gap: var(--space-3);
     font-size: var(--fs-md);
+  }
+
+  .records-foot .settings {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* 圓形圖示鈕和「設定」同高（34px），外觀照 ghost：平時透明、hover 才出底。 */
+  .records-foot .guide {
+    flex: none;
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+    justify-content: center;
+    color: var(--c-text-dim);
+    background: transparent;
+  }
+
+  .records-foot .guide:hover:not(:disabled) {
+    color: var(--c-text);
+    background: var(--c-control);
   }
 
   .confirm {
