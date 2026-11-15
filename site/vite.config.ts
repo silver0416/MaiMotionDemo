@@ -121,6 +121,8 @@ export default defineConfig({
       // 順序：先注入 import → mdsvex 轉成 Svelte → 再處理 <script lang="ts"> 與樣式。
       preprocess: [autoImport(), markdown(), vitePreprocess()],
       adapter: adapter({ fallback: '404.html' }),
+      // service worker（src/service-worker/）：不自動註冊，由 src/lib/pwa/register.ts 只在手機註冊。
+      serviceWorker: { register: false },
       prerender: {
         // 站內連到不存在的頁面或段落（錨點）一律讓建置失敗，避免壞連結上線。
         handleHttpError: ({ status, path, referrer, message }) => {
@@ -141,6 +143,8 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
+    // 緊急開關：PWA_KILL_SWITCH=1 建置出的 service worker 會清空快取並取消註冊，頁面也不再註冊（見 README「Web App（PWA）」）。
+    __PWA_KILL_SWITCH__: JSON.stringify(process.env.PWA_KILL_SWITCH === '1'),
   },
   server: {
     port: 4330,

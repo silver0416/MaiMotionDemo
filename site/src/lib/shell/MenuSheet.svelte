@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import Icon from '$app/components/Icon.svelte';
   import { normalizePath, SITE } from '$lib/nav';
+  import InstallEntry from '$lib/pwa/InstallEntry.svelte';
   import ExtraIcon from './ExtraIcon.svelte';
   import NavTree from './NavTree.svelte';
   import Sheet from './Sheet.svelte';
@@ -10,7 +11,8 @@
 
   /**
    * 手機寬度（< 768px）頂列「選單」按鈕打開的抽屜：從底部滑入，標題「目錄」。
-   * 最上面一排是不跟著捲動的工具（外觀、下載 App、GitHub），下面是章節目錄（開啟時捲到並聚焦目前這一頁）。
+   * 最上面一排是不跟著捲動的工具（外觀、下載 App、GitHub，可以安裝時再加「加到主畫面」），
+   * 下面是章節目錄（開啟時捲到並聚焦目前這一頁）。
    */
   const atDownload = $derived(normalizePath(page.url.pathname) === SITE.download);
 
@@ -31,6 +33,8 @@
           <ExtraIcon name="github" />GitHub<span class="sr-only">（在新分頁開啟）</span>
         </a>
       </div>
+      <!-- 不能安裝時（電腦、已安裝、不支援）它自己不顯示，這一排就只剩上面兩列。 -->
+      <InstallEntry class="menu-install" onselect={close} />
     </div>
   {/snippet}
 
@@ -58,6 +62,12 @@
   .menu-links .btn {
     flex: 1 1 0;
     min-width: 0;
+    font-size: var(--fs-md);
+  }
+
+  /* 「加到主畫面」自己一列、和上面兩顆合起來一樣寬。 */
+  .menu-tools :global(.menu-install) {
+    width: 100%;
     font-size: var(--fs-md);
   }
 

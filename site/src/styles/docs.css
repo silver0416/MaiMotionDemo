@@ -226,8 +226,20 @@ a.btn {
     background-color 120ms ease;
 }
 
-.heading-anchor:focus-visible {
+.heading-anchor:focus-visible,
+.heading-anchor.is-copied {
   opacity: 1;
+}
+
+/* 複製成功：連結圖示換成打勾（和程式碼區塊的複製鈕同一種回饋）。 */
+.heading-anchor .icon-check,
+.heading-anchor.is-copied .icon-link {
+  display: none;
+}
+
+.heading-anchor.is-copied .icon-check {
+  display: block;
+  color: var(--c-primary);
 }
 
 @media (hover: hover) {
@@ -489,4 +501,104 @@ kbd.kbd {
 /* 淺色的頂列陰影要更淡。 */
 :root[data-palette='studio'] {
   --topbar-shadow: 0 10px 20px -14px #00000038;
+}
+
+/* ---------------------------------------------------------------------------
+   App 外框：從手機主畫面開啟（standalone），或網址加 ?app=ios|android 預覽時，<html data-app="ios|android">。
+   頂列精簡（$lib/app/AppTopbar）、底部多一條導覽列（$lib/app/TabBar）；不看視窗寬，
+   電腦上預覽時內容限在手機欄寬（--app-col）、置中。data-app 由 src/app.html 在第一次繪製前設定，不閃一般外框。 */
+
+:root {
+  /* App 外框的手機欄寬（電腦上預覽時用；手機本身比這個窄，不受影響）。 */
+  --app-col: 560px;
+  --z-tabbar: 20;
+  /* 浮在內容上的外框元件（iOS 的底部膠囊、返回鈕）：不透明面板色＋描邊＋陰影分層。
+     深色用較亮的描邊，浮在黑底的盤面演示上也看得出邊界。 */
+  --app-chrome-edge: var(--c-border-strong);
+  --app-chrome-shadow: var(--shadow-pop);
+  /* iOS 底部導覽列選中的圖示與文字。 */
+  --app-tab-active: var(--c-primary);
+  /* Android 底部導覽列選中的指示器（M3 的 secondaryContainer）：主色混進面板色，仍是不透明純色。 */
+  /* 參考 Google Play：深色用飽和的深藍（主色往背景色加深），淺色（studio，見下）用淡藍（主色混進面板色）。 */
+  --app-indicator: color-mix(in srgb, var(--c-primary) 42%, var(--c-bg));
+  /* Android 選中的圖示與文字（M3 的 onSecondaryContainer／secondary）：不是純白，是主色的相近色。
+     深色用主色往白提亮的淡色，淺色（studio，見下）用主色往黑加深的深色；在指示器與底列上的對比都在 8:1 以上。 */
+  --app-on-indicator: color-mix(in srgb, var(--c-primary) 40%, var(--c-text-strong));
+}
+
+:root[data-palette='studio'] {
+  --app-indicator: color-mix(in srgb, var(--c-primary) 24%, var(--c-panel));
+  --app-on-indicator: color-mix(in srgb, var(--c-primary) 45%, var(--c-text-strong));
+  --app-chrome-edge: var(--c-border);
+  /* 淺色時主色在選中膠囊（--c-control-hover）上只有 3.8:1，加深一點到 5.3:1（10px 的小字要過 4.5:1）。 */
+  --app-tab-active: color-mix(in srgb, var(--c-primary) 80%, var(--c-text-strong));
+}
+
+/* 頂列高：iOS 沿用 56（站名置中、44 的返回圓鈕）；Android 是 Material 的 64。 */
+:root[data-app] {
+  --gutter: 16px;
+}
+
+:root[data-app='android'] {
+  --topbar-h: 64px;
+}
+
+/* 底部導覽列佔掉的高度：內容與頁尾要留出來，最後一行不會被蓋住。
+   iOS：膠囊 62＋離底 max(12, safe-area − 13)＋和內容之間的 12。Android：64＋1px 上緣＋手勢列。 */
+:root[data-app='ios'] {
+  --tabbar-space: calc(62px + max(12px, calc(env(safe-area-inset-bottom, 0px) - 13px)) + var(--space-3));
+}
+
+:root[data-app='android'] {
+  --tabbar-space: calc(64px + env(safe-area-max-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+/* 目錄、搜尋、更多面板和底部導覽列的關係（$lib/shell/Sheet.svelte）：
+   iOS 的面板延伸到螢幕底、膠囊浮在上面，面板內容底部留出膠囊的位置（--app-panel-pad）；
+   Android 的面板下緣接在底列上方（--app-panel-gap），內容照一般留白。 */
+:root[data-app='ios'] {
+  --app-panel-gap: 0px;
+  --app-panel-pad: var(--tabbar-space);
+}
+
+:root[data-app='android'] {
+  /* 往底列下面多塞 1px：底列是不透明的、層級在上，這樣在非整數縮放的螢幕上也不會露出一條縫。 */
+  --app-panel-gap: calc(var(--tabbar-space) - 1px);
+  --app-panel-pad: var(--space-3);
+}
+
+/* 安裝提示與「有新版本」提示（$lib/pwa/Notice.svelte）的底緣離螢幕底多遠：底列的上緣再留 8px。
+   iOS：膠囊離底 max(12, safe-area − 13)＋高 62。Android：底列 64＋上緣 1px＋手勢列
+   （底列用 inset − max-inset 平移，所以它的上緣永遠在 65＋safe-area-inset-bottom）。 */
+:root[data-app='ios'] {
+  --app-nav-clearance: calc(max(12px, calc(env(safe-area-inset-bottom, 0px) - 13px)) + 62px + 8px);
+}
+
+:root[data-app='android'] {
+  --app-nav-clearance: calc(64px + env(safe-area-inset-bottom, 0px) + 8px);
+}
+
+/* 錨點與 Tab 聚焦：頂列（含瀏海）與底部導覽列都算進去，跳過去不會被蓋住。 */
+html[data-app] {
+  scroll-padding-top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px) + var(--space-4));
+  scroll-padding-bottom: var(--tabbar-space);
+}
+
+/* 頁面本身的寬螢幕版面（首頁兩欄、內容頁右側目錄）在 App 外框下一律用手機的樣子：
+   這些頁面的規則用的是視窗寬，電腦上預覽或平板開啟時要在這裡蓋掉。 */
+:root[data-app] .hero,
+:root[data-app] .chapter {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-app] .doc {
+  grid-template-columns: minmax(0, var(--prose-max));
+}
+
+:root[data-app] .toc-inline {
+  display: block;
+}
+
+:root[data-app] .toc-aside {
+  display: none;
 }

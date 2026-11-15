@@ -23,6 +23,18 @@
     root.style.overflow = '';
     root.style.scrollbarGutter = '';
   }
+
+  /**
+   * App 外框（<html data-app>）：抽屜與搜尋不是 modal（底部導覽列要一直按得到），用 show() 打開，
+   * 後面頁面的 inert、Tab 循環、Esc 與系統返回由 $lib/app/AppPanels.svelte 補上。
+   * 直接看 DOM 的 data-app（第一次繪製前就設好），不必等 platform 判斷完。
+   */
+  function isAppShell(): boolean {
+    return !!document.documentElement.dataset.app;
+  }
+
+  /** 開著（含正在關閉）的非 modal 面板：面板之間切換時不播進出場動畫，不會先關再開閃一下。 */
+  const openLayers = new Set<HTMLDialogElement>();
 </script>
 
 <script lang="ts">
@@ -45,6 +57,8 @@
   interface Props {
     open: boolean;
     title: string;
+    /** <dialog> 的 id（打開它的按鈕用 aria-controls 指過來）。 */
+    id?: string;
     /** 標題只給輔助技術（自訂標題列時用）。 */
     hideTitle?: boolean;
     /** 寬度：sm 420、md 560、lg 640。 */
@@ -63,6 +77,7 @@
   let {
     open = $bindable(),
     title,
+    id,
     hideTitle = false,
     size = 'md',
     placement = 'center',
@@ -83,6 +98,8 @@
   let surface = $state<HTMLDivElement | null>(null);
   let rendered = $state(false);
   let closing = $state(false);
+  /** App 外框裡從另一個面板直接切過來：不播進場動畫。 */
+  let instant = $state(false);
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   /** 按下時就在框外才算「點外面」：在框內開始選字、拖到框外放開不會誤關。 */
   let pressedOutside = false;
@@ -106,7 +123,14 @@
         closing = false;
         if (!element.open) {
           rendered = true;
-          element.showModal();
+          if (isAppShell()) {
+            instant = [...openLayers].some((layer) => layer !== element);
+            openLayers.add(element);
+            element.show();
+          } else {
+            instant = false;
+            element.showModal();
+          }
           setLocked(true);
           void focusInitial(element);
         }
@@ -117,6 +141,14 @@
         };
         if (reducedMotion()) {
           finish();
+        } else if (isAppShell()) {
+          // 先看同一輪有沒有別的面板接著打開（面板之間切換）：有的話直接收掉，不播退場動畫。
+          closing = true;
+          queueMicrotask(() => {
+            if (!closing) return;
+            if ([...openLayers].some((layer) => layer !== element)) finish();
+            else closeTimer = setTimeout(finish, CLOSE_MS);
+          });
         } else {
           closing = true;
           closeTimer = setTimeout(finish, CLOSE_MS);
@@ -127,6 +159,7 @@
 
   $effect(() => () => {
     clearTimeout(closeTimer);
+    if (dialog) openLayers.delete(dialog);
     setLocked(false);
   });
 
@@ -143,13 +176,18 @@
   }
 
   // 開著時換了頁（點目錄連結、選搜尋結果）：關閉後焦點交給新頁面的主要內容，不回到頂列的按鈕。
+  // 只改 page.state 的淺層紀錄（App 外框打開面板時推的那一筆、按返回收掉它）不算換頁。
   let navigated = false;
-  afterNavigate(() => {
-    if (dialog?.open) navigated = true;
+  afterNavigate((navigation) => {
+    if (!dialog?.open || navigation.shallow) return;
+    if (navigation.from && navigation.to && navigation.from.url.pathname === navigation.to.url.pathname) return;
+    navigated = true;
   });
 
   function onNativeClose() {
     clearTimeout(closeTimer);
+    if (dialog) openLayers.delete(dialog);
+    instant = false;
     setLocked(false);
     if (navigated) {
       navigated = false;
@@ -181,6 +219,7 @@
 
 <dialog
   bind:this={dialog}
+  {id}
   class={['sheet-layer', `sheet-layer--${placement}`, `sheet-layer--m-${mobile}`]}
   tabindex="-1"
   aria-labelledby={`${uid}-title`}
@@ -197,7 +236,7 @@
   onkeydown={onKeydown}
 >
   {#if rendered}
-    <div bind:this={surface} class={['sheet', `sheet--${size}`, closing && 'is-closing']}>
+    <div bind:this={surface} class={['sheet', `sheet--${size}`, closing && 'is-closing', instant && 'is-instant']}>
       <header class={['dialog-head', 'sheet-head', head && 'has-custom']}>
         <h2 id={`${uid}-title`} class:sr-only={hideTitle}>{title}</h2>
         {#if head}{@render head()}{/if}
@@ -390,6 +429,62 @@
     }
   }
 
+  /* App 外框（<html data-app>）：不看視窗寬，一律是從底部滑入的抽屜；mobile="full" 鋪滿整個畫面。
+     不是 modal（不在 top layer）：整層 fixed 鋪滿視窗、疊在頂列之上、底部導覽列之下，底列一直看得到也按得到。
+     iOS 的面板延伸到螢幕底，浮動膠囊照樣浮在上面，內容底部留出膠囊的高度（--app-panel-pad）；
+     Android 的面板下緣接在底列上方（--app-panel-gap）。電腦上預覽時寬度限在手機欄寬（--app-col）、置中。 */
+  :global(:root[data-app]) .sheet-layer[open] {
+    position: fixed;
+    z-index: calc(var(--z-tabbar) - 1);
+    place-items: end center;
+    padding: var(--space-6) 0 var(--app-panel-gap, 0px);
+  }
+
+  :global(:root[data-app]) .sheet.is-instant {
+    animation: none;
+  }
+
+  :global(:root[data-app]) .sheet {
+    width: min(100%, var(--app-col));
+    max-height: 100%;
+    border-bottom: none;
+    border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+    animation: sheet-up-in 220ms var(--ease-out);
+  }
+
+  :global(:root[data-app]) .sheet.is-closing {
+    animation: sheet-up-out 140ms ease-in forwards;
+  }
+
+  :global(:root[data-app]) .sheet-layer--m-full[open] {
+    place-items: stretch center;
+    padding: 0 0 var(--app-panel-gap, 0px);
+  }
+
+  :global(:root[data-app]) .sheet-layer--m-full .sheet {
+    height: 100%;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  :global(:root[data-app]) .sheet-head {
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  }
+
+  :global(:root[data-app]) .sheet-body {
+    padding-bottom: max(var(--space-3), var(--app-panel-pad, 0px));
+  }
+
+  :global(:root[data-app]) .sheet-foot {
+    padding: var(--space-3) var(--space-4) max(var(--space-3), env(safe-area-inset-bottom, 0px));
+  }
+
+  :global(:root[data-app]) .sheet-layer--m-full .sheet-foot {
+    display: none;
+  }
+
   @keyframes sheet-up-in {
     from {
       opacity: 0;
@@ -406,7 +501,9 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sheet,
-    .sheet.is-closing {
+    .sheet.is-closing,
+    :global(:root[data-app]) .sheet,
+    :global(:root[data-app]) .sheet.is-closing {
       animation: none;
     }
   }

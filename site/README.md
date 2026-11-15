@@ -48,7 +48,8 @@ site/
 - 盤面永遠黑底；左手粉、右手藍、換手琥珀。
 - 文件是拿來讀的，內文用閱讀字級：`--fs-prose`（16px）、行高 1.75、欄寬約 46 個中文字（`max-width: 46rem`）。這是文件站唯一新增的字級 token，其他一律用 App 的 token。
 - App 的「精簡模式／`.help`」不適用於文件站（文件本身就是說明）。
-- 頂列：在頁面頂端時和背景同色、沒有分隔線；往下捲之後變成極輕微的毛玻璃（背景 94% 不透明＋`blur(6px)`）加一點陰影。這是使用者 2026-11-15 指定的例外（仿 react.dev），全站只有這一處用半透明與 `backdrop-filter`，不要搬到別的元件。
+- 頂列：在頁面頂端時和背景同色、沒有分隔線；往下捲之後變成極輕微的毛玻璃（背景 94% 不透明＋`blur(6px)`）加一點陰影。這是使用者 2026-11-15 指定的例外（仿 react.dev），全站只有這一處用半透明與 `backdrop-filter`，不要搬到別的元件。App 外框 iOS 版的頂列（`AppTopbar.svelte`）沿用同一個例外，不算新的；Android 版的頂列不用毛玻璃，離開頂端改成不透明的面板色。
+- App 外框的底部導覽列與 iOS 的返回圓鈕一律不透明（使用者 2026-11-15 決定：iOS 版照 Apple「降低透明度」時的實心樣子，不做玻璃），用 1px 描邊加陰影分層，**不是**半透明例外。
 - 站名只寫英文「MaiMotionDemo」（圓體 M PLUS Rounded 1c ExtraBold，`.wordmark`），後面不接中文；標誌是不帶底色的向量圖（`Logo.svelte`），環跟著文字顏色。
 
 ### 版面與手機版
@@ -62,7 +63,7 @@ site/
 | `≥ 1280px` | 再加右側「本頁內容」目錄（sticky）；較窄時改成內容上方可收合的一塊 |
 
 - 手機頂列（`Topbar.svelte`）：`position: sticky; top: 0`。捲動位置超過一個頂列高、且這次往下累積超過 8px 時用 `transform: translateY(-100%)` 收起；往上累積超過 8px 滑回來；在頂端一定顯示。搜尋或選單開著、鍵盤焦點進到頂列裡、換頁之後也一定顯示（鍵盤焦點在頂列裡時不收起）。捲動監聽是 passive，用 `requestAnimationFrame` 節流；轉場只動 `transform`（220ms、`--ease-out`），減少動態時瞬間完成。在頂端時和背景同色，離開頂端後和桌面一樣是毛玻璃加陰影。
-- 選單抽屜（`MenuSheet.svelte`，用 `Sheet`）：最上面一排不跟著捲動的工具（外觀切換、「下載 App」、GitHub），下面是章節目錄（開啟時捲到並聚焦目前這一頁；點了連結就關）。Esc、點框外、關閉鈕都能關，焦點回到「選單」按鈕。
+- 選單抽屜（`MenuSheet.svelte`，用 `Sheet`）：最上面一排不跟著捲動的工具（外觀切換、「下載 App」、GitHub；可以安裝時再多一列「加到主畫面」（`$lib/pwa/InstallEntry.svelte`），不能安裝時它自己不顯示），下面是章節目錄（開啟時捲到並聚焦目前這一頁；點了連結就關）。Esc、點框外、關閉鈕都能關，焦點回到「選單」按鈕。
 - 對話框與抽屜開著時鎖住整頁捲動（`html` 設 `overflow: hidden`，原本有捲軸就用 `scrollbar-gutter: stable` 保留寬度），關閉後捲動位置不變。
 - 錨點：手機的 `scroll-padding-top` 含頂列高度（頂列可能正顯示著），跳到標題時不會被蓋住。
 - `viewport-fit=cover`；貼齊螢幕邊緣的東西都加 safe-area（頂列的上緣、頁尾的下緣、抽屜的底部）。
@@ -70,6 +71,28 @@ site/
 - hover 樣式只寫在 `@media (hover: hover)` 裡。
 - 表格外包 `.table-wrap`（container query）：容器寬 `< 560px` 時每列變成一張直排清單，`td` 以 `data-label` 顯示欄名。整頁永遠不能水平捲動。
 - 對話框沒有半透明遮罩（`::backdrop { background: none }`），靠邊框與陰影分層。
+
+#### App 外框（從手機主畫面開啟）
+
+從主畫面開啟（`display-mode: standalone`，iOS 另看 `navigator.standalone`）時，iOS 與 Android 各換成一套像原生 App 的外框：頂列精簡、底部多一條導覽列。一般瀏覽器裡的外框（上表）完全不變；電腦上安裝成 web app 也不換。
+
+- 判斷只有一份：`src/lib/app/platform.svelte.ts` 的 `platform.app`（`'ios' | 'android' | null`），外框在 `+layout.svelte` 的 onMount 呼叫 `initPlatform()`。`src/app.html` 有一段行內腳本在第一次繪製前用同樣的規則設定 `<html data-app="ios|android">`，**兩邊規則要一起改**。CSS 一律看 `:root[data-app]`，不看視窗寬：兩套外框的元件都在頁面上，由 CSS 決定顯示哪一套，所以第一次繪製就是對的外框、不會閃。
+- 預覽：網址加 `?app=ios` 或 `?app=android` 可以在一般瀏覽器（含電腦）看 App 外框，`?app=off` 取消；記在 sessionStorage，只影響這個分頁。電腦上預覽時內容、頂列、底列與抽屜都限在手機欄寬 `--app-col`（560px）並置中。
+- 元件：`src/lib/app/AppTopbar.svelte`（頂列）、`TabBar.svelte`（底部導覽列）、`AppTocSheet.svelte`（「目錄」抽屜）、`AppMoreSheet.svelte`（「更多」抽屜）、`AppPanels.svelte`（面板的非 modal 行為，見下）、`panel-ids.ts`（三個面板的 id）。一般外框的 `Topbar`、`MenuSheet`、左側欄在 App 外框下不顯示。頂列「往下捲收起」的規則和手機頂列共用 `src/lib/shell/autohide.svelte.ts`。
+- 頂列：只有標誌與站名，不是連結、沒有搜尋與選單；收起與出現和手機頂列一樣，上方加 `env(safe-area-inset-top)`。
+  - iOS：標誌與站名靠左（使用者指定，不照 iOS 慣例置中）、高 56；不在首頁時最左邊一顆 44×44 的返回圓鈕，站名接在它右邊（只有 chevron、`aria-label="返回"`），有站內的上一頁就 `history.back()`（有 Navigation API 時看 `navigation.canGoBack`，沒有就用記在 `page.state` 的站內深度），沒有就回首頁。
+  - Android：標誌與站名靠左（Material 的 top app bar：高 64、標題 22px），不放返回鈕（交給系統返回手勢）。離開頂端後整條換成不透明的 `--c-panel`（和底列同色，M3 用色調分層、不用陰影），系統狀態列（`theme-color`）跟著換（`theme.setChrome()`）。
+- 底部導覽列：首頁（連結）、目錄、搜尋、更多（`<button aria-haspopup="dialog">`），`<nav aria-label="主要導覽">`。選中：首頁在 `/`、目錄在內容頁、更多在 `/download`；抽屜或搜尋開著時改成那一顆。常駐、不隨捲動收起；頁尾下面留 `--tabbar-space`（已含 safe-area），`html` 的 `scroll-padding-bottom` 也是它。已經在首頁再點「首頁」會捲回最上面。
+- 面板（目錄、搜尋、更多）開著時底列一直看得到、按得到（使用者 2026-11-15 決定）：
+  - 點開著的那一顆就關掉；點另一顆直接切換（兩個面板都不播進出場動畫，`Sheet` 的 `is-instant`）；點「首頁」關掉面板並回首頁（已在首頁就關掉並捲到頂）。選中狀態跟著開著的面板，關掉後回到目前頁面那一顆。
+  - 版面：`Sheet` 在 App 外框改成 `position: fixed` 鋪滿視窗的一層，疊在頂列之上、底列之下（`z-index: --z-tabbar − 1`）。iOS 的面板延伸到螢幕底、膠囊浮在上面，面板內容底部留 `--app-panel-pad`（＝`--tabbar-space`）；Android 的面板下緣接在底列上方（`--app-panel-gap`）。搜尋一樣是全螢幕，只是不蓋住底列。
+  - 非 modal：`Sheet` 在 App 外框用 `dialog.show()`（不是 `showModal()`，不然底列會失效），modal 原本給的由 `AppPanels.svelte` 補上：面板與底列以外的整頁設 `inert`（從 body 往下走，包含它們的元素往裡走、其他整塊設 inert）、捲動照舊由 `Sheet` 鎖住；Tab 只在「面板 → 底列」之間循環；焦點在底列時 Esc 也會關；關掉後焦點回到打開它的那一顆（從內文用 Ctrl+K 打開就回到原處）；點面板外露出的地方（頂列區域）會關。面板是 `<dialog>`（role dialog、`aria-labelledby` 指標題，沒有 `aria-modal`），底列按鈕有 `aria-expanded` 與 `aria-controls`。
+  - 系統返回：打開面板時推一筆淺層紀錄（`goto(…, { shallow: true, state: { appPanel: true } })`），按返回回到前一筆就關面板；從介面關掉時自己 `history.back()` 收掉它。在面板裡點連結或選搜尋結果換頁時，改成「取代」那一筆（`beforeNavigate` 取消後用 `replace: true` 重導），換頁後按返回直接回到原本那一頁。點連結的當下（capture 的 click）與搜尋的 `ui.navigatingAway` 用來判斷「這次關面板是要換頁」，不先收紀錄（SvelteKit 的 `beforeNavigate` 是非同步的，等它來就太晚了）。淺層紀錄不影響返回鈕的「有沒有上一頁」（`navigation.canGoBack` 只看目前位置；備用的站內深度在淺層換頁時不變）。
+  - 安裝提示與「有新版本」提示（`$lib/pwa/Notice.svelte`）的位置由 `--app-nav-clearance` 決定：底列上緣再留 8px。
+  - iOS：浮在內容上的實心膠囊：高 62、圓角 31、左右離螢幕 21、`bottom: max(12px, calc(env(safe-area-inset-bottom) - 13px))`；底色 `--c-panel`、1px `--app-chrome-edge`（深色是 `--c-border-strong`，浮在黑底盤面上也看得出邊界）、陰影 `--shadow-pop`。圖示 24、標籤 10px／600、間距 1；未選中 `--c-text`，選中 `--app-tab-active`（深色＝`--c-primary`；淺色把主色混 20% `--c-text-strong` 加深，過 4.5:1），背後一塊內縮 3px 的 `--c-control-hover` 膠囊，換選中時以 350ms `--ease-spring` 滑過去。按下整顆縮 0.94。
+  - Android：Material 3 的 navigation bar：貼底滿寬、高 64，上緣 1px `--c-border`、底 `--c-panel`。每格：上 6 → 指示器 56×32（`--app-indicator`：主色 24% 混進面板色）→ 間距 4 → 標籤 12／16、500、字距 .5px → 下 6。未選中 `--c-text-dim`，選中 `--c-text-strong`（標籤不加粗）。指示器選中時從中心水平展開（240ms `--ease-spring`、透明度 150ms）。狀態層 hover 8%、按下與聚焦 10%（混成不透明色，只在指示器範圍內）。手勢列 inset 用 Chrome 建議的 `bottom: calc(inset − max-inset)`＋`padding-bottom: max-inset`；`safe-area-max-inset-bottom` 不支援時，巢狀的 `env()` 退回一般的 `safe-area-inset-bottom`。
+- 頁面自己的寬螢幕版面（首頁兩欄、內容頁右側「本頁內容」）在 App 外框下由 `docs.css` 蓋回手機的樣子（平板或電腦預覽時才用得到）。
+- `prefers-reduced-motion` 時選中膠囊與指示器不動畫、按下不縮；`prefers-contrast: more` 時描邊加粗。
 
 ## 內容格式
 
@@ -162,14 +185,36 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 - `src/lib/search/engine.ts`：字面結果立即出（state `literal`）；停止輸入 250 ms 才問 API（輸入法組字中不問、同一查詢記在記憶體、新查詢會取消舊請求）；回來後合併（state `done`）。排序：標題／關鍵字的字面命中 → 語意命中（依分數；兩邊都中標 `both`）→ 只有內文字面命中的。API 失敗、4 秒逾時、離線或打不到（`vite dev` 沒有 Worker）時 state `offline`，只留字面結果，不報錯。
 - 安全標頭與快取：靜態檔不經過 Worker，所以放在 assets 的 `_headers`，由 `worker/vite.config.ts` 在建置時產生：CSP（`script-src` 只允許同源＋各頁行內 script 的 sha256，不開 `'unsafe-inline'`；`style-src` 因 Svelte 的 `style=` 屬性保留 `'unsafe-inline'`）、`X-Content-Type-Options`、`Referrer-Policy`；`/_app/immutable/*` 快取一年、`/search/*` 5 分鐘、HTML 用預設的 `max-age=0, must-revalidate`。同一份 CSP 也由 Worker 加在它回的 HTML（404）上。內容改過一定要先 `npm.cmd run build` 再建 Worker，hash 才會對。
 
+## Web App（PWA）
+
+手機可以把手冊加到主畫面，當成 App 開、離線也能看。程式在 `src/lib/pwa/` 與 `src/service-worker/`；環境判斷（手機、standalone、App 內建瀏覽器）一律讀 `src/lib/app/platform.svelte.ts`。
+
+- **manifest 與圖示**：`static/manifest.webmanifest`（`id`／`start_url`／`scope` 都是 `/`、`display: standalone`、`background_color` 是深色的頁面背景 `#0b0d11`（啟動畫面用）、`theme_color` 是深色的面板色 `#14181e`——Android 上已安裝的 App，系統最底下的導覽區是照 manifest 的 `theme_color` 上色的，設成和底部導覽列同色才接得起來（manifest 沒有淺色／深色兩組的寫法，所以淺色外觀下那一區仍是深色；狀態列不受影響，它跟著頁面的 `<meta name="theme-color">` 變）；捷徑「搜尋」開 `/?search=1`、「下載」開 `/download`）。圖示由 `npm.cmd run icons`（`scripts/gen-icons.mjs`，純 Node、不需要其他套件）依 `Logo.svelte` 的比例畫：`icon-192/512.png`（any，滿版深色底）、`icon-maskable-192/512.png`（圖形縮在中心直徑 80% 的安全圓內）、`apple-touch-icon.png`（180×180、不透明）。改了標誌就重跑，產出進版控。`<link rel="manifest">` 由 `InstallPrompt.svelte` 的 `<svelte:head>` 加上。不設 `apple-mobile-web-app-status-bar-style`（網站有深淺兩色，安裝後改不了）。
+- **service worker**（`src/service-worker/index.ts`，型別檢查用同資料夾的 tsconfig，`npm.cmd run check` 會一起跑）：SvelteKit 只在正式建置時打包它，`vite dev` 沒有。設定是 `vite.config.ts` 的 `serviceWorker: { register: false }`，由 `src/lib/pwa/register.ts` 的 `registerPwa()` **只在手機**註冊；桌面瀏覽器不註冊，已有的註冊會取消。
+  - 快取規則：`/_app/immutable/*` cache-first；HTML network-first（3 秒沒回應先給快取，有 navigation preload 就用）；`/search/chunks.json` stale-while-revalidate；其他 static 檔 network-first；`/api/*`、`/search/vectors.bin`、跨網域、非 GET 不攔截（離線時搜尋只剩字面結果）。離線又沒快取的頁面回 `/offline`（`static/offline.html`，樣式寫在檔案裡）。快取比對忽略 `Vary`（Workers 靜態檔回 `Vary: Origin`，module script 帶 Origin、預抓不帶）。
+  - 一般手機瀏覽器只存讀過的頁面（第一次安裝時把當下這頁補存）。安裝成 App（standalone）後在背景把全部預先算繪的頁面與靜態檔抓進快取（約 180 個檔、2.6 MB；同一版只做一次），並申請持久儲存。
+  - 快取名稱帶建置的 `version`；新版啟用時刪掉舊版，改版前讀過的頁面記下來重新抓（App 裡則重新完整預抓）。
+  - 改版：新 SW 裝好後先等待。App 裡顯示「有新版本」，點「重新整理」才換新並重新載入；一般瀏覽器直接讓新版接手、不重新載入、不打擾。App 回到前景與換頁時檢查更新（一分鐘最多一次）。
+  - `_headers`（`worker/vite.config.ts` 產生）：`/service-worker.js` 是 `Cache-Control: no-cache`、`/manifest.webmanifest` 是 `application/manifest+json`（都先用 `! 標頭` 拆掉再設，同名標頭多條規則會串接）；CSP 有 `worker-src 'self'`、`manifest-src 'self'`。
+- **安裝入口**（`InstallEntry.svelte`）：不自動跳出提示。手機（`<html data-os>`，由 `app.html` 在第一次繪製前設定）的首頁把「下載」換成「安裝到手機」，選單抽屜另有「加到主畫面」；已裝成 App 或在電腦上自己不顯示，桌面程式的下載入口在手機上只留在選單裡。點了之後：Android／Chromium 有 `beforeinstallprompt` 就直接叫出系統的安裝視窗，還沒拿到事件（或瀏覽器不支援）就顯示「從瀏覽器選單安裝」的步驟；iOS Safari 與 iOS 上的其他瀏覽器顯示「加入主畫面」步驟；App 內建瀏覽器（LINE、Instagram…）改成「請用瀏覽器開啟」（Android 用 intent 開 Chrome、LINE 加 `openExternalBrowser=1`、iOS 複製連結）。這些畫面在 `InstallPrompt.svelte`。
+- **緊急開關**（快取出問題、要讓所有人立刻回到沒有 SW 的狀態）：用環境變數建置一版並部署，
+
+  ```powershell
+  $env:PWA_KILL_SWITCH = '1'; npm.cmd run build:all; Remove-Item Env:PWA_KILL_SWITCH
+  cd worker; npx.cmd cf deploy
+  ```
+
+  這版的頁面一載入就取消 SW 註冊、刪掉所有 `mm-docs-*` 快取，也不再註冊（HTML 是 network-first，連線時一定拿到這版）；瀏覽器若先檢查到新的 SW，那支 SW 也會立刻接手、清空快取、取消註冊並重新載入開著的頁面。實測：第一次載入時取消註冊，舊 SW 仍控制著那一頁，下一次載入就完全乾淨。問題修好後照常建置部署（不設這個變數），手機會重新註冊。瀏覽器最慢約 24 小時內一定會檢查 SW 是否更新（`/service-worker.js` 本身不被快取）。
+
 ## 指令（PowerShell，在 `site/` 底下）
 
 ```powershell
 npm.cmd install
 npm.cmd run dev          # http://localhost:4330（沒有 Worker：搜尋只有字面結果）
-npm.cmd run check        # svelte-check，要 0 errors／0 warnings
+npm.cmd run check        # svelte-check＋service worker 的 tsc，要 0 errors／0 warnings
 npm.cmd run build        # 輸出到 site/build
 npm.cmd run demos        # 重新產生盤面演示資料（需要先 cargo build --release --bin mai-motion-core）
+npm.cmd run icons        # 重新產生 Web App 圖示（static/icon-*.png、apple-touch-icon.png）
 npm.cmd run index        # 重新產生搜尋索引（呼叫 Workers AI，有快取）
 npm.cmd run eval:search  # 搜尋評估：各模型 × 字面／語意／合併的命中率
 npm.cmd run worker:dev   # 先 build；在 worker/ 跑 cf dev：http://localhost:4333，靜態頁＋/api/search（AI 走真的 Workers AI）

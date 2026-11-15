@@ -26,6 +26,34 @@
         }
       })();
     </script>
+    <script>
+      // App 外框在第一次繪製前套用（不閃一般外框）：從主畫面開啟（standalone）時依系統套 iOS／Android 外框；
+      // 網址的 ?app=ios|android|off 是預覽開關（存在 sessionStorage，只影響這個分頁）。
+      // 和 src/lib/app/platform.svelte.ts 的 initPlatform() 規則相同，改一邊要一起改。
+      (function () {
+        var KEY = 'maimotion.docs.app-preview';
+        var app = null;
+        var nav = navigator;
+        var ua = nav.userAgent;
+        // 手機的系統（和是不是 standalone 無關）：首頁用它在第一次繪製前把「下載」換成「安裝到手機」。
+        var os = null;
+        if (/iPhone|iPad|iPod/.test(ua) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)) os = 'ios';
+        else if (/Android/.test(ua)) os = 'android';
+        if (os) document.documentElement.setAttribute('data-os', os);
+        try {
+          var param = new URLSearchParams(location.search).get('app');
+          if (param === 'ios' || param === 'android') sessionStorage.setItem(KEY, param);
+          else if (param === 'off') sessionStorage.removeItem(KEY);
+          var preview = sessionStorage.getItem(KEY);
+          if (preview === 'ios' || preview === 'android') app = preview;
+        } catch (e) {}
+        if (!app) {
+          var standalone = matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+          if (standalone) app = os;
+        }
+        if (app) document.documentElement.setAttribute('data-app', app);
+      })();
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

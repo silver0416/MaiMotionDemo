@@ -123,7 +123,7 @@ const LINK_ICON = {
   type: 'element',
   tagName: 'svg',
   properties: {
-    className: ['icon'],
+    className: ['icon', 'icon-link'],
     width: 15,
     height: 15,
     viewBox: '0 0 24 24',
@@ -141,12 +141,21 @@ const LINK_ICON = {
   ].map((d) => ({ type: 'element', tagName: 'path', properties: { d }, children: [] })),
 };
 
+/** 複製成功後換上的打勾（Lucide「check」）。 */
+const LINK_CHECK_ICON = {
+  ...LINK_ICON,
+  properties: { ...LINK_ICON.properties, className: ['icon', 'icon-check'] },
+  children: [{ type: 'element', tagName: 'path', properties: { d: 'M20 6 9 17l-5-5' }, children: [] }],
+};
+
 function rehypeDocs() {
   return (tree) => {
     walk(tree, (node, parent, index) => {
       if (node.type !== 'element') return;
 
-      // 標題：後面接一個可點的錨點（鍵盤可聚焦，hover 才顯示）。
+      // 標題：後面接一顆「複製這一段的連結」（鍵盤可聚焦，hover 才顯示）。
+      // 它仍是指向 #id 的連結（沒有 JS、按右鍵複製連結、開新分頁都照常），點擊由 +layout.svelte 接手：
+      // 複製完整網址、更新網址列，不捲動頁面。
       if ((node.tagName === 'h2' || node.tagName === 'h3') && node.properties?.id) {
         const id = String(node.properties.id);
         const text = hastText(node).trim();
@@ -156,9 +165,10 @@ function rehypeDocs() {
           properties: {
             className: ['heading-anchor'],
             href: `#${id}`,
-            ariaLabel: `連到「${text}」這一段`,
+            ariaLabel: `複製「${text}」這一段的連結`,
+            title: '複製連結',
           },
-          children: [structuredClone(LINK_ICON)],
+          children: [structuredClone(LINK_ICON), structuredClone(LINK_CHECK_ICON)],
         });
         return;
       }

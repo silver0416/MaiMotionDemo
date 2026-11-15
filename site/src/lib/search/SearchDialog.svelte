@@ -1,7 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import Icon from '$app/components/Icon.svelte';
+  import { PANEL_IDS } from '$lib/app/panel-ids';
   import Sheet from '$lib/shell/Sheet.svelte';
+  import { ui } from '$lib/shell/ui.svelte';
   import { createSearch, ensureIndex, type IndexStatus, type SearchHit, type SearchState } from './engine';
 
   /**
@@ -62,6 +64,7 @@
   }
 
   async function go(hit: SearchHit) {
+    ui.navigatingAway = true;
     open = false;
     await goto(hit.url);
   }
@@ -100,7 +103,7 @@
   const trimmed = $derived(query.trim());
 </script>
 
-<Sheet bind:open title="搜尋手冊" hideTitle size="lg" placement="top" mobile="full" {onClose}>
+<Sheet bind:open title="搜尋手冊" id={PANEL_IDS.search} hideTitle size="lg" placement="top" mobile="full" {onClose}>
   {#snippet head()}
     <label class="search-field">
       <span class="search-icon"><Icon name="search" size={18} /></span>

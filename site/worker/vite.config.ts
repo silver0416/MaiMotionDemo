@@ -49,6 +49,9 @@ function contentSecurityPolicy(): string {
     "font-src 'self'",
     "connect-src 'self' https://cloudflareinsights.com",
     "media-src 'self' blob:",
+    // Web App：service worker（/service-worker.js）與 manifest（/manifest.webmanifest）都是同源。
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -82,6 +85,14 @@ function docsHeaders(): Plugin {
         // 搜尋索引沒有雜湊檔名：短快取，過期後用 ETag 驗證。
         "/search/*",
         "  Cache-Control: public, max-age=300, must-revalidate",
+        // service worker 的腳本：每次都向伺服器確認（瀏覽器檢查更新時才拿得到新版）。
+        // 同名標頭在多條規則會串接，先拆掉預設值再設（規則要放在較廣的規則後面）。
+        "/service-worker.js",
+        "  ! Cache-Control",
+        "  Cache-Control: no-cache",
+        "/manifest.webmanifest",
+        "  ! Content-Type",
+        "  Content-Type: application/manifest+json",
         "",
       ];
       // HTML 不另外設：Workers 靜態檔預設 public, max-age=0, must-revalidate（每次用 ETag 驗證）。

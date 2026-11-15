@@ -4,125 +4,50 @@
   import { page } from '$app/state';
   import Icon from '$app/components/Icon.svelte';
   import { normalizePath, SITE } from '$lib/nav';
+  import { AutoHide } from './autohide.svelte';
   import ExtraIcon from './ExtraIcon.svelte';
   import Logo from './Logo.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
   import { isMac, ui } from './ui.svelte';
 
   /**
-   * 頂列：站名、搜尋入口（顯示快捷鍵）、外觀切換、下載。
-   * 手機寬度（< 768px）：站名＋「搜尋」「選單」兩顆圓鈕；往下捲時收起、往上捲時滑回來（規則見下方 onScroll）。
+   * 一般外框的頂列：站名、搜尋入口（顯示快捷鍵）、外觀切換、下載。
+   * 手機寬度（< 768px）：站名＋「搜尋」「選單」兩顆圓鈕；往下捲時收起、往上捲時滑回來（規則見 autohide.svelte.ts）。
+   * App 外框（<html data-app>）時整條不顯示，改由 $lib/app/AppTopbar.svelte 負責。
    */
   let mac = $state(false);
-  /** 頁面是否已經往下捲：在頂端時頂列和背景同色，捲動後才浮起來。 */
-  let scrolled = $state(false);
-  /** 手機寬度往下捲時收起（只在 < 768px 生效，CSS 也只在這個寬度套用）。 */
-  let hidden = $state(false);
-  let header = $state<HTMLElement | null>(null);
-
-  /** 這次捲動方向累積超過這個距離才收起／出現，手指輕微晃動不會讓頂列閃來閃去。 */
-  const TOGGLE_PX = 8;
-  /** 捲動位置還在頂端這個距離以內（約一個頂列高）一定顯示。 */
-  const reveal = () => (header?.offsetHeight ?? 56);
-
-  let lastY = 0;
-  /** 同方向累積的捲動距離：往下為正、往上為負，換方向時歸零重算。 */
-  let travel = 0;
-  let frame = 0;
   let mobile: MediaQueryList | null = null;
-
-  /** 鍵盤焦點在頂列裡時不收起（看不見的東西不能拿著焦點）。 */
-  function holdsKeyboardFocus(): boolean {
-    return !!header?.querySelector(':focus-visible');
-  }
-
-  function show() {
-    hidden = false;
-    travel = 0;
-  }
-
-  /**
-   * 焦點進到頂列：立刻出現（不等轉場）。
-   * 另外，用 Tab 聚焦時瀏覽器會把元素捲到 html 的 scroll-padding-top（含頂列高度）以下；
-   * 頂列是 sticky，永遠在那條線上方，瀏覽器就會把整頁往上捲一大段（而且是在 focusin 之前就捲了）。
-   * 鍵盤焦點進來時，在下一次繪製前捲回原位：原位是上一次捲動處理記下的 lastY（這次跳動的捲動事件還沒處理）。
-   */
-  function onFocusIn() {
-    if (hidden && header) {
-      header.style.transition = 'none';
-      header.classList.remove('is-hidden');
-      void header.offsetHeight;
-      header.style.transition = '';
-    }
-    show();
-    if (!header?.querySelector(':focus-visible')) return;
-    const before = lastY;
-    const href = location.href;
-    requestAnimationFrame(() => {
-      if (location.href === href && Math.abs(window.scrollY - before) > 1) {
-        window.scrollTo({ top: before, behavior: 'instant' });
-        lastY = before;
-      }
-    });
-  }
-
-  function update() {
-    frame = 0;
-    const root = document.documentElement;
-    // iOS 回彈時 scrollY 會超出範圍：夾在 0～最底，回彈不算一次捲動。
-    const y = Math.min(Math.max(window.scrollY, 0), Math.max(root.scrollHeight - window.innerHeight, 0));
-    const delta = y - lastY;
-    lastY = y;
-    scrolled = y > 4;
-
-    if (!mobile?.matches || y <= reveal()) {
-      show();
-      return;
-    }
-    if (delta === 0) return;
-    travel = Math.sign(delta) === Math.sign(travel) ? travel + delta : delta;
-    if (!hidden && travel > TOGGLE_PX) {
-      if (ui.searchOpen || ui.menuOpen || holdsKeyboardFocus()) return;
-      hidden = true;
-      travel = 0;
-    } else if (hidden && travel < -TOGGLE_PX) {
-      show();
-    }
-  }
-
-  const schedule = () => {
-    if (!frame) frame = requestAnimationFrame(update);
-  };
+  /** 手機寬度往下捲時收起（只在 < 768px 生效，CSS 也只在這個寬度套用）。 */
+  const bar = new AutoHide(() => !!mobile?.matches);
 
   onMount(() => {
     mac = isMac();
     mobile = window.matchMedia('(width < 768px)');
-    lastY = Math.max(window.scrollY, 0);
-    update();
-    window.addEventListener('scroll', schedule, { passive: true });
-    mobile.addEventListener('change', schedule);
+    const stop = bar.start();
+    mobile.addEventListener('change', bar.schedule);
     return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener('scroll', schedule);
-      mobile?.removeEventListener('change', schedule);
+      stop();
+      mobile?.removeEventListener('change', bar.schedule);
     };
   });
 
-  // 換頁之後一定顯示；從現在的位置重新起算，跳到錨點的那一下不算「往下捲」。
-  afterNavigate(() => {
-    lastY = Math.max(window.scrollY, 0);
-    show();
-  });
+  afterNavigate(() => bar.afterNavigate());
 
   // 搜尋或選單開著時一定顯示。
   $effect(() => {
-    if (ui.searchOpen || ui.menuOpen) show();
+    if (ui.anyOpen) bar.show();
   });
 
   const atDownload = $derived(normalizePath(page.url.pathname) === SITE.download);
 </script>
 
-<header bind:this={header} class="topbar" class:is-scrolled={scrolled} class:is-hidden={hidden} onfocusin={onFocusIn}>
+<header
+  bind:this={bar.header}
+  class="topbar"
+  class:is-scrolled={bar.scrolled}
+  class:is-hidden={bar.hidden}
+  onfocusin={bar.onFocusIn}
+>
   <a class="brand" href="/">
     <Logo size={26} />
     <span class="wordmark brand-name">{SITE.shortName}</span>
@@ -325,5 +250,10 @@
     .search-entry {
       transition: none;
     }
+  }
+
+  /* App 外框（從主畫面開啟）：這條不顯示，改用 AppTopbar。 */
+  :global(:root[data-app]) .topbar {
+    display: none;
   }
 </style>

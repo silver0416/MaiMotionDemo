@@ -2,10 +2,15 @@
   import Icon from '$app/components/Icon.svelte';
   import Demo from '$lib/demos/Demo.svelte';
   import { pagesIn, SECTIONS, SITE } from '$lib/nav';
+  import InstallEntry from '$lib/pwa/InstallEntry.svelte';
   import LatestVersion from '$lib/release/LatestVersion.svelte';
   import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
 
-  /** 首頁：一句話說明、盤面演示、開始新手教學（全頁唯一的主要動作）與下載、六個章節。 */
+  /**
+   * 首頁：一句話說明、盤面演示、開始新手教學（全頁唯一的主要動作）與下載、六個章節。
+   * 手機（iOS／Android）上「下載」換成「安裝到手機」（把這份手冊裝成 App）：桌面程式在手機上不能用，
+   * 真正的下載入口留在選單裡。已經裝成 App 時兩顆都不顯示。
+   */
   const chapters = SECTIONS.map((section) => ({ section, pages: pagesIn(section.id) }));
   const description = '把 simai 譜面變成可播放的左右手動畫：看兩隻手怎麼移動、什麼時候換手。';
 </script>
@@ -30,9 +35,10 @@
       <p class="note">打法是依規則推算的建議，不是官方判定，也不是唯一正確的打法。</p>
       <div class="actions">
         <a class="btn btn--primary cta" href="/start/install">開始新手教學<span class="cta-arrow"><ExtraIcon name="arrow-right" /></span></a>
-        <a class="btn" href={SITE.download}>
+        <a class="btn home-download" href={SITE.download}>
           <Icon name="download" />下載
         </a>
+        <InstallEntry label="安裝到手機" />
       </div>
       <LatestVersion />
     </div>
@@ -122,7 +128,12 @@
     margin-top: var(--space-2);
   }
 
-  .actions .btn {
+  /* 手機：桌面程式的「下載」不顯示（<html data-os> 由 app.html 在第一次繪製前設好，不會先閃一下）。 */
+  :global(:root[data-os]) .home-download {
+    display: none;
+  }
+
+  .actions :global(.btn) {
     min-height: 40px;
     padding: 0 var(--space-5);
     font-size: var(--fs-md);
@@ -222,7 +233,7 @@
       padding: 0 var(--space-4);
     }
 
-    .actions .btn {
+    .actions :global(.btn) {
       min-height: 44px;
     }
   }
