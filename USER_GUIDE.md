@@ -1,6 +1,6 @@
 # MaiMotionDemo 使用手冊
 
-本手冊描述 v1.2.1 的預設參數。
+本手冊描述 v1.2.2 的預設參數。
 
 這裡只放快速開始與重點。完整手冊（新手教學、各功能詳解、動畫演示與全文搜尋）在文件站：[maimotiondemo.bapu.dev](https://maimotiondemo.bapu.dev)。
 
