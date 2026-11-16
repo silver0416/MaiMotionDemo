@@ -113,10 +113,19 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 ### 三級標題
 ```
 
-- 章節（`section`）與顯示名稱固定在 `src/lib/nav.ts`：`start` 開始使用、`charts` 匯入譜面、`play` 播放與檢視、`model` 模型怎麼分左右手、`annotate` 真人手順標註、`more` 其他。
+- 章節（`section`）與顯示名稱固定在 `src/lib/nav.ts`：`intro` 認識 MaiMotionDemo、`start` 開始使用、`charts` 匯入譜面、`play` 播放與檢視、`model` 模型怎麼分左右手、`annotate` 真人手順標註、`more` 其他。
+- `intro` 是給還不知道這個 App 在做什麼的人的導覽（這是什麼、怎麼推算手順、為什麼需要真人標註、標註原則、五步上手），內容來自合作夥伴的介紹文，只講概念、不放操作細節；第一頁開頭有「想直接上手」的提示連到〈第一次播放〉，`start` 第一頁開頭有一句回指。首頁的主要按鈕連到 `intro` 第一頁，「開始新手教學」是第二顆按鈕。
 - 只用 `##` 與 `###`；每個 `##` 是搜尋索引的一塊，所以一塊講一件事，標題用使用者會問的說法。
 - 文案：繁體中文（台灣用語）、全形標點、口語、不討好；按鈕與分頁名稱用「」括起來，和 App 畫面上的字完全一致；鍵盤按鍵用 `<kbd>A</kbd>`；simai 範例用 ```` ```simai ```` 程式碼區塊（版面會加上複製鈕）。
 - 提示框：`<Callout tone="info|warn" title="選填">內文</Callout>`。一頁最多兩三個。
+- `intro` 章節另有專屬元件（`src/lib/intro/`）：`content/intro/*.md` 會自動 import 這個資料夾裡實際存在的每個元件（`markdown.js` 的 `introImports`，檔名＝標籤名），其他章節不會。
+  - `<IntroProgress />`：每頁最上面的導覽進度（章節各頁的編號圓點，頁面清單取自 `nav.ts`）。
+  - `<Steps>`＋`<Step icon="…">`：有編號的步驟（`<ol>`）；`<Steps flow>` 是流程圖（圖示之間有連接線、依序淡入）；`<Step key>` 是重點（淡主色的一塊），`layer="…"` 加分層標籤。
+  - `<Features>`＋`<Feature icon="…">`：並排的重點（`<ul>`），寬時多欄、窄時一欄且圖示放左邊。
+  - `<LinkRows>`＋`<LinkRow href="/…">想知道什麼</LinkRow>`：整列可點的連結，頁名依 `href` 從 `nav.ts` 取。
+  - `icon` 是 App `Icon` 或站內 `ExtraIcon` 的名字（`IntroIcon.svelte` 自動選）。
+  - **內文一定寫在 .md 裡、在標籤之間前後各空一行**（mdsvex 才會當成 Markdown；搜尋索引會去掉標籤、保留內文）。標籤屬性裡的字不會進索引，只放圖示名、分層標籤這種重述性質的短字。
+  - 實驗：`<Mascot>`（標籤與每段話之間都空一行；一段話一個泡泡，像聊天軟體連續好幾則）是用標誌當吉祥物的對話框，只放補充或重述，正文不能只在這裡。要整個拿掉：刪掉 `content/intro/` 裡的 `<Mascot>` 標籤和 `src/lib/intro/Mascot.svelte`，不用改其他地方。
 - 演示：`<Demo id="swap" />`，可加 `caption="…"`。可用的 id 見下表。不需要寫 import（建置時自動注入）。
 - 內部連結用絕對路徑：`[影片同步](/annotate/video)`。
 
@@ -137,7 +146,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 
 | id | simai | 用在 |
 | --- | --- | --- |
-| `tap-alternate` | `(120){4}1,8,2,7,3,6,4,5,E` | 第一次播放 |
+| `tap-alternate` | `(120){4}1,8,2,7,3,6,4,5,E` | 首頁、這是什麼、第一次播放 |
 | `hold-other-hand` | `(120){4}8h[4:4]/1,2,3,4,E` | Hold 佔住一手 |
 | `slide-basic` | `(120){4}1-5[4:3],8,7,6,E` | Slide 基本 |
 | `swap` | `(120){4}1-5[4:1]/5-1[4:1],{16},,,1,E` | 兩手互換（Slide 結束前還有一顆 1 要接） |
@@ -196,7 +205,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
   - 快取名稱帶建置的 `version`；新版啟用時刪掉舊版，改版前讀過的頁面記下來重新抓（App 裡則重新完整預抓）。
   - 改版：新 SW 裝好後先等待。App 裡顯示「有新版本」，點「重新整理」才換新並重新載入；一般瀏覽器直接讓新版接手、不重新載入、不打擾。App 回到前景與換頁時檢查更新（一分鐘最多一次）。
   - `_headers`（`worker/vite.config.ts` 產生）：`/service-worker.js` 是 `Cache-Control: no-cache`、`/manifest.webmanifest` 是 `application/manifest+json`（都先用 `! 標頭` 拆掉再設，同名標頭多條規則會串接）；CSP 有 `worker-src 'self'`、`manifest-src 'self'`。
-- **安裝入口**（`InstallEntry.svelte`）：不自動跳出提示。手機（`<html data-os>`，由 `app.html` 在第一次繪製前設定）的首頁把「下載」換成「安裝到手機」，選單抽屜另有「加到主畫面」；已裝成 App 或在電腦上自己不顯示，桌面程式的下載入口在手機上只留在選單裡。點了之後：Android／Chromium 有 `beforeinstallprompt` 就直接叫出系統的安裝視窗，還沒拿到事件（或瀏覽器不支援）就顯示「從瀏覽器選單安裝」的步驟；iOS Safari 與 iOS 上的其他瀏覽器顯示「加入主畫面」步驟；App 內建瀏覽器（LINE、Instagram…）改成「請用瀏覽器開啟」（Android 用 intent 開 Chrome、LINE 加 `openExternalBrowser=1`、iOS 複製連結）。這些畫面在 `InstallPrompt.svelte`。
+- **安裝入口**（`InstallEntry.svelte`）：不自動跳出提示。手機（`<html data-os>`，由 `app.html` 在第一次繪製前設定）的首頁把「下載」換成「安裝手冊到手機」，選單抽屜另有「加到主畫面」；已裝成 App 或在電腦上自己不顯示，桌面程式的下載入口在手機上只留在選單裡。點了之後：Android／Chromium 有 `beforeinstallprompt` 就直接叫出系統的安裝視窗，還沒拿到事件（或瀏覽器不支援）就顯示「從瀏覽器選單安裝」的步驟；iOS Safari 與 iOS 上的其他瀏覽器顯示「加入主畫面」步驟；App 內建瀏覽器（LINE、Instagram…）改成「請用瀏覽器開啟」（Android 用 intent 開 Chrome、LINE 加 `openExternalBrowser=1`、iOS 複製連結）。這些畫面在 `InstallPrompt.svelte`。
 - **緊急開關**（快取出問題、要讓所有人立刻回到沒有 SW 的狀態）：用環境變數建置一版並部署，
 
   ```powershell

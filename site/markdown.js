@@ -1,5 +1,7 @@
 // 內容（src/content/**/*.md）的建置管線：自動注入 import、標題錨點、表格、程式碼區塊、外部連結。
 // SvelteKit 3 不再讀 svelte.config.js，設定一律經由 vite.config.ts 的 sveltekit(...)；這裡集中 Markdown 相關的部分。
+import { readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { mdsvex } from 'mdsvex';
 
 /** 每個 .md 都能直接用的元件（內容檔不寫 import）。 */
@@ -8,8 +10,29 @@ const AUTO_IMPORTS = [
   "import Callout from '$lib/md/Callout.svelte';",
 ];
 
+/** 「認識 MaiMotionDemo」章節專用的元件資料夾。 */
+const INTRO_DIR = fileURLToPath(new URL('./src/lib/intro/', import.meta.url));
+
 /**
- * markup preprocessor，排在 mdsvex 前面：在 .md 裡加上 Demo／Callout 的 import。
+ * src/content/intro/ 底下的頁面另外自動 import src/lib/intro/ 裡的每個元件（檔名就是標籤名）。
+ * 每次轉換都重新列出資料夾：新增元件不必改這裡；刪掉某個元件（例如實驗性的 Mascot）也不會留下壞掉的 import。
+ * @param {string} filename
+ */
+function introImports(filename) {
+  if (!/[\\/]src[\\/]content[\\/]intro[\\/]/.test(filename)) return [];
+  let files = [];
+  try {
+    files = readdirSync(INTRO_DIR);
+  } catch {
+    return [];
+  }
+  return files
+    .filter((file) => /^[A-Z][A-Za-z0-9]*\.svelte$/.test(file))
+    .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/intro/${file}';`);
+}
+
+/**
+ * markup preprocessor，排在 mdsvex 前面：在 .md 裡加上 Demo／Callout（intro 章節再加 src/lib/intro/ 的元件）的 import。
  * 已經有 instance <script> 就塞進去（Svelte 不允許兩個），沒有就放在 frontmatter 後面。
  * @returns {import('svelte/compiler').PreprocessorGroup}
  */
@@ -18,7 +41,7 @@ export function autoImport() {
     name: 'docs-auto-import',
     markup({ content, filename }) {
       if (!filename?.endsWith('.md')) return;
-      const imports = AUTO_IMPORTS.join('\n');
+      const imports = [...AUTO_IMPORTS, ...introImports(filename)].join('\n');
       const instance = /<script(?![^>]*\bmodule\b)(?![^>]*context=["']module["'])[^>]*>/;
       const match = instance.exec(content);
       if (match) {

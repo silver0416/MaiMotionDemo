@@ -3,7 +3,7 @@
    * 手機專用的安裝提示（Android 的安裝按鈕、iOS 的加入主畫面步驟、App 內建瀏覽器的引導），
    * 以及 Web App 需要的 <head> 標籤（manifest）、App 模式的「有新版本」提示。外框把它掛在每一頁一次即可。
    *
-   * 不會自動跳出來：使用者按了首頁的「安裝到手機」或選單的「加到主畫面」（InstallEntry）才出現。
+   * 不會自動跳出來：使用者按了首頁的「安裝手冊到手機」或選單的「加到主畫面」（InstallEntry）才出現。
    * Android 有安裝事件時直接叫出系統視窗，不經過這裡；這裡顯示的是 Android 的手動步驟、iOS 的步驟、內建瀏覽器的引導。
    * 也處理 manifest 捷徑「搜尋」（網址帶 ?search=1 就打開搜尋）。
    */
@@ -90,7 +90,7 @@
       </div>
     </Notice>
   {:else if kind === 'android-manual'}
-    <Notice label="安裝到手機">
+    <Notice label="安裝手冊到手機">
       <div class="prompt">
         <span class="prompt-mark"><Logo size={28} /></span>
         <p class="prompt-text">從瀏覽器的選單安裝，離線也能看</p>

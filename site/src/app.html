@@ -35,7 +35,7 @@
         var app = null;
         var nav = navigator;
         var ua = nav.userAgent;
-        // 手機的系統（和是不是 standalone 無關）：首頁用它在第一次繪製前把「下載」換成「安裝到手機」。
+        // 手機的系統（和是不是 standalone 無關）：首頁用它在第一次繪製前把「下載」換成「安裝手冊到手機」。
         var os = null;
         if (/iPhone|iPad|iPod/.test(ua) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)) os = 'ios';
         else if (/Android/.test(ua)) os = 'android';
