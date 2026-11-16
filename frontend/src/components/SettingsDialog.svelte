@@ -11,7 +11,7 @@
   } from '../lib/contract';
   import { STORE_ANALYSES, STORE_EVALUATIONS, STORE_RECORDS, STORE_SETTINGS, dbClear, dbCount } from '../lib/db';
   import { annotation } from '../state/annotation.svelte';
-  import { copyText } from '../lib/debug';
+  import { copyText, versionInfoLines } from '../lib/debug';
   import { reducedMotion } from '../lib/press';
   import { FAILURE_KIND_LABEL, errorLog } from '../state/errorLog.svelte';
   import { releaseNotes } from '../state/releaseNotes.svelte';
@@ -197,16 +197,13 @@
   const baseName = $derived(v3Label(temoto ? temoto.base : session.config.v3Variant));
 
   function versionText(): string {
-    const model = temoto ? `${temoto.label}（${temoto.id}，基於 ${baseName}）` : baseName;
-    return [
-      `App 版本：${session.desktop ? version : `${FRONTEND_VERSION}（瀏覽器預覽）`}`,
-      `應用程式種類：${DISTRIBUTION_LABEL[updateState.distribution]}`,
-      `Build：${BUILD_ID}（${BUILD_TIME}）`,
-      `判定規則修訂：${SOLVER_REVISION}`,
-      `模型：${model}`,
-      `快速階梯一隻手刷完：${session.config.stairFlow ? '開' : '關'}`,
-      `評分方式：${SCORING_LABEL}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
-    ].join('\n');
+    return versionInfoLines({
+      appVersion: version,
+      desktop: session.desktop,
+      distribution: DISTRIBUTION_LABEL[updateState.distribution],
+      solverRevision: SOLVER_REVISION,
+      config: session.config,
+    }).join('\n');
   }
 
   async function copyVersion() {

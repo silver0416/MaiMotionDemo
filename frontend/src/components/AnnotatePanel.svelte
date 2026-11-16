@@ -32,14 +32,17 @@
     stepConfidence,
   } from '../lib/annotation';
   import { scoringOf, type ScoringChoice } from '../lib/contract';
-  import { copyText } from '../lib/debug';
+  import CopyDebugButton from './CopyDebugButton.svelte';
+  import { appVersion } from '../lib/api';
+  import { COMPARE_ALERT_TITLE, buildCompareReport, copyText, versionInfoLines, type CompareSpot } from '../lib/debug';
   import { formatClock } from '../lib/format';
+  import { DISTRIBUTION_LABEL, updateState } from '../state/update.svelte';
   import { noteLabel, stepLabel } from '../lib/notes';
   import { skippedPartLabel, skippedSpots } from '../lib/skipped';
   import { annotation, isStepDone, type ListFilter, type Step, type StepPart } from '../state/annotation.svelte';
   import { playback } from '../state/playback.svelte';
   import { records } from '../state/records.svelte';
-  import { session } from '../state/session.svelte';
+  import { SOLVER_REVISION, session } from '../state/session.svelte';
   import { toasts } from '../state/toasts.svelte';
   import { videoSync } from '../state/videoSync.svelte';
   import {
@@ -944,6 +947,77 @@
     return parts.map((part) => skippedPartLabel(part, session.noteById.get(part.noteId), session.pathById)).join('、');
   }
 
+  /** 畫面上出現的「走不下去」提示標題，依畫面順序；有任何一項才顯示複製除錯資訊。 */
+  const compareAlerts = $derived.by(() => {
+    const titles: string[] = [];
+    if (modelSkipped.length > 0) titles.push(COMPARE_ALERT_TITLE.modelSkipped(modelSkipped.length));
+    if (skipped.length > 0 && evaluation?.humanSolution) titles.push(COMPARE_ALERT_TITLE.skipped(skipped.length));
+    if (infeasible) titles.push(COMPARE_ALERT_TITLE.infeasible);
+    return titles;
+  });
+
+  /** 比對回報：版本、畫面上的提示與清單、參數、原始診斷，最後是完整標註檔（同「複製標註」）。 */
+  async function compareReport(): Promise<string | null> {
+    const result = evaluation;
+    if (!result) return null;
+    const annotationJson = await annotation.exportText();
+    if (!annotationJson) return null;
+    await updateState.init();
+    const version = await appVersion();
+    const spot = (item: Diagnostic, what: string): CompareSpot => ({
+      timeSeconds: item.timeSeconds,
+      noteIds: item.noteIds,
+      what,
+      hands: skippedNotes(item.noteIds).hands,
+    });
+    const routeIds = [...annotation.routeLines];
+    return buildCompareReport({
+      versionLines: versionInfoLines({
+        appVersion: version,
+        desktop: session.desktop,
+        distribution: DISTRIBUTION_LABEL[updateState.distribution],
+        solverRevision: SOLVER_REVISION,
+        config: session.config,
+      }),
+      title: annotation.draft.title,
+      requestId: result.requestId,
+      status: result.status,
+      statusLine: compareStatus,
+      error: annotation.evaluationError,
+      firstSeconds: session.result?.firstSeconds ?? session.firstSeconds,
+      hasBranches,
+      currentRoute:
+        routeIds.length > 0 ? `${routeIds.map((id) => annotation.lineName(id)).join('＋')}（其餘段落走${MAIN_NAME}）` : MAIN_NAME,
+      activeLine: annotation.lineName(annotation.draft.active),
+      chosenRoute: chosenName,
+      routeScores: routeScores.map((item) => ({
+        name: annotation.optionName(item.id, item.name),
+        agreed: item.agreed,
+        compared: item.compared,
+        chosen: item.id === MAIN_LINE ? chosenIds.length === 0 : chosenIds.includes(item.id),
+      })),
+      alerts: compareAlerts,
+      infeasible,
+      skipped: skipped.map((item) => spot(item, skippedNotes(item.noteIds).what)),
+      modelSkipped: modelSkipped.map((item) => spot(item, modelSkippedText(item))),
+      summary: {
+        labeled: result.labeled,
+        matched: result.matched,
+        unmatchedKeys: result.unmatchedKeys,
+        agreed: result.agreed,
+        compared: result.compared,
+        modelCost: result.model?.cost ?? null,
+        humanCost: result.human?.cost ?? null,
+        divergences: result.divergences.length,
+      },
+      config: $state.snapshot(session.requestConfig) as typeof session.requestConfig,
+      diagnostics: $state.snapshot(result.diagnostics) as Diagnostic[],
+      notes: session.chart?.notes ?? [],
+      source: session.result?.source ?? session.source,
+      annotationJson,
+    });
+  }
+
   function seekTo(time: number, noteId?: string) {
     if (noteId) session.selectNote(noteId);
     playback.seek(time);
@@ -1651,19 +1725,19 @@
         <p class="xsmall muted help">分數越低越好。差距越小，代表目前參數越認同真人的打法；若照標註反而更低，是搜尋沒找到真人打法。</p>
         {#if modelSkipped.length > 0}
           <div class="alert alert--warn" role="status">
-            <div class="alert-title">有 {modelSkipped.length} 處模型走不下去，那幾顆沒有比對</div>
+            <div class="alert-title">{COMPARE_ALERT_TITLE.modelSkipped(modelSkipped.length)}</div>
             <p class="help">模型本身做不到的音符先略過，照標註求解時也一起略過，兩邊才是同一份譜面；那幾顆的標記不列入吻合，位置列在下方。</p>
           </div>
         {/if}
         {#if skipped.length > 0 && evaluation.humanSolution}
           <div class="alert alert--warn" role="status">
-            <div class="alert-title">有 {skipped.length} 處照標註走不下去，已先略過</div>
+            <div class="alert-title">{COMPARE_ALERT_TITLE.skipped(skipped.length)}</div>
             <p class="help">那幾顆的標記先擱著、照模型的手接下去，後面的標註照常求解，位置列在下方。照標註的分數因此只供參考。</p>
           </div>
         {/if}
         {#if infeasible}
           <div class="alert alert--warn" role="status">
-            <div class="alert-title">模型照標註走不下去</div>
+            <div class="alert-title">{COMPARE_ALERT_TITLE.infeasible}</div>
             <p>{infeasible.message}</p>
             {#if infeasible.timeSeconds !== null}
               <button class="linkish mono" onclick={() => seekTo(infeasible.timeSeconds ?? 0, infeasible.noteIds[0])}>
@@ -1672,10 +1746,24 @@
             {/if}
           </div>
         {/if}
-        {#if evaluation.humanSolution}
-          <button class="btn" onclick={toggleHumanView} aria-pressed={showingHuman}>
-            <Icon name="eye" size={14} />{showingHuman ? '回到模型方案' : '在盤面看照標註的打法'}
-          </button>
+        {#if evaluation.humanSolution || compareAlerts.length > 0}
+          <div class="row row-wrap">
+            {#if evaluation.humanSolution}
+              <button class="btn" onclick={toggleHumanView} aria-pressed={showingHuman}>
+                <Icon name="eye" size={14} />{showingHuman ? '回到模型方案' : '在盤面看照標註的打法'}
+              </button>
+            {/if}
+            {#if compareAlerts.length > 0}
+              <CopyDebugButton
+                report={compareReport}
+                iconSize={14}
+                title="包含版本、比對結果、參數與完整標註檔，可直接貼給開發者"
+              />
+            {/if}
+          </div>
+        {/if}
+        {#if compareAlerts.length > 0}
+          <p class="xsmall muted help">確認沒有標錯之後，按「複製除錯資訊」，把整段貼給開發者就好。</p>
         {/if}
       </section>
       {#if routeScores.length > 1}
