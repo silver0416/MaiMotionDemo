@@ -2,6 +2,7 @@
 // 時間換算：影片時間 = 譜面時間 + offset。
 
 import { isDesktop } from './api';
+import { defragment } from './fmp4';
 
 /** 標註草稿記錄的影片連結。 */
 export interface VideoLink {
@@ -290,8 +291,8 @@ export const videoApi = {
 /**
  * 桌面版把本機路徑轉成 WebView 能播放的網址。
  * Linux 的 WebKitGTK 播影片只接受 blob:、http(s):、file: 等網址，Tauri 的 asset://（自訂 scheme）一律拒絕
- * （tauri-apps/tauri#3725），所以 Linux 先用 asset 網址把整個檔案讀進記憶體，再換成 blob: 網址。
- * 同一個檔案共用同一個網址，只保留最近一個；其他平台直接用 asset 網址。
+ * （tauri-apps/tauri#3725），所以 Linux 先用 asset 網址把整個檔案讀進記憶體，再換成 blob: 網址；
+ * 分段 mp4 同時改寫成一般 mp4（見 fmp4.ts）。同一個檔案共用同一個網址，只保留最近一個；其他平台直接用 asset 網址。
  */
 export async function fileSource(path: string): Promise<string> {
   const { convertFileSrc } = await import('@tauri-apps/api/core');
@@ -334,7 +335,15 @@ function needsBlobSource(): boolean {
 async function readAsBlobUrl(assetUrl: string): Promise<string> {
   const response = await fetch(assetUrl);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return URL.createObjectURL(await response.blob());
+  const file = await response.blob();
+  // YouTube 下載的分段 mp4 要改寫成一般 mp4 才能跳轉與改速度（見 fmp4.ts）；改寫失敗仍可從頭播放
+  let playable = file;
+  try {
+    playable = await defragment(file);
+  } catch (error) {
+    console.warn('分段 mp4 改寫失敗，改用原檔（不能跳轉與改速度）', error);
+  }
+  return URL.createObjectURL(playable);
 }
 
 /** 換掉的網址晚一點才釋放：讓 <video> 先換到新網址，舊網址不會在切換途中讀不到而報錯。 */

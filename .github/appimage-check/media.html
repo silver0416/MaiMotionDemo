@@ -13,12 +13,13 @@
 // AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
 // 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
 // 網址的 variant 選擇載入影片的方式：
-//   app        App 在 Linux 的做法（必要）：先 fetch asset 網址再轉成 blob:，<video> 用 preload="metadata"
-//              （見 frontend/src/lib/video.ts 的 fileSource 與 videoPreload）。
-//   blob-auto  blob: 配 preload="auto"（只記錄）：WebKitGTK 會在解碼前放一個 2 MB 的環狀緩衝區，
-//              超過 2 MB 的影片會讀到錯位的資料。
-//   asset      直接用 asset://（只記錄）：WebKitGTK 的播放器不接受自訂 scheme。
-// 測試影片都超過 2 MB（由 release.yml 的「Prepare AppImage check」產生）。
+//   app    App 在 Linux 的做法（必要）：fetch asset 網址、分段 mp4 改寫成一般 mp4、轉成 blob:，
+//          <video> 用 preload="metadata"（見 frontend/src/lib/video.ts 的 fileSource、videoPreload
+//          與 fmp4.ts；fmp4.js 是 release.yml 用 tsc 從 fmp4.ts 編出來的）。
+//   asset  直接用 asset://（只記錄）：WebKitGTK 的播放器不接受自訂 scheme。
+// 為什麼要這樣做：blob: 配 preload="auto" 時 WebKitGTK 會在解碼前放一個 2 MB 的環狀緩衝區，
+// 超過 2 MB 的影片會讀到錯位的資料；改用 metadata 後 GStreamer 只能從頭依序讀，這時分段 mp4 不能跳轉。
+// 所以測試影片都超過 2 MB，而且有一部和 YouTube 下載相同的分段 mp4（由 release.yml 的「Prepare AppImage check」產生）。
 // 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
 'use strict';
 
@@ -27,14 +28,15 @@ const dir = params.get('dir');
 
 // 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
 const assetUrl = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
-async function blobUrl(name) {
+// 和 video.ts 的 readAsBlobUrl 一樣（改寫失敗時 App 會改用原檔，這裡直接算失敗）
+async function appBlob(name) {
   const response = await fetch(assetUrl(name));
   if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
-  return URL.createObjectURL(await response.blob());
+  const { defragment } = await import('./fmp4.js');
+  return defragment(await response.blob());
 }
 const VARIANTS = {
-  app: { required: true, source: blobUrl, preload: 'metadata' },
-  'blob-auto': { required: false, source: blobUrl, preload: 'auto' },
+  app: { required: true, source: async (name) => URL.createObjectURL(await appBlob(name)), preload: 'metadata' },
   asset: { required: false, source: async (name) => assetUrl(name), preload: 'auto' },
 };
 const variantName = params.get('variant') || 'app';
@@ -296,20 +298,36 @@ function topBoxes(buffer) {
   return `${types.filter((type) => type !== 'moof' && type !== 'mdat').join(' ')} + ${fragments}×(moof mdat)`;
 }
 
-// 測試影片的大小與結構；比緩衝區小就測不出 blob: 的問題，算失敗
+// 測試影片的大小與結構，以及 App 改寫後的結構。比緩衝區小就測不出 blob: 的問題；
+// 分段的 h264-dash.mp4 沒被改寫、或改寫後還是分段，也都算失敗。
 async function describeMedia() {
+  const { defragment } = await import('./fmp4.js');
   const lines = [];
-  const small = [];
+  const problems = [];
   for (const name of MEDIA) {
     const response = await fetch(assetUrl(name));
     if (!response.ok) throw new Error(`${name}: fetch failed (HTTP ${response.status})`);
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength <= RING_BUFFER_BYTES) small.push(name);
-    const size = `${(buffer.byteLength / 1048576).toFixed(1)} MiB`;
-    lines.push(name.endsWith('.mp4') ? `${name} ${size} ${topBoxes(buffer)}` : `${name} ${size}`);
+    const file = await response.blob();
+    if (file.size <= RING_BUFFER_BYTES) problems.push(`${name} not larger than 2 MiB`);
+    let line = `${name} ${(file.size / 1048576).toFixed(1)} MiB`;
+    if (name.endsWith('.mp4')) {
+      line += ` ${topBoxes(await file.arrayBuffer())}`;
+      const started = performance.now();
+      const playable = await defragment(file);
+      const elapsed = performance.now() - started;
+      if (playable === file) {
+        line += ' (kept as is)';
+        if (name === 'h264-dash.mp4') problems.push(`${name} was not rewritten`);
+      } else {
+        const layout = topBoxes(await playable.arrayBuffer());
+        line += ` -> ${layout} in ${elapsed.toFixed(0)} ms`;
+        if (layout.includes('moof')) problems.push(`${name} is still fragmented`);
+      }
+    }
+    lines.push(line);
   }
-  if (small.length) {
-    const error = new Error(`${small.join(', ')} not larger than 2 MiB; ${lines.join('; ')}`);
+  if (problems.length) {
+    const error = new Error(`${problems.join(', ')}; ${lines.join('; ')}`);
     error.required = true;
     throw error;
   }
@@ -394,7 +412,7 @@ window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rej
   await check(name('frames h264.mp4'), required, async () => frames(await source('h264.mp4')));
   if (variantName === 'app') {
     await check(name('webcodecs h264.mp4'), false, async () => {
-      const url = await blobUrl('h264.mp4');
+      const url = await source('h264.mp4');
       try {
         return await webcodecs(url);
       } finally {

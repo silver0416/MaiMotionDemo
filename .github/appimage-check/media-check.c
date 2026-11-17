@@ -25,6 +25,8 @@ static const char *content_type_for(const char *path)
 {
     if (g_str_has_suffix(path, ".html"))
         return "text/html";
+    if (g_str_has_suffix(path, ".js"))
+        return "text/javascript";
     if (g_str_has_suffix(path, ".mp4"))
         return "video/mp4";
     if (g_str_has_suffix(path, ".webm"))
