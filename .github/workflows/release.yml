@@ -63,17 +63,18 @@ jobs:
           gcc -O2 -Wall -o "$CHECK/media-check" "$FILES/media-check.c" $(pkg-config --cflags --libs webkit2gtk-4.1)
           sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
           cd "$CHECK/media"
+          # 每部都要超過 2 MB：WebKitGTK 播 blob: 網址時的緩衝區是 2 MB，比它小的影片測不出問題（見 media.html）
           src=testsrc2=size=1280x720:rate=30
-          # yt-dlp 下載的 YouTube 影片：只有畫面、H.264 High、分段 mp4
-          ffmpeg -v error -f lavfi -i "$src" -t 6 -c:v libx264 -profile:v high -pix_fmt yuv420p -g 30 \
-            -movflags +frag_keyframe+empty_moov+default_base_moof h264-frag.mp4
+          # yt-dlp 下載的 YouTube 影片：只有畫面、H.264 High、分段 mp4（ftyp moov sidx，再一段段 moof＋mdat，沒有 mfra）
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libx264 -profile:v high -pix_fmt yuv420p -g 30 \
+            -movflags +frag_keyframe+empty_moov+default_base_moof+global_sidx+skip_trailer h264-dash.mp4
           # 沒有 H.264 時下載的 VP9 webm
-          ffmpeg -v error -f lavfi -i "$src" -t 6 -c:v libvpx-vp9 -b:v 1M -deadline realtime -cpu-used 8 vp9.webm
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libvpx-vp9 -b:v 2M -deadline realtime -cpu-used 8 vp9.webm
           # 自己選的本機影片：H.264＋AAC 音訊，moov 在檔尾
-          ffmpeg -v error -f lavfi -i "$src" -f lavfi -i sine=frequency=440:sample_rate=48000 -t 6 \
+          ffmpeg -v error -f lavfi -i "$src" -f lavfi -i sine=frequency=440:sample_rate=48000 -t 10 \
             -c:v libx264 -profile:v high -pix_fmt yuv420p -c:a aac h264-aac.mp4
           # 只有一個軌的一般 mp4（逐格讀取與 WebCodecs）
-          ffmpeg -v error -f lavfi -i "$src" -t 6 -c:v libx264 -profile:v high -pix_fmt yuv420p \
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libx264 -profile:v high -pix_fmt yuv420p \
             -movflags +faststart h264.mp4
           ls -la
 
@@ -150,7 +151,8 @@ jobs:
       # 1. 不能打包 libwayland-client，要用使用者系統上的版本（理由見上面的 linuxdeploy 步驟）。
       # 2. 要附 GStreamer 外掛（理由見上面的外掛步驟）。
       # 3. 在最舊（22.04）和最新（26.04）的 Ubuntu 容器裡打得開，而且用 App 在 Linux 的方式
-      #    （blob: 網址，見 frontend/src/lib/video.ts）播得了影片（做法見 .github/appimage-check/check.sh）。
+      #    （blob: 網址配 preload="metadata"，見 frontend/src/lib/video.ts）播得了影片
+      #    （做法見 .github/appimage-check/check.sh）。
       - name: Check AppImage
         run: |
           CHECK="$RUNNER_TEMP/check"

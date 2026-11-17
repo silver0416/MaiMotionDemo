@@ -12,26 +12,36 @@
 <script>
 // AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
 // 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
-// 影片網址分兩種：asset://（convertFileSrc 給的；WebKitGTK 的播放器不接受自訂 scheme，只記錄結果）
-// 與 blob:（App 在 Linux 用的：先 fetch asset 網址再轉成 blob:，見 frontend/src/lib/video.ts 的 fileSource）。
+// 網址的 variant 選擇載入影片的方式：
+//   app        App 在 Linux 的做法（必要）：先 fetch asset 網址再轉成 blob:，<video> 用 preload="metadata"
+//              （見 frontend/src/lib/video.ts 的 fileSource 與 videoPreload）。
+//   blob-auto  blob: 配 preload="auto"（只記錄）：WebKitGTK 會在解碼前放一個 2 MB 的環狀緩衝區，
+//              超過 2 MB 的影片會讀到錯位的資料。
+//   asset      直接用 asset://（只記錄）：WebKitGTK 的播放器不接受自訂 scheme。
+// 測試影片都超過 2 MB（由 release.yml 的「Prepare AppImage check」產生）。
 // 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
 'use strict';
 
 const params = new URLSearchParams(location.search);
 const dir = params.get('dir');
-// 必要的網址種類：這些失敗就算檢查失敗，其他只記錄
-const REQUIRED = new Set(['blob']);
 
 // 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
 const assetUrl = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
-const sources = {
-  asset: async (name) => assetUrl(name),
-  blob: async (name) => {
-    const response = await fetch(assetUrl(name));
-    if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
-    return URL.createObjectURL(await response.blob());
-  },
+async function blobUrl(name) {
+  const response = await fetch(assetUrl(name));
+  if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
+  return URL.createObjectURL(await response.blob());
+}
+const VARIANTS = {
+  app: { required: true, source: blobUrl, preload: 'metadata' },
+  'blob-auto': { required: false, source: blobUrl, preload: 'auto' },
+  asset: { required: false, source: async (name) => assetUrl(name), preload: 'auto' },
 };
+const variantName = params.get('variant') || 'app';
+const variant = VARIANTS[variantName];
+const MEDIA = ['h264-dash.mp4', 'vp9.webm', 'h264-aac.mp4', 'h264.mp4'];
+// WebKitGTK 對 blob: 網址的緩衝區大小；測試影片要比它大才測得出問題
+const RING_BUFFER_BYTES = 2 * 1024 * 1024;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let count = 0;
@@ -83,12 +93,18 @@ function waitFor(video, event, ms) {
   });
 }
 
+async function seekTo(video, time) {
+  const seeked = waitFor(video, 'seeked', 10000);
+  video.currentTime = time;
+  await seeked;
+}
+
 function makeVideo(url, options = {}) {
   const video = document.createElement('video');
   if (options.crossOrigin) video.crossOrigin = options.crossOrigin;
   video.muted = true;
   video.playsInline = true;
-  video.preload = 'auto';
+  video.preload = variant.preload;
   video.src = url;
   if (options.style) video.style.cssText = options.style;
   document.body.appendChild(video);
@@ -103,7 +119,7 @@ function dispose(video, url) {
   if (url.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
-// 畫面要有內容：測試影片是彩色圖樣，全黑或單色代表沒解出畫面
+// 畫面要有內容：測試影片是彩色圖樣（變異數約 16000）；全黑、單色或解碼失敗補出的灰色畫面都低很多
 function pixels(context, width, height) {
   const data = context.getImageData(0, 0, width, height).data;
   let sum = 0;
@@ -117,7 +133,7 @@ function pixels(context, width, height) {
   }
   const mean = sum / n;
   const variance = sumSquares / n - mean * mean;
-  if (variance < 100) throw new Error(`frame looks blank (mean ${mean.toFixed(0)}, variance ${variance.toFixed(0)})`);
+  if (variance < 2000) throw new Error(`frame looks blank or broken (mean ${mean.toFixed(0)}, variance ${variance.toFixed(0)})`);
   return `pixels ok (variance ${variance.toFixed(0)})`;
 }
 
@@ -160,7 +176,7 @@ async function measureRate(video, rate, ms) {
   return measured.toFixed(2);
 }
 
-// 1. 影片視窗：載入、播放、0.5 倍與 2 倍速、暫停、跳到 0.5 秒
+// 1. 影片視窗：載入、播放、0.5 倍與 2 倍速、跳到檔案後段（2 MB 之後）再播、跳回開頭
 async function playback(url) {
   const video = makeVideo(url);
   try {
@@ -169,11 +185,13 @@ async function playback(url) {
     await reach(video, 1);
     const slow = await measureRate(video, 0.5, 1000);
     const fast = await measureRate(video, 2, 800);
+    const late = video.duration - 1.5;
+    await seekTo(video, late);
+    await reach(video, late + 0.5);
     video.pause();
-    const seeked = waitFor(video, 'seeked', 10000);
-    video.currentTime = 0.5;
-    await seeked;
-    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played at 0.5x ${slow}, 2x ${fast}, seeked`;
+    await seekTo(video, 0.5);
+    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played at 0.5x ${slow}, 2x ${fast}, ` +
+      `played from ${late.toFixed(1)} s, seeked back`;
   } finally {
     dispose(video, url);
   }
@@ -192,16 +210,15 @@ async function frames(url) {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const context = canvas.getContext('2d', { willReadFrequently: true });
+    const frameAt = async (time) => {
+      await seekTo(video, time);
+      await sleep(200);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return `${video.currentTime.toFixed(2)} s ${pixels(context, canvas.width, canvas.height)}`;
+    };
 
     video.pause();
-    const presented = new Promise((resolve) => video.requestVideoFrameCallback((_now, meta) => resolve(meta.mediaTime)));
-    const seeked = waitFor(video, 'seeked', 10000);
-    video.currentTime = 1;
-    await seeked;
-    const seekTime = await Promise.race([presented, sleep(300).then(() => null)]);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const seekPixels = pixels(context, canvas.width, canvas.height);
-
+    const first = await frameAt(1);
     const nextTime = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('no video frame callback while playing')), 15000);
       const onFrame = (_now, meta) => {
@@ -217,9 +234,9 @@ async function frames(url) {
       video.play().catch(reject);
     });
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    pixels(context, canvas.width, canvas.height);
-    const shown = seekTime === null ? `currentTime ${video.currentTime.toFixed(3)}` : seekTime.toFixed(3);
-    return `seek frame at ${shown} s, ${seekPixels}; next frame at ${nextTime.toFixed(3)} s`;
+    const played = pixels(context, canvas.width, canvas.height);
+    const late = await frameAt(video.duration - 1.5);
+    return `seek ${first}; played to ${nextTime.toFixed(3)} s ${played}; seek ${late}`;
   } finally {
     dispose(video, url);
   }
@@ -259,6 +276,44 @@ function parseMp4(buffer) {
   };
   walk(0, buffer.byteLength);
   return found;
+}
+
+// mp4 最外層的結構，例如「ftyp moov sidx + 10×(moof mdat)」
+function topBoxes(buffer) {
+  const view = new DataView(buffer);
+  const types = [];
+  let pos = 0;
+  while (pos + 8 <= buffer.byteLength) {
+    let size = view.getUint32(pos);
+    if (size === 1) size = Number(view.getBigUint64(pos + 8));
+    else if (size === 0) size = buffer.byteLength - pos;
+    if (size < 8) break;
+    types.push(String.fromCharCode(...new Uint8Array(buffer, pos + 4, 4)));
+    pos += size;
+  }
+  const fragments = types.filter((type) => type === 'moof').length;
+  if (!fragments) return types.join(' ');
+  return `${types.filter((type) => type !== 'moof' && type !== 'mdat').join(' ')} + ${fragments}×(moof mdat)`;
+}
+
+// 測試影片的大小與結構；比緩衝區小就測不出 blob: 的問題，算失敗
+async function describeMedia() {
+  const lines = [];
+  const small = [];
+  for (const name of MEDIA) {
+    const response = await fetch(assetUrl(name));
+    if (!response.ok) throw new Error(`${name}: fetch failed (HTTP ${response.status})`);
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength <= RING_BUFFER_BYTES) small.push(name);
+    const size = `${(buffer.byteLength / 1048576).toFixed(1)} MiB`;
+    lines.push(name.endsWith('.mp4') ? `${name} ${size} ${topBoxes(buffer)}` : `${name} ${size}`);
+  }
+  if (small.length) {
+    const error = new Error(`${small.join(', ')} not larger than 2 MiB; ${lines.join('; ')}`);
+    error.required = true;
+    throw error;
+  }
+  return lines.join('; ');
 }
 
 // 3. 手部分析的 WebCodecs 路徑（webcodecs.ts）：fetch 影片網址、VideoDecoder 解第一格、畫到畫布
@@ -319,27 +374,34 @@ window.addEventListener('error', (event) => log(`INFO page error: ${event.messag
 window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rejection: ${event.reason}`));
 
 (async () => {
-  await log(`INFO ${navigator.userAgent}`);
+  if (!variant) {
+    await log(`FAIL unknown variant ${variantName}`);
+    document.title = 'DONE fail';
+    return;
+  }
+  await log(`INFO variant ${variantName} (preload ${variant.preload}): ${navigator.userAgent}`);
   const probe = document.createElement('video');
   await log(`INFO canPlayType mp4/avc1 "${probe.canPlayType('video/mp4; codecs="avc1.64001f"')}", webm/vp9 "${probe.canPlayType('video/webm; codecs="vp9"')}"`);
-  for (const [kind, source] of Object.entries(sources)) {
-    const required = REQUIRED.has(kind);
-    // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4
-    await check(`${kind} play h264-frag.mp4`, required, async () => playback(await source('h264-frag.mp4')));
-    // 沒有 H.264 時下載的 VP9 webm
-    await check(`${kind} play vp9.webm`, required, async () => playback(await source('vp9.webm')));
-    // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
-    await check(`${kind} play h264-aac.mp4`, required, async () => playback(await source('h264-aac.mp4')));
-    await check(`${kind} frames h264.mp4`, required, async () => frames(await source('h264.mp4')));
+  if (variantName === 'app') await check('test media', false, describeMedia);
+  const { required, source } = variant;
+  const name = (test) => `${variantName} ${test}`;
+  // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4（ftyp moov sidx，再一段段 moof＋mdat）
+  await check(name('play h264-dash.mp4'), required, async () => playback(await source('h264-dash.mp4')));
+  // 沒有 H.264 時下載的 VP9 webm
+  await check(name('play vp9.webm'), required, async () => playback(await source('vp9.webm')));
+  // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
+  await check(name('play h264-aac.mp4'), required, async () => playback(await source('h264-aac.mp4')));
+  await check(name('frames h264.mp4'), required, async () => frames(await source('h264.mp4')));
+  if (variantName === 'app') {
+    await check(name('webcodecs h264.mp4'), false, async () => {
+      const url = await blobUrl('h264.mp4');
+      try {
+        return await webcodecs(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    });
   }
-  await check('blob webcodecs h264.mp4', false, async () => {
-    const url = await sources.blob('h264.mp4');
-    try {
-      return await webcodecs(url);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  });
   document.title = failed ? 'DONE fail' : 'DONE pass';
 })();
 </script>

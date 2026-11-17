@@ -4,6 +4,7 @@
 #    容器沒有 GPU，Mesa 用軟體繪圖；Ubuntu 26.04 上的中止發生在載入 Mesa 時，和有沒有 GPU 無關。
 # 2. 播得了影片：把 AppImage 解開，用 media-check 取代主程式後經由 AppRun 執行，
 #    以 AppImage 內附的 WebKit、GStreamer 與外掛跑 media.html（見 media-check.c）。
+#    必要的只有 App 在 Linux 的做法（blob: 網址配 preload="metadata"），另外兩種做法只記錄結果。
 #
 # 用法：docker run --rm -v <資料夾>:/work -w /work ubuntu:26.04 bash /work/check.sh
 # <資料夾> 裡要有 app.AppImage、media-check（media-check.c 編好的程式），
@@ -47,11 +48,26 @@ missing=$(LD_LIBRARY_PATH=/tmp/squashfs-root/usr/lib ldd squashfs-root/usr/lib/g
 echo "libraries not found: ${missing:-none}"
 exe=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' squashfs-root/*.desktop | head -1)
 cp /work/media-check "squashfs-root/usr/bin/$exe"
-status=0
-APPDIR=/tmp/squashfs-root GST_DEBUG=2 GST_DEBUG_NO_COLOR=1 \
-  timeout 240 xvfb-run -a squashfs-root/AppRun /work/media > /tmp/media.log 2>&1 || status=$?
-cat /tmp/media.log
-if [ "$status" -ne 0 ]; then
-  echo "::error::video check failed (exit $status)"
-  exit 1
-fi
+# media.html 的每種載入方式各跑一次。app 是 App 在 Linux 的做法：每一項都要通過，而且 GStreamer
+# 不能回報讀到壞資料（H.264 解出錯誤、mp4 結構錯亂、VP9 解不出畫面）；其他方式只記錄結果。
+corrupt='Invalid NAL unit size|bogus size|file is invalid|Failed to decode frame'
+failed=0
+for variant in app blob-auto asset; do
+  echo "=== play videos: $variant"
+  log="/tmp/media-$variant.log"
+  status=0
+  APPDIR=/tmp/squashfs-root GST_DEBUG=2 GST_DEBUG_NO_COLOR=1 \
+    timeout 240 xvfb-run -a squashfs-root/AppRun /work/media "$variant" > "$log" 2>&1 || status=$?
+  errors=$(grep -cE "$corrupt" "$log" || true)
+  if [ "$variant" = app ]; then
+    cat "$log"
+    if [ "$status" -ne 0 ] || [ "$errors" -ne 0 ]; then
+      echo "::error::video check failed (exit $status, $errors bad-data errors from GStreamer)"
+      failed=1
+    fi
+  else
+    grep -E '^(PASS|FAIL|INFO) ' "$log" || true
+    echo "(for information only: exit $status, $errors bad-data errors from GStreamer)"
+  fi
+done
+exit "$failed"

@@ -316,6 +316,14 @@ export function releaseFileSource(): void {
   blobSource = null;
 }
 
+/**
+ * 播放 fileSource 網址的 <video> 要用的 preload。
+ * Linux 的 blob: 網址配 preload="auto" 時，WebKitGTK 會在解碼前放一個 2 MB 的環狀緩衝區，
+ * 超過 2 MB 的影片（幾乎所有影片）會讀到錯位的資料：畫面花掉、改速度或跳轉後卡住，甚至無法播放。
+ * 用 metadata 就不會設這個緩衝區（檔案已經整個在記憶體裡，不需要預先緩衝）；其他平台維持 auto。
+ */
+export const videoPreload: 'auto' | 'metadata' = needsBlobSource() ? 'metadata' : 'auto';
+
 let blobSource: { path: string; url: Promise<string> } | null = null;
 
 function needsBlobSource(): boolean {

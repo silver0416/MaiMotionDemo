@@ -19,6 +19,7 @@
     type ToVideo,
     type VideoEntry,
     type VideoLink,
+    videoPreload,
   } from '../lib/video';
   import { VideoLibrary } from '../state/videoLibrary.svelte';
   import HandcamOverlay from './HandcamOverlay.svelte';
@@ -757,7 +758,7 @@
           {src}
           muted
           playsinline
-          preload="auto"
+          preload={videoPreload}
           onloadedmetadata={onLoaded}
           onseeked={onSeeked}
           onpause={onPause}

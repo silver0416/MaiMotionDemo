@@ -6,7 +6,7 @@
 // Tauri 的 asset protocol：Range 請求回 206、每次最多 1000 KiB），載入 media.html，
 // 頁面用和 App 相同的方式播放、跳轉、逐格讀取測試影片，結果寫在頁面標題上，這裡印出來。
 //
-// 用法：media-check <資料夾>（裡面有 media.html 與測試影片）
+// 用法：media-check <資料夾> [載入方式]（資料夾裡有 media.html 與測試影片；載入方式見 media.html，預設 app）
 // 結束碼：0 全部通過、1 有必要項目失敗、2 頁面載入失敗、3 逾時、4 WebKit 的畫面程序中止
 
 #include <webkit2/webkit2.h>
@@ -214,10 +214,11 @@ int main(int argc, char **argv)
 {
     gtk_init(&argc, &argv);
     if (argc < 2) {
-        fprintf(stderr, "usage: %s <media dir>\n", argv[0]);
+        fprintf(stderr, "usage: %s <media dir> [variant]\n", argv[0]);
         return 2;
     }
     media_dir = argv[1];
+    const char *variant = argc > 2 ? argv[2] : "app";
     printf("WebKitGTK %u.%u.%u\n", webkit_get_major_version(), webkit_get_minor_version(),
            webkit_get_micro_version());
     printf("GST_PLUGIN_SYSTEM_PATH_1_0=%s\n", g_getenv("GST_PLUGIN_SYSTEM_PATH_1_0"));
@@ -246,9 +247,11 @@ int main(int argc, char **argv)
     gtk_widget_show_all(window);
 
     char *dir = g_uri_escape_string(media_dir, NULL, FALSE);
-    char *url = g_strconcat(WINDOW_ORIGIN "/media.html?dir=", dir, NULL);
+    char *escaped_variant = g_uri_escape_string(variant, NULL, FALSE);
+    char *url = g_strconcat(WINDOW_ORIGIN "/media.html?dir=", dir, "&variant=", escaped_variant, NULL);
     webkit_web_view_load_uri(view, url);
     g_free(url);
+    g_free(escaped_variant);
     g_free(dir);
 
     g_timeout_add_seconds(180, on_timeout, NULL);
