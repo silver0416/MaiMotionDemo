@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>media check</title>
+<style>
+  body { margin: 0; background: #000; }
+  video { width: 320px; height: 180px; }
+</style>
+</head>
+<body>
+<script>
+// AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
+// 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
+// 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
+'use strict';
+
+const dir = new URLSearchParams(location.search).get('dir');
+// 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
+const asset = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let count = 0;
+let failed = false;
+
+async function log(text) {
+  count += 1;
+  document.title = `LOG ${count} ${text}`;
+  await sleep(30);
+}
+
+async function check(name, required, run) {
+  try {
+    await log(`PASS ${name}: ${await run()}`);
+  } catch (error) {
+    const isRequired = required || Boolean(error && error.required);
+    if (isRequired) failed = true;
+    await log(`${isRequired ? 'FAIL' : 'INFO'} ${name}: ${error && error.message ? error.message : error}`);
+  }
+}
+
+function mediaError(video) {
+  const error = video.error;
+  if (!error) return 'error event';
+  return `media error ${error.code}${error.message ? ` (${error.message})` : ''}`;
+}
+
+function waitFor(video, event, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`no ${event} within ${ms / 1000} s (readyState ${video.readyState}, networkState ${video.networkState})`));
+    }, ms);
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error(mediaError(video)));
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      video.removeEventListener(event, onEvent);
+      video.removeEventListener('error', onError);
+    }
+    video.addEventListener(event, onEvent);
+    video.addEventListener('error', onError);
+  });
+}
+
+function makeVideo(name, options = {}) {
+  const video = document.createElement('video');
+  if (options.crossOrigin) video.crossOrigin = options.crossOrigin;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = asset(name);
+  if (options.style) video.style.cssText = options.style;
+  document.body.appendChild(video);
+  return video;
+}
+
+function dispose(video) {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  video.remove();
+}
+
+// 畫面要有內容：測試影片是彩色圖樣，全黑或單色代表沒解出畫面
+function pixels(context, width, height) {
+  const data = context.getImageData(0, 0, width, height).data;
+  let sum = 0;
+  let sumSquares = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4 * 97) {
+    const value = data[i] + data[i + 1] + data[i + 2];
+    sum += value;
+    sumSquares += value * value;
+    n += 1;
+  }
+  const mean = sum / n;
+  const variance = sumSquares / n - mean * mean;
+  if (variance < 100) throw new Error(`frame looks blank (mean ${mean.toFixed(0)}, variance ${variance.toFixed(0)})`);
+  return `pixels ok (variance ${variance.toFixed(0)})`;
+}
+
+// 1. 影片視窗：載入、播放到 1 秒、暫停、跳到 0.5 秒
+async function playback(name) {
+  const video = makeVideo(name);
+  try {
+    if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
+    await video.play();
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`playback stalled at ${video.currentTime.toFixed(2)} s`));
+      }, 20000);
+      const onTime = () => {
+        if (video.currentTime < 1) return;
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error(mediaError(video)));
+      };
+      function cleanup() {
+        clearTimeout(timer);
+        video.removeEventListener('timeupdate', onTime);
+        video.removeEventListener('error', onError);
+      }
+      video.addEventListener('timeupdate', onTime);
+      video.addEventListener('error', onError);
+    });
+    video.pause();
+    const seeked = waitFor(video, 'seeked', 10000);
+    video.currentTime = 0.5;
+    await seeked;
+    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played and seeked`;
+  } finally {
+    dispose(video);
+  }
+}
+
+// 2. 手部分析的退回路徑（capture.ts 的 FrameReader）：crossOrigin <video>＋requestVideoFrameCallback＋讀畫布像素
+async function frames(name) {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) throw new Error('requestVideoFrameCallback unavailable');
+  const video = makeVideo(name, {
+    crossOrigin: 'anonymous',
+    style: 'position:fixed;left:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:-1;',
+  });
+  try {
+    if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+
+    video.pause();
+    const presented = new Promise((resolve) => video.requestVideoFrameCallback((_now, meta) => resolve(meta.mediaTime)));
+    const seeked = waitFor(video, 'seeked', 10000);
+    video.currentTime = 1;
+    await seeked;
+    const seekTime = await Promise.race([presented, sleep(300).then(() => null)]);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const seekPixels = pixels(context, canvas.width, canvas.height);
+
+    const nextTime = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no video frame callback while playing')), 15000);
+      const onFrame = (_now, meta) => {
+        if (meta.mediaTime + 1e-4 < 2) {
+          video.requestVideoFrameCallback(onFrame);
+          return;
+        }
+        clearTimeout(timer);
+        video.pause();
+        resolve(meta.mediaTime);
+      };
+      video.requestVideoFrameCallback(onFrame);
+      video.play().catch(reject);
+    });
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    pixels(context, canvas.width, canvas.height);
+    const shown = seekTime === null ? `currentTime ${video.currentTime.toFixed(3)}` : seekTime.toFixed(3);
+    return `seek frame at ${shown} s, ${seekPixels}; next frame at ${nextTime.toFixed(3)} s`;
+  } finally {
+    dispose(video);
+  }
+}
+
+// 只取 WebCodecs 檢查要的：avcC、畫面大小、第一個樣本的位置與大小（只有一個軌的一般 mp4）
+function parseMp4(buffer) {
+  const view = new DataView(buffer);
+  const found = {};
+  const containers = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl']);
+  const walk = (start, end) => {
+    let pos = start;
+    while (pos + 8 <= end) {
+      let size = view.getUint32(pos);
+      const type = String.fromCharCode(...new Uint8Array(buffer, pos + 4, 4));
+      let header = 8;
+      if (size === 1) {
+        size = Number(view.getBigUint64(pos + 8));
+        header = 16;
+      } else if (size === 0) {
+        size = end - pos;
+      }
+      if (size < header) break;
+      const body = pos + header;
+      if (containers.has(type)) walk(body, pos + size);
+      else if (type === 'stsd') walk(body + 8, pos + size);
+      else if (type === 'avc1') {
+        found.width = view.getUint16(body + 24);
+        found.height = view.getUint16(body + 26);
+        walk(body + 78, pos + size);
+      } else if (type === 'avcC') found.avcC = new Uint8Array(buffer.slice(body, pos + size));
+      else if (type === 'stsz') found.firstSize = view.getUint32(body + 4) || view.getUint32(body + 12);
+      else if (type === 'stco') found.firstOffset = view.getUint32(body + 8);
+      else if (type === 'co64') found.firstOffset = Number(view.getBigUint64(body + 8));
+      pos += size;
+    }
+  };
+  walk(0, buffer.byteLength);
+  return found;
+}
+
+// 3. 手部分析的 WebCodecs 路徑（webcodecs.ts）：fetch asset 網址、VideoDecoder 解第一格、畫到畫布
+// App 只用 prefer-hardware；不支援時改走逐格讀取，所以這項不是必要，但說支援卻解不出來就算失敗。
+async function webcodecs(name) {
+  if (typeof VideoDecoder === 'undefined' || typeof VideoFrame === 'undefined') throw new Error('WebCodecs unavailable');
+  const response = await fetch(asset(name));
+  if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
+  const buffer = await response.arrayBuffer();
+  const mp4 = parseMp4(buffer);
+  if (!mp4.avcC || !mp4.firstSize || mp4.firstOffset === undefined) throw new Error('could not parse the test mp4');
+  const hex = (value) => value.toString(16).padStart(2, '0');
+  const codec = `avc1.${hex(mp4.avcC[1])}${hex(mp4.avcC[2])}${hex(mp4.avcC[3])}`;
+  const base = { codec, codedWidth: mp4.width, codedHeight: mp4.height, description: mp4.avcC };
+  const support = {};
+  for (const hardwareAcceleration of ['prefer-hardware', 'no-preference']) {
+    support[hardwareAcceleration] = (await VideoDecoder.isConfigSupported({ ...base, hardwareAcceleration })).supported;
+  }
+  const summary = `${codec} prefer-hardware ${support['prefer-hardware'] ? 'yes' : 'no'}, no-preference ${support['no-preference'] ? 'yes' : 'no'}`;
+  const choice = support['prefer-hardware'] ? 'prefer-hardware' : support['no-preference'] ? 'no-preference' : null;
+  if (!choice) throw new Error(`${summary}; the app falls back to frame reading`);
+  try {
+    const frame = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('decoder produced no frame')), 15000);
+      const decoder = new VideoDecoder({
+        output: (output) => {
+          clearTimeout(timer);
+          resolve(output);
+        },
+        error: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      decoder.configure({ ...base, hardwareAcceleration: choice });
+      decoder.decode(new EncodedVideoChunk({
+        type: 'key',
+        timestamp: 0,
+        data: new Uint8Array(buffer, mp4.firstOffset, mp4.firstSize),
+      }));
+      decoder.flush().catch(reject);
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = frame.displayWidth;
+    canvas.height = frame.displayHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(frame, 0, 0);
+    frame.close();
+    return `${summary}; decoded with ${choice}, ${pixels(context, canvas.width, canvas.height)}`;
+  } catch (error) {
+    const wrapped = new Error(`${summary}; decoding with ${choice} failed: ${error && error.message ? error.message : error}`);
+    wrapped.required = choice === 'prefer-hardware';
+    throw wrapped;
+  }
+}
+
+window.addEventListener('error', (event) => log(`INFO page error: ${event.message}`));
+window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rejection: ${event.reason}`));
+
+(async () => {
+  await log(`INFO ${navigator.userAgent}`);
+  const probe = document.createElement('video');
+  await log(`INFO canPlayType mp4/avc1 "${probe.canPlayType('video/mp4; codecs="avc1.64001f"')}", webm/vp9 "${probe.canPlayType('video/webm; codecs="vp9"')}"`);
+  // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4
+  await check('play h264-frag.mp4', true, () => playback('h264-frag.mp4'));
+  // 沒有 H.264 時下載的 VP9 webm
+  await check('play vp9.webm', true, () => playback('vp9.webm'));
+  // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
+  await check('play h264-aac.mp4', true, () => playback('h264-aac.mp4'));
+  await check('frames h264.mp4', true, () => frames('h264.mp4'));
+  await check('webcodecs h264.mp4', false, () => webcodecs('h264.mp4'));
+  document.title = failed ? 'DONE fail' : 'DONE pass';
+})();
+</script>
+</body>
+</html>
