@@ -6,6 +6,7 @@
   import { DemoPlayer, type Step } from '$lib/demos/ui/player.svelte';
   import { TOURS, type Rect, type ShotStep, type Tour, type TourId } from './flows';
   import ExeSketch from './parts/ExeSketch.svelte';
+  import TourSay from './parts/TourSay.svelte';
 
   /**
    * 實際畫面導覽：<QuickTour flow="search" />（quick 章節的 .md 自動 import）。
@@ -14,6 +15,9 @@
    * 每一步：鏡頭拉近到要點的地方 → 游標飛過去按下（琥珀色一圈）→ 拉近狀態下換成下一張截圖（交叉淡入）→ 下一步。
    * 只框起來、不按的步驟（highlight）會畫一個框。播完停在最後（拉遠看整個畫面），不循環；按「重播」再播一次。
    * 按鍵盤的步驟（key）不出現游標，截圖框下方那一列的鍵帽亮一下（鍵帽不蓋在截圖上）；連按兩下（double）游標按兩次。
+   * 旁白由吉祥物講（parts/TourSay：泡泡在左、吉祥物在右）：寬的時候疊在截圖右下角，擋到這一步要點的地方就改放右上角；
+   * 窄的時候放在截圖正下方一列（鍵帽列在它下面）。換句時舊句子往上淡出、新句子一個字一個字很快淡入。
+   * Stage 下方那一列只剩控制鈕；旁白那一行仍在（視覺隱藏、aria-live），給輔助技術念。
    * 拍不到的系統畫面用示意畫面（tour.lead，sketch）接在最前面：圖說的徽章跟著畫面切換，示意畫面標「示意」，截圖標「實際畫面」。
    * 鏡頭就是截圖那一層的 transform（translate＋scale），只動 transform 與 opacity。
    *
@@ -21,7 +25,7 @@
    *   範圍內盡量把 focus 整塊放進來；放不下時以要按的地方為準。
    * - 「上一步／下一步」：跳到那一步開始時的樣子停住，要按的地方畫框（游標只在自動播放時出現）。
    * - prefers-reduced-motion：不拉近、不飛游標、不淡入；停在第一步，一步一張整個畫面＋框，用「上一步／下一步」切換。
-   * - 沒有 JS（預先產生的 HTML）時看得到第一張圖與旁白；文字步驟寫在 .md 裡。
+   * - 沒有 JS（預先產生的 HTML）時看得到第一張圖與旁白（吉祥物泡泡直接顯示第一句，不播動畫）；文字步驟寫在 .md 裡。
    * - 圖片 lazy 載入；開始播之後才預先載入其他幾張。
    */
   interface Props {
@@ -315,6 +319,14 @@
   });
   const ratio = `${VW} / ${VH}`;
 
+  /** 吉祥物泡泡要避開的地方：這一句旁白那一步要按（或框起來）的地方；還沒開始與最後一句沒有。 */
+  const sayAvoid = $derived.by(() => {
+    if (player.index < 0 || player.index >= script.length - 1) return null;
+    const step = steps[logicalOf[player.index]];
+    const rect = step?.target ?? step?.highlight;
+    return rect ? place(rect) : null;
+  });
+
   /** 這一步要按的鍵：自動播放時只在按下的瞬間亮；停住（逐步檢視、減少動態）時一直亮著提示。 */
   const stepKey = $derived(player.index < 0 ? undefined : steps[logicalOf[player.index]]?.key);
   const litKey = $derived(player.lit ?? (!player.playing || reduced ? stepKey : undefined));
@@ -341,38 +353,42 @@
 {/snippet}
 
 <figure class="quick-tour">
-  <Stage label={tour.label} {player} flush steps={nav} {onkey}>
-    <div class="viewport" style:aspect-ratio={ratio} bind:clientWidth={width}>
-      <div class="cam" style:transform={camTransform}>
-        {#if under !== null && under !== shown}
-          {@render frameView(under, false)}
+  <Stage label={tour.label} {player} flush steps={nav} narration="hidden" {onkey}>
+    <!-- 截圖視窗＋吉祥物泡泡：寬的時候泡泡疊在截圖角落（以這一層定位），窄的時候是截圖下面一列。 -->
+    <div class="screen">
+      <div class="viewport" style:aspect-ratio={ratio} bind:clientWidth={width}>
+        <div class="cam" style:transform={camTransform}>
+          {#if under !== null && under !== shown}
+            {@render frameView(under, false)}
+          {/if}
+          {#key fadeKey}
+            {@render frameView(shown, true)}
+          {/key}
+        </div>
+        {#if markBox && mark}
+          {#key mark.key}
+            <span
+              class="mark"
+              class:is-delayed={!reduced}
+              style:left={`${markBox.left - MARK_GAP}px`}
+              style:top={`${markBox.top - MARK_GAP}px`}
+              style:width={`${markBox.width + MARK_GAP * 2}px`}
+              style:height={`${markBox.height + MARK_GAP * 2}px`}
+              aria-hidden="true"
+            ></span>
+          {/key}
         {/if}
-        {#key fadeKey}
-          {@render frameView(shown, true)}
-        {/key}
-      </div>
-      {#if markBox && mark}
-        {#key mark.key}
+        {#if aimPoint}
           <span
-            class="mark"
-            class:is-delayed={!reduced}
-            style:left={`${markBox.left - MARK_GAP}px`}
-            style:top={`${markBox.top - MARK_GAP}px`}
-            style:width={`${markBox.width + MARK_GAP * 2}px`}
-            style:height={`${markBox.height + MARK_GAP * 2}px`}
+            class="anchor"
+            bind:this={anchor}
+            style:left={`${aimPoint.x}px`}
+            style:top={`${aimPoint.y}px`}
             aria-hidden="true"
           ></span>
-        {/key}
-      {/if}
-      {#if aimPoint}
-        <span
-          class="anchor"
-          bind:this={anchor}
-          style:left={`${aimPoint.x}px`}
-          style:top={`${aimPoint.y}px`}
-          aria-hidden="true"
-        ></span>
-      {/if}
+        {/if}
+      </div>
+      <TourSay text={player.say} step={at} {reduced} avoid={sayAvoid} {width} height={width * (VH / VW)} />
     </div>
     {#if tour.keys}
       <!-- 鍵帽列：在截圖框外面（不蓋住實際畫面），整個導覽都在，高度固定不跳；按鍵的步驟按下時亮起。 -->
@@ -396,6 +412,11 @@
 <style>
   .quick-tour {
     margin: 1.5em 0;
+  }
+
+  /* 截圖視窗＋吉祥物泡泡：泡泡寬的時候以這一層定位（疊在截圖角落）。 */
+  .screen {
+    position: relative;
   }
 
   /* 截圖的視窗：固定長寬比（截圖比例），載入前就佔好高度。 */
@@ -452,7 +473,7 @@
     }
   }
 
-  /* 鍵帽列：截圖下方、旁白列上方的一列，置中、不換行（只是提示，不能按）。 */
+  /* 鍵帽列：截圖下方（窄的時候在吉祥物泡泡那一列下方）、控制列上方的一列，置中、不換行（只是提示，不能按）。 */
   .keys {
     display: flex;
     flex-wrap: nowrap;

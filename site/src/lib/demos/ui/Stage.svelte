@@ -19,6 +19,8 @@
    * - 沒有 player 時（互動地圖）只顯示旁白，不畫播放鈕。
    * - flush：內容區不留內距（實際畫面導覽：截圖貼齊外框）。
    * - steps：多一組「上一步／下一步」，步數改顯示這裡給的 at／total（腳本的一步可能拆成好幾個小動作）。
+   * - narration="hidden"：旁白改由演示自己畫在內容區裡（實際畫面導覽的吉祥物泡泡）。下方那一列只剩控制鈕；
+   *   旁白那一行仍在 DOM 裡（全域的 .sr-only，視覺隱藏），aria-live 照樣給輔助技術念。預設 'foot'：旁白在下方那一列左邊。
    */
   interface StepNav {
     /** 目前第幾步（從 1 起算；還沒開始是 0） */
@@ -39,11 +41,23 @@
     surface?: 'panel' | 'bg';
     flush?: boolean;
     steps?: StepNav;
+    /** 'hidden'：旁白只給輔助技術（畫面上由演示自己顯示） */
+    narration?: 'foot' | 'hidden';
     onkey?: (key: string, event: KeyboardEvent) => boolean;
     children: Snippet;
   }
 
-  let { label, player, say = '', surface = 'panel', flush = false, steps, onkey, children }: Props = $props();
+  let {
+    label,
+    player,
+    say = '',
+    surface = 'panel',
+    flush = false,
+    steps,
+    narration = 'foot',
+    onkey,
+    children,
+  }: Props = $props();
 
   let body = $state<HTMLElement | null>(null);
 
@@ -79,7 +93,7 @@
     {/if}
   </div>
   <div class="demo-foot">
-    <p class="narration" aria-live="polite">{player ? player.say : say}</p>
+    <p class="narration" class:sr-only={narration === 'hidden'} aria-live="polite">{player ? player.say : say}</p>
     {#if player}
       <div class="demo-ctrl">
         {#if steps}
@@ -168,6 +182,12 @@
     font-size: var(--fs-md);
     line-height: 1.6;
     color: var(--c-text);
+  }
+
+  /* 視覺隱藏（全域 .sr-only）時不保留兩行高、不當 flex 容器，免得撐出一塊看不見的區域。 */
+  .narration.sr-only {
+    display: block;
+    min-height: 0;
   }
 
   .demo-ctrl {
