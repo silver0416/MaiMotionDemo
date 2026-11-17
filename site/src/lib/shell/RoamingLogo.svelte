@@ -11,8 +11,8 @@
    * - 走動：第一次捲進畫面時，隨機走四次再回到原位（靠近 1～8 號按鈕、或盤面內任何地方；每次最長 1.5 秒）。不循環。
    * - 躲游標：滑鼠靠近（SENSE 以內）時，兩點往游標的反方向躲，只會躲到八個固定的位置（朝 1～8 號按鈕的方向）；游標離開就回原位。
    * - 往上跑：點一下、或手機上摸一下，兩點直接跑到上面，停一下再回來。
-   * - 被搓：按住左右來回搓，眼睛變成「> <」並跟著手指左右移（只有眼睛平移，標誌本身不動）；
-   *   放開或停下來之後先維持一下，再睜開眼、移回正中間（不是瞬間跳回去）。
+   * - 被搓：按住左右來回搓，眼睛變成「> <」並自己不停左右晃（只有眼睛平移，標誌本身不動；不跟手指、也不躲游標）；
+   *   放開或停下來之後再晃一下，才睜開眼、移回正中間（不是瞬間跳回去）。
    * - prefers-reduced-motion：不走動、不躲、眼睛不移；被搓時眼睛仍會變。
    *
    * 純裝飾（aria-hidden）。座標用 Logo.svelte 的 viewBox（0～100，圓心 50,50）；位置用 rAF 逐格算，不靠 CSS 轉場，
@@ -51,10 +51,11 @@
   }
 
   const HOME: Pose = { x: 0, y: 0, deg: 0 };
-  /** 兩點水平時，中點最多能往左右偏多少（兩點都還在 NEAR 以內）。 */
-  const SIDE = NEAR - HALF;
   /** 放開或停下來之後，眼睛維持「> <」多久才恢復。 */
   const RUB_HOLD = 700;
+  /** 被搓時眼睛左右晃的幅度（中點往左右各偏多少）與單程時間。 */
+  const SHAKE = 6;
+  const SHAKE_MS = 110;
   /** 兩點都貼近圈的最上面。 */
   const UP: Pose = { x: 0, y: -Math.sqrt(NEAR * NEAR - HALF * HALF), deg: 0 };
 
@@ -83,9 +84,6 @@
   let moved = 0;
   let turns: number[] = [];
   let rubTimer = 0;
-  /** 按下時標誌中心的位置與每單位幾 px（被搓時眼睛跟著手指用）。 */
-  let centerX = 0;
-  let unit = 1;
 
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
@@ -293,6 +291,12 @@
     rubTimer = window.setTimeout(recover, ms);
   }
 
+  /** 被搓的時候眼睛自己左右晃：晃到一邊就換另一邊，直到恢復（recover 會改道回原位，這裡就停了）。 */
+  function shake(side: number) {
+    if (!rubbing || reduced) return;
+    go({ x: side * SHAKE, y: 0, deg: 0 }, SHAKE_MS, () => shake(-side));
+  }
+
   function startRub() {
     if (!rubbing) {
       rubbing = true;
@@ -300,6 +304,7 @@
       dodging = false;
       dodgeSlot = -1;
       window.clearTimeout(hopTimer);
+      shake(1);
     }
     // 按著不動也算停下來。
     settleRub(RUB_HOLD);
@@ -312,10 +317,6 @@
     stroke = 0;
     moved = 0;
     turns = [];
-    // 量裡面的 svg（外層多了一圈感應範圍）。
-    const box = (root.firstElementChild ?? root).getBoundingClientRect();
-    centerX = box.left + box.width / 2;
-    unit = box.width / 100 || 1;
     // 手指滑出標誌外也繼續收到移動。抓不到（例如這個指標已經不在了）就算了，不影響其他互動。
     try {
       root.setPointerCapture(event.pointerId);
@@ -330,11 +331,6 @@
     lastX = event.clientX;
     if (!dx) return;
     moved += Math.abs(dx);
-    // 正在被搓：眼睛跟著手指左右移（只有水平平移，手指離中心約半個標誌寬就到底）。
-    if (rubbing && !reduced) {
-      const x = Math.max(-SIDE, Math.min(SIDE, ((event.clientX - centerX) / unit) * 0.35));
-      go({ x, y: 0, deg: 0 }, 90);
-    }
     const sign = Math.sign(dx);
     if (sign === dir) {
       stroke += Math.abs(dx);
