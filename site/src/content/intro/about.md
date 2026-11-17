@@ -3,6 +3,7 @@ title: 這是什麼
 description: 把 maimai 譜面變成左右手動畫的桌面程式，也是我們收集真人手順的工具。
 order: 1
 keywords: [介紹, 簡介, 是什麼, 用途, 做什麼, 關於]
+mascot: true
 ---
 
 <IntroProgress />

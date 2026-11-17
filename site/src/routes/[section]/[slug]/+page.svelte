@@ -2,6 +2,7 @@
   import { SITE, sectionById, type Page } from '$lib/nav';
   import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
   import PageToc from '$lib/shell/PageToc.svelte';
+  import RoamingLogo from '$lib/shell/RoamingLogo.svelte';
   import type { PageProps } from './$types';
 
   /** 內容頁：章節名、標題、一句話說明、（窄時）本頁內容、內文、上一頁／下一頁；≥ 1280px 右側是本頁內容。 */
@@ -36,7 +37,14 @@
   <article class="doc-main">
     <header class="doc-head">
       <p class="doc-section">{data.section.title}</p>
-      <h1>{data.page.title}</h1>
+      {#if data.page.mascot}
+        <div class="doc-title">
+          <h1>{data.page.title}</h1>
+          <RoamingLogo size={48} />
+        </div>
+      {:else}
+        <h1>{data.page.title}</h1>
+      {/if}
       {#if data.page.description}<p class="doc-lede">{data.page.description}</p>{/if}
     </header>
 
@@ -105,6 +113,13 @@
     font-size: var(--fs-sm);
     font-weight: 600;
     letter-spacing: 0.04em;
+  }
+
+  /* 標題旁的吉祥物：和標題同一列、上下置中。 */
+  .doc-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
   }
 
   /* 頁面標題：內文 16px 的 1.75 倍（28px）。 */

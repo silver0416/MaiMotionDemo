@@ -7,7 +7,7 @@
   import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
 
   /**
-   * 首頁：一句話說明、盤面演示、認識 MaiMotionDemo（全頁唯一的主要動作）、開始新手教學與下載、七個章節。
+   * 首頁：一句話說明、盤面演示、認識 MaiMotionDemo（全頁唯一的主要動作）、閱讀手冊與下載、各個章節。
    * 手機（iOS／Android）上「下載」換成「安裝手冊到手機」（把這份手冊裝成 App）：桌面程式在手機上不能用，
    * 真正的下載入口留在選單裡。已經裝成 App 時兩顆都不顯示。
    */
@@ -35,7 +35,7 @@
       <p class="note">打法是依規則推算的建議，不是官方判定，也不是唯一正確的打法。</p>
       <div class="actions">
         <a class="btn btn--primary cta" href="/intro/about">認識 MaiMotionDemo<span class="cta-arrow"><ExtraIcon name="arrow-right" /></span></a>
-        <a class="btn" href="/start/install">開始新手教學</a>
+        <a class="btn" href="/start/install">閱讀手冊</a>
         <a class="btn home-download" href={SITE.download}>
           <Icon name="download" />下載
         </a>

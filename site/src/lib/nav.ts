@@ -46,6 +46,8 @@ export interface PageMetadata {
   description?: string;
   order?: number;
   keywords?: string[];
+  /** true：標題旁放會走動的吉祥物（RoamingLogo）。 */
+  mascot?: boolean;
   headings?: Heading[];
 }
 
@@ -57,6 +59,7 @@ export interface Page {
   description: string;
   order: number;
   keywords: string[];
+  mascot: boolean;
   headings: Heading[];
 }
 
@@ -82,6 +85,7 @@ function build(): Page[] {
       description: meta?.description ?? '',
       order: typeof meta?.order === 'number' ? meta.order : Number.POSITIVE_INFINITY,
       keywords: Array.isArray(meta?.keywords) ? meta.keywords : [],
+      mascot: meta?.mascot === true,
       headings: Array.isArray(meta?.headings) ? meta.headings : [],
     });
   }
