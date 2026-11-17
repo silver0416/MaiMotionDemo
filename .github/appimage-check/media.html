@@ -12,15 +12,15 @@
 <script>
 // AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
 // 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
-// 影片網址分三種比較：asset://（App 目前用的）、blob:（先 fetch 再轉）、http://127.0.0.1。
+// 影片網址分兩種：asset://（convertFileSrc 給的；WebKitGTK 的播放器不接受自訂 scheme，只記錄結果）
+// 與 blob:（App 在 Linux 用的：先 fetch asset 網址再轉成 blob:，見 frontend/src/lib/video.ts 的 fileSource）。
 // 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
 'use strict';
 
 const params = new URLSearchParams(location.search);
 const dir = params.get('dir');
-const httpPort = params.get('http');
 // 必要的網址種類：這些失敗就算檢查失敗，其他只記錄
-const REQUIRED = new Set(['http']);
+const REQUIRED = new Set(['blob']);
 
 // 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
 const assetUrl = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
@@ -31,7 +31,6 @@ const sources = {
     if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
     return URL.createObjectURL(await response.blob());
   },
-  http: async (name) => `http://127.0.0.1:${httpPort}/${name}`,
 };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -122,39 +121,59 @@ function pixels(context, width, height) {
   return `pixels ok (variance ${variance.toFixed(0)})`;
 }
 
-// 1. 影片視窗：載入、播放到 3 秒、暫停、跳到 0.5 秒
+// 播放到 time 秒
+function reach(video, time) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`playback stalled at ${video.currentTime.toFixed(2)} s`));
+    }, 20000);
+    const onTime = () => {
+      if (video.currentTime < time) return;
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error(mediaError(video)));
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('error', onError);
+    }
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('error', onError);
+  });
+}
+
+// 影片視窗會改播放速度（慢放、跟主視窗同步）：量實際的速度
+async function measureRate(video, rate, ms) {
+  video.playbackRate = rate;
+  await sleep(200);
+  const startTime = video.currentTime;
+  const startClock = performance.now();
+  await sleep(ms);
+  const measured = (video.currentTime - startTime) / ((performance.now() - startClock) / 1000);
+  video.playbackRate = 1;
+  if (measured < rate * 0.6 || measured > rate * 1.4) throw new Error(`playbackRate ${rate} played at ${measured.toFixed(2)}x`);
+  return measured.toFixed(2);
+}
+
+// 1. 影片視窗：載入、播放、0.5 倍與 2 倍速、暫停、跳到 0.5 秒
 async function playback(url) {
   const video = makeVideo(url);
   try {
     if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
     await video.play();
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error(`playback stalled at ${video.currentTime.toFixed(2)} s`));
-      }, 20000);
-      const onTime = () => {
-        if (video.currentTime < 3) return;
-        cleanup();
-        resolve();
-      };
-      const onError = () => {
-        cleanup();
-        reject(new Error(mediaError(video)));
-      };
-      function cleanup() {
-        clearTimeout(timer);
-        video.removeEventListener('timeupdate', onTime);
-        video.removeEventListener('error', onError);
-      }
-      video.addEventListener('timeupdate', onTime);
-      video.addEventListener('error', onError);
-    });
+    await reach(video, 1);
+    const slow = await measureRate(video, 0.5, 1000);
+    const fast = await measureRate(video, 2, 800);
     video.pause();
     const seeked = waitFor(video, 'seeked', 10000);
     video.currentTime = 0.5;
     await seeked;
-    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played to 3 s and seeked`;
+    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played at 0.5x ${slow}, 2x ${fast}, seeked`;
   } finally {
     dispose(video, url);
   }
@@ -313,7 +332,14 @@ window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rej
     await check(`${kind} play h264-aac.mp4`, required, async () => playback(await source('h264-aac.mp4')));
     await check(`${kind} frames h264.mp4`, required, async () => frames(await source('h264.mp4')));
   }
-  await check('webcodecs h264.mp4 (fetch asset)', false, () => webcodecs(assetUrl('h264.mp4')));
+  await check('blob webcodecs h264.mp4', false, async () => {
+    const url = await sources.blob('h264.mp4');
+    try {
+      return await webcodecs(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  });
   document.title = failed ? 'DONE fail' : 'DONE pass';
 })();
 </script>

@@ -9,6 +9,7 @@
   import { formatClock, formatDelta } from '../lib/format';
   import {
     fileSource,
+    releaseFileSource,
     openChannel,
     pickVideoFile,
     sameVideo,
@@ -173,7 +174,11 @@
       } else {
         const entry = library.entry(target.id) ?? (await videoApi.get(target.id).catch(() => null));
         if (entry) {
-          next = await fileSource(entry.path);
+          try {
+            next = await fileSource(entry.path);
+          } catch (error) {
+            nextProblem = `讀不到已下載的影片（${error instanceof Error ? error.message : String(error)}），可以刪除後重新下載。`;
+          }
           if (!target.fps && entry.fps) setLink({ ...target, fps: entry.fps });
         } else {
           nextMissing = true;
@@ -194,6 +199,7 @@
     }
     // 解析期間連結又換了：以最新的為準。
     if (target !== link) return;
+    if (!next) releaseFileSource();
     problem = nextProblem;
     missing = nextMissing;
     if (key !== srcKey || next !== src) {
@@ -309,6 +315,7 @@
       channel?.close();
       library.dispose();
       handcam.dispose();
+      releaseFileSource();
       for (const url of browserFiles.values()) URL.revokeObjectURL(url);
     };
   });

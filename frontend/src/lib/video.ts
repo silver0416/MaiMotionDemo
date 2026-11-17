@@ -287,10 +287,54 @@ export const videoApi = {
   openLocal: (path: string) => call<LocalVideo>('video_open_local', { path }),
 };
 
-/** 桌面版把本機路徑轉成 WebView 能播放的網址。 */
+/**
+ * 桌面版把本機路徑轉成 WebView 能播放的網址。
+ * Linux 的 WebKitGTK 播影片只接受 blob:、http(s):、file: 等網址，Tauri 的 asset://（自訂 scheme）一律拒絕
+ * （tauri-apps/tauri#3725），所以 Linux 先用 asset 網址把整個檔案讀進記憶體，再換成 blob: 網址。
+ * 同一個檔案共用同一個網址，只保留最近一個；其他平台直接用 asset 網址。
+ */
 export async function fileSource(path: string): Promise<string> {
   const { convertFileSrc } = await import('@tauri-apps/api/core');
-  return convertFileSrc(path);
+  const assetUrl = convertFileSrc(path);
+  if (!needsBlobSource()) return assetUrl;
+  if (blobSource?.path === path) return blobSource.url;
+  const previous = blobSource;
+  const entry = { path, url: readAsBlobUrl(assetUrl) };
+  blobSource = entry;
+  entry.url.then(
+    () => retire(previous),
+    () => {
+      if (blobSource === entry) blobSource = previous;
+    },
+  );
+  return entry.url;
+}
+
+/** 釋放 Linux 上讀進記憶體的影片（不再顯示影片或關閉視窗時呼叫）。 */
+export function releaseFileSource(): void {
+  retire(blobSource);
+  blobSource = null;
+}
+
+let blobSource: { path: string; url: Promise<string> } | null = null;
+
+function needsBlobSource(): boolean {
+  const agent = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  return agent.includes('Linux') && !agent.includes('Android');
+}
+
+async function readAsBlobUrl(assetUrl: string): Promise<string> {
+  const response = await fetch(assetUrl);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return URL.createObjectURL(await response.blob());
+}
+
+/** 換掉的網址晚一點才釋放：讓 <video> 先換到新網址，舊網址不會在切換途中讀不到而報錯。 */
+function retire(entry: { url: Promise<string> } | null): void {
+  entry?.url.then(
+    (url) => setTimeout(() => URL.revokeObjectURL(url), 5000),
+    () => undefined,
+  );
 }
 
 /** 桌面版的檔案選擇視窗；取消時回傳 null。 */
