@@ -35,7 +35,7 @@
       <p class="note">打法是依規則推算的建議，不是官方判定，也不是唯一正確的打法。</p>
       <div class="actions">
         <a class="btn btn--primary cta" href="/intro/about">認識 MaiMotionDemo<span class="cta-arrow"><ExtraIcon name="arrow-right" /></span></a>
-        <a class="btn" href="/start/install">閱讀手冊</a>
+        <a class="btn" href="/start/install"><ExtraIcon name="book-open" />閱讀手冊</a>
         <a class="btn home-download" href={SITE.download}>
           <Icon name="download" />下載
         </a>
