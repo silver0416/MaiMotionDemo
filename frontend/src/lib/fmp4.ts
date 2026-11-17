@@ -50,8 +50,10 @@ interface Track {
 const MAX_TOP_LEVEL_BOXES = 200_000;
 const UINT32_MAX = 0xffffffff;
 
-/** 分段 mp4 改寫成一般 mp4；不是分段 mp4 就原樣回傳。 */
+/** 分段 mp4 改寫成一般 mp4；不是分段 mp4（包括 webm 等其他格式）就原樣回傳。 */
 export async function defragment(file: Blob): Promise<Blob> {
+  // 要處理的分段 mp4（YouTube 下載的）以 ftyp 開頭；其他檔案（例如 webm、開頭不是 ftyp 的 mov）不處理
+  if (file.size < 8 || fourcc(await read(file, 0, 8), 4) !== 'ftyp') return file;
   const top = await topLevelBoxes(file);
   const moovBox = top.find((box) => box.type === 'moov');
   const moofBoxes = top.filter((box) => box.type === 'moof');
