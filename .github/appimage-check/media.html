@@ -12,12 +12,27 @@
 <script>
 // AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
 // 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
+// 影片網址分三種比較：asset://（App 目前用的）、blob:（先 fetch 再轉）、http://127.0.0.1。
 // 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
 'use strict';
 
-const dir = new URLSearchParams(location.search).get('dir');
+const params = new URLSearchParams(location.search);
+const dir = params.get('dir');
+const httpPort = params.get('http');
+// 必要的網址種類：這些失敗就算檢查失敗，其他只記錄
+const REQUIRED = new Set(['http']);
+
 // 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
-const asset = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
+const assetUrl = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
+const sources = {
+  asset: async (name) => assetUrl(name),
+  blob: async (name) => {
+    const response = await fetch(assetUrl(name));
+    if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
+    return URL.createObjectURL(await response.blob());
+  },
+  http: async (name) => `http://127.0.0.1:${httpPort}/${name}`,
+};
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let count = 0;
@@ -69,23 +84,24 @@ function waitFor(video, event, ms) {
   });
 }
 
-function makeVideo(name, options = {}) {
+function makeVideo(url, options = {}) {
   const video = document.createElement('video');
   if (options.crossOrigin) video.crossOrigin = options.crossOrigin;
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
-  video.src = asset(name);
+  video.src = url;
   if (options.style) video.style.cssText = options.style;
   document.body.appendChild(video);
   return video;
 }
 
-function dispose(video) {
+function dispose(video, url) {
   video.pause();
   video.removeAttribute('src');
   video.load();
   video.remove();
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
 // 畫面要有內容：測試影片是彩色圖樣，全黑或單色代表沒解出畫面
@@ -106,9 +122,9 @@ function pixels(context, width, height) {
   return `pixels ok (variance ${variance.toFixed(0)})`;
 }
 
-// 1. 影片視窗：載入、播放到 1 秒、暫停、跳到 0.5 秒
-async function playback(name) {
-  const video = makeVideo(name);
+// 1. 影片視窗：載入、播放到 3 秒、暫停、跳到 0.5 秒
+async function playback(url) {
+  const video = makeVideo(url);
   try {
     if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
     await video.play();
@@ -118,7 +134,7 @@ async function playback(name) {
         reject(new Error(`playback stalled at ${video.currentTime.toFixed(2)} s`));
       }, 20000);
       const onTime = () => {
-        if (video.currentTime < 1) return;
+        if (video.currentTime < 3) return;
         cleanup();
         resolve();
       };
@@ -138,16 +154,16 @@ async function playback(name) {
     const seeked = waitFor(video, 'seeked', 10000);
     video.currentTime = 0.5;
     await seeked;
-    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played and seeked`;
+    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played to 3 s and seeked`;
   } finally {
-    dispose(video);
+    dispose(video, url);
   }
 }
 
 // 2. 手部分析的退回路徑（capture.ts 的 FrameReader）：crossOrigin <video>＋requestVideoFrameCallback＋讀畫布像素
-async function frames(name) {
+async function frames(url) {
   if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) throw new Error('requestVideoFrameCallback unavailable');
-  const video = makeVideo(name, {
+  const video = makeVideo(url, {
     crossOrigin: 'anonymous',
     style: 'position:fixed;left:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:-1;',
   });
@@ -186,7 +202,7 @@ async function frames(name) {
     const shown = seekTime === null ? `currentTime ${video.currentTime.toFixed(3)}` : seekTime.toFixed(3);
     return `seek frame at ${shown} s, ${seekPixels}; next frame at ${nextTime.toFixed(3)} s`;
   } finally {
-    dispose(video);
+    dispose(video, url);
   }
 }
 
@@ -226,11 +242,11 @@ function parseMp4(buffer) {
   return found;
 }
 
-// 3. 手部分析的 WebCodecs 路徑（webcodecs.ts）：fetch asset 網址、VideoDecoder 解第一格、畫到畫布
+// 3. 手部分析的 WebCodecs 路徑（webcodecs.ts）：fetch 影片網址、VideoDecoder 解第一格、畫到畫布
 // App 只用 prefer-hardware；不支援時改走逐格讀取，所以這項不是必要，但說支援卻解不出來就算失敗。
-async function webcodecs(name) {
+async function webcodecs(url) {
   if (typeof VideoDecoder === 'undefined' || typeof VideoFrame === 'undefined') throw new Error('WebCodecs unavailable');
-  const response = await fetch(asset(name));
+  const response = await fetch(url);
   if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
   const buffer = await response.arrayBuffer();
   const mp4 = parseMp4(buffer);
@@ -287,14 +303,17 @@ window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rej
   await log(`INFO ${navigator.userAgent}`);
   const probe = document.createElement('video');
   await log(`INFO canPlayType mp4/avc1 "${probe.canPlayType('video/mp4; codecs="avc1.64001f"')}", webm/vp9 "${probe.canPlayType('video/webm; codecs="vp9"')}"`);
-  // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4
-  await check('play h264-frag.mp4', true, () => playback('h264-frag.mp4'));
-  // 沒有 H.264 時下載的 VP9 webm
-  await check('play vp9.webm', true, () => playback('vp9.webm'));
-  // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
-  await check('play h264-aac.mp4', true, () => playback('h264-aac.mp4'));
-  await check('frames h264.mp4', true, () => frames('h264.mp4'));
-  await check('webcodecs h264.mp4', false, () => webcodecs('h264.mp4'));
+  for (const [kind, source] of Object.entries(sources)) {
+    const required = REQUIRED.has(kind);
+    // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4
+    await check(`${kind} play h264-frag.mp4`, required, async () => playback(await source('h264-frag.mp4')));
+    // 沒有 H.264 時下載的 VP9 webm
+    await check(`${kind} play vp9.webm`, required, async () => playback(await source('vp9.webm')));
+    // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
+    await check(`${kind} play h264-aac.mp4`, required, async () => playback(await source('h264-aac.mp4')));
+    await check(`${kind} frames h264.mp4`, required, async () => frames(await source('h264.mp4')));
+  }
+  await check('webcodecs h264.mp4 (fetch asset)', false, () => webcodecs(assetUrl('h264.mp4')));
   document.title = failed ? 'DONE fail' : 'DONE pass';
 })();
 </script>

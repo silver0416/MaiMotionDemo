@@ -167,25 +167,16 @@ jobs:
           fi
           du -sh squashfs-root/usr/lib squashfs-root/usr/lib/gstreamer-1.0
           rm -rf squashfs-root
+          failed=0
           for image in ubuntu:22.04 ubuntu:26.04; do
             echo "::group::$image"
-            docker run --rm -v "$CHECK:/work" -w /work "$image" bash /work/check.sh || {
+            if ! docker run --rm -v "$CHECK:/work" -w /work "$image" bash /work/check.sh; then
               echo "::error::AppImage check failed on $image"
-              exit 1
-            }
+              failed=1
+            fi
             echo "::endgroup::"
           done
-
-      - name: Check the current release AppImage (experiment)
-        if: always()
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          CHECK="$RUNNER_TEMP/check"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*linux-x64.AppImage' --dir "$RUNNER_TEMP/old"
-          cp "$RUNNER_TEMP"/old/*.AppImage "$CHECK/app.AppImage"
-          docker run --rm -v "$CHECK:/work" -w /work ubuntu:26.04 bash /work/check.sh
+          exit "$failed"
 
       - name: Upload to release
         if: github.event_name == 'release' || inputs.upload

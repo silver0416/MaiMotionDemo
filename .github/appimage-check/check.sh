@@ -12,9 +12,14 @@ set -eu
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-# 一般桌面會有的系統套件：WebKitGTK（連帶 GStreamer）與 Mesa
+# 一般桌面會有的系統套件：WebKitGTK（連帶 GStreamer）、Mesa 與 ALSA。
+# ALSA 在 AppImage 的排除清單上（每台桌面都有），H.264 解碼外掛（libav）要用到；24.04 起改名 libasound2t64。
+alsa=libasound2
+if apt-cache show libasound2t64 > /dev/null 2>&1; then
+  alsa=libasound2t64
+fi
 apt-get install -y -qq --no-install-recommends \
-  libwebkit2gtk-4.1-0 libegl-mesa0 libgl1-mesa-dri xvfb xauth > /dev/null
+  libwebkit2gtk-4.1-0 libegl-mesa0 libgl1-mesa-dri "$alsa" xvfb xauth > /dev/null
 
 echo "=== start the app"
 APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./app.AppImage > /tmp/app.log 2>&1 &
@@ -36,6 +41,10 @@ cd /tmp
 cat squashfs-root/AppRun
 ls squashfs-root/usr/lib/gstreamer-1.0 2> /dev/null | tr '\n' ' ' || true
 echo
+# 外掛缺哪些系統程式庫（應該只剩桌面一定有的；這裡列出來方便查）
+missing=$(LD_LIBRARY_PATH=/tmp/squashfs-root/usr/lib ldd squashfs-root/usr/lib/gstreamer-1.0/*.so 2> /dev/null \
+  | grep 'not found' | sort -u || true)
+echo "libraries not found: ${missing:-none}"
 exe=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' squashfs-root/*.desktop | head -1)
 cp /work/media-check "squashfs-root/usr/bin/$exe"
 status=0
