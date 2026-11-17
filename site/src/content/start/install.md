@@ -5,7 +5,11 @@ order: 1
 keywords: [安裝, 下載, exe, zip, 解壓縮, AppImage, deb, 打不開, 無法開啟, 執行, WebView2, 簽章, Gatekeeper, 執行權限]
 ---
 
+<Mascot at="top">
+
 還不清楚這個程式在做什麼，可以先看[認識 MaiMotionDemo](/intro/about)。
+
+</Mascot>
 
 MaiMotionDemo 是免安裝的桌面程式。這頁帶你下載對應平台的檔案，並處理第一次開啟可能遇到的狀況。
 

@@ -2,7 +2,7 @@
   /**
    * 鍵帽提示：一顆膠囊鈕，裡面是鍵（kbd）與它的作用。
    * lit 時鍵反白一下，表示自動示範「現在按了這個鍵」；點下去等於按那個鍵。
-   * still：只是提示、不能按（實際畫面導覽疊在截圖上的鍵帽），外觀一樣，換成 span。
+   * still：只是提示、不能按（實際畫面導覽的鍵帽列）。不是按鈕，所以不畫成膠囊：一顆方形的鍵（和內文的 kbd 同一種外形，大一點）加旁邊的說明字。
    */
   interface Props {
     /** 鍵上的字 */
@@ -19,7 +19,7 @@
 </script>
 
 {#if still}
-  <span class="btn keycap is-still" class:is-lit={lit}>
+  <span class="keycap-still" class:is-lit={lit}>
     <kbd class="cap">{cap}</kbd>
     <span class="cap-label">{label}</span>
   </span>
@@ -39,15 +39,34 @@
     font-weight: 500;
   }
 
-  /* 不能按：不換游標、滑過不變色、按下不縮。 */
-  .keycap.is-still {
-    cursor: default;
+  /* 只是提示：一顆鍵加說明字，沒有外框。 */
+  .keycap-still {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--c-text);
+    font-weight: 500;
   }
 
-  .keycap.is-still:hover,
-  .keycap.is-still:active {
+  .keycap-still .cap {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 var(--space-2);
+    border-bottom-width: 3px;
+    border-radius: var(--radius-md);
     background: var(--c-control);
-    transform: none;
+    font-size: var(--fs-md);
+  }
+
+  .keycap-still .cap-label {
+    font-size: var(--fs-md);
+  }
+
+  .keycap-still.is-lit .cap {
+    background: var(--c-invert-bg);
+    border-color: var(--c-invert-bg);
+    color: var(--c-on-invert);
+    transform: translateY(2px);
   }
 
   .cap {

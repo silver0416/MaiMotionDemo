@@ -10,6 +10,10 @@
    * 像聊天軟體：一段話一個泡泡，可以連續好幾個（最多四個）；標誌（頭像）在最後一個泡泡旁邊、和它上下置中，
    * 只有那個泡泡有尖角（左邊正中間，指向頭像）。
    * at="top"：頭像改放在第一個泡泡旁邊，尖角在第一個泡泡上。
+   * look="right"：兩個點往右偏，像是看向右邊。第一次捲進畫面時先眨眼，再從正中間飄到右邊，之後停在右邊（一次、不循環）；
+   *   減少動態或沒有 JS 時一開始就在右邊。
+   * href＋action：泡泡右邊放一顆主要按鈕（連結），窄螢幕換到泡泡下面；有按鈕時只放一段話。
+   *   <Mascot look="right" href="/quick/download" action="進入基礎操作演示">
    * 對話框下面還有很多內容時用，讓視線從頭像往下讀；對話框是一段的結尾時用預設（底部）。
    * 用法（標籤與每段話之間都要空一行，mdsvex 才會把每段轉成 <p>）：
    *   <Mascot>
@@ -21,26 +25,46 @@
    *   </Mascot>
    */
   import { onMount, type Snippet } from 'svelte';
+  import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
   import Logo from '$lib/shell/Logo.svelte';
 
   interface Props {
     at?: 'top' | 'bottom';
+    /** 眼睛看的方向 */
+    look?: 'right';
+    /** 泡泡右邊那顆按鈕要去的地方；和 action 一起給 */
+    href?: string;
+    /** 按鈕上的字 */
+    action?: string;
     children?: Snippet;
   }
 
-  let { at = 'bottom', children }: Props = $props();
+  let { at = 'bottom', look, href, action, children }: Props = $props();
+  const hasAction = $derived(Boolean(href && action));
 
   let root: HTMLElement;
   let blinking = $state(false);
+  /** look="right"：true 時兩點先待在正中間，等捲進畫面、眨完眼才飄到右邊。 */
+  let armed = $state(false);
+  /** 已經看過去了：這時才加轉場，啟動時把兩點移回正中間那一下不會被看到在倒退。 */
+  let looked = $state(false);
 
   onMount(() => {
     if (matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
     let timer = 0;
+    let glance = 0;
+    if (look === 'right') armed = true;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
         observer.disconnect();
         timer = window.setTimeout(() => (blinking = true), 600);
+        // 眨眼是 200ms × 2，眨完再看過去。
+        if (look !== 'right') return;
+        glance = window.setTimeout(() => {
+          looked = true;
+          armed = false;
+        }, 1100);
       },
       { threshold: 0.6 },
     );
@@ -48,13 +72,21 @@
     return () => {
       observer.disconnect();
       window.clearTimeout(timer);
+      window.clearTimeout(glance);
     };
   });
 </script>
 
-<div class={['mascot', at === 'top' && 'is-top']} role="note" bind:this={root}>
+<div
+  class={['mascot', at === 'top' && 'is-top', look === 'right' && 'looks-right', armed && 'is-armed', looked && 'is-looked', hasAction && 'has-action']}
+  role="note"
+  bind:this={root}
+>
   <span class={['mascot-face', blinking && 'is-blinking']} aria-hidden="true"><Logo size={44} /></span>
   {@render children?.()}
+  {#if hasAction}
+    <a class="btn btn--primary mascot-action" {href}>{action}<ExtraIcon name="arrow-right" /></a>
+  {/if}
 </div>
 
 <style>
@@ -115,6 +147,48 @@
     transform: rotate(45deg);
   }
 
+  /* 泡泡右邊的按鈕：泡泡那一欄只佔文字的寬度，按鈕緊跟在後面、和泡泡上下置中。 */
+  .mascot.has-action {
+    grid-template-columns: 44px auto minmax(0, 1fr);
+  }
+
+  .mascot-action {
+    grid-row: 1;
+    grid-column: 3;
+    align-self: center;
+    justify-self: start;
+  }
+
+  @media (width < 560px) {
+    /* 窄螢幕：按鈕換到泡泡下面，和泡泡左緣對齊。 */
+    .mascot.has-action {
+      grid-template-columns: 44px minmax(0, 1fr);
+      row-gap: var(--space-2);
+    }
+
+    .mascot-action {
+      grid-row: 2;
+      grid-column: 2;
+    }
+  }
+
+  /* 看向右邊：兩個點一起往右偏（viewBox 的 6 單位，右邊的點仍在環內）。用 translate 而不是 transform，眨眼的 transform 才不會把它蓋掉。 */
+  .looks-right :global(.logo-left),
+  .looks-right :global(.logo-right) {
+    translate: 6px 0;
+  }
+
+  .looks-right.is-looked :global(.logo-left),
+  .looks-right.is-looked :global(.logo-right) {
+    transition: translate 420ms var(--ease-spring);
+  }
+
+  /* 還沒看過去：先待在正中間（只有 JS 啟動、而且不是減少動態時才會有這個狀態）。 */
+  .looks-right.is-armed :global(.logo-left),
+  .looks-right.is-armed :global(.logo-right) {
+    translate: 0 0;
+  }
+
   /* 眨眼：兩個點（左手粉、右手藍，Logo 本來的顏色）上下壓扁一下，連眨兩次後停住。 */
   .is-blinking :global(.logo-left),
   .is-blinking :global(.logo-right) {
@@ -139,6 +213,11 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .looks-right.is-looked :global(.logo-left),
+    .looks-right.is-looked :global(.logo-right) {
+      transition: none;
+    }
+
     .is-blinking :global(.logo-left),
     .is-blinking :global(.logo-right),
     .mascot:hover :global(.logo-left),

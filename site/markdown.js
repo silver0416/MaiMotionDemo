@@ -17,9 +17,15 @@ const AUTO_IMPORTS = [
  */
 const SECTION_COMPONENTS = ['intro', 'quick'];
 
-/** 借用別章元件的章節：quick 每頁最後一句由吉祥物講，用的是 intro 的 Mascot。 */
+/**
+ * 借用 intro 的 Mascot（吉祥物對話框）的章節；這些章節不必有自己的元件資料夾。
+ * - quick：每頁最後一句由吉祥物講
+ * - start：〈下載與啟動〉開頭那句
+ */
+const MASCOT_IMPORT = "import Mascot from '$lib/intro/Mascot.svelte';";
 const SECTION_EXTRA_IMPORTS = {
-  quick: ["import Mascot from '$lib/intro/Mascot.svelte';"],
+  quick: [MASCOT_IMPORT],
+  start: [MASCOT_IMPORT],
 };
 
 /**
@@ -29,18 +35,20 @@ const SECTION_EXTRA_IMPORTS = {
 function sectionImports(filename) {
   const match = /[\\/]src[\\/]content[\\/]([^\\/]+)[\\/]/.exec(filename);
   const section = match?.[1];
-  if (!section || !SECTION_COMPONENTS.includes(section)) return [];
+  if (!section) return [];
+  const extra = SECTION_EXTRA_IMPORTS[section] ?? [];
+  if (!SECTION_COMPONENTS.includes(section)) return extra;
   let files = [];
   try {
     files = readdirSync(fileURLToPath(new URL(`./src/lib/${section}/`, import.meta.url)));
   } catch {
-    return [];
+    return extra;
   }
   return [
     ...files
       .filter((file) => /^[A-Z][A-Za-z0-9]*\.svelte$/.test(file))
       .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/${section}/${file}';`),
-    ...(SECTION_EXTRA_IMPORTS[section] ?? []),
+    ...extra,
   ];
 }
 

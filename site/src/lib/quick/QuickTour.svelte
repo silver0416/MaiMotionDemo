@@ -458,7 +458,7 @@
     flex-wrap: nowrap;
     align-items: center;
     justify-content: center;
-    gap: var(--space-2);
+    gap: var(--space-5);
     min-height: 32px;
     padding: var(--space-2) var(--space-3);
     border-top: 1px solid var(--c-border);

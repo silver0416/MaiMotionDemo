@@ -10,22 +10,22 @@
     {
       "id": "list",
       "src": "/shots/quick/export-list.webp",
-      "bytes": 120928
+      "bytes": 113838
     },
     {
       "id": "menu",
       "src": "/shots/quick/export-menu.webp",
-      "bytes": 127390
+      "bytes": 119104
     },
     {
       "id": "picked1",
       "src": "/shots/quick/export-picked1.webp",
-      "bytes": 123232
+      "bytes": 114996
     },
     {
       "id": "picked2",
       "src": "/shots/quick/export-picked2.webp",
-      "bytes": 123758
+      "bytes": 115620
     }
   ],
   "steps": [
@@ -98,10 +98,17 @@
     }
   ],
   "meta": {
-    "second": {
-      "title": "かくしん的☆めたまるふぉ～ぜっ！［Standard］",
-      "query": "かくしん的",
-      "difficulty": "BASIC"
-    }
+    "records": [
+      {
+        "title": "かくしん的☆めたまるふぉ～ぜっ！［Standard］",
+        "query": "かくしん的",
+        "difficulty": "BASIC"
+      },
+      {
+        "title": "四月の雨［Standard］",
+        "query": "四月の雨",
+        "difficulty": "BASIC"
+      }
+    ]
   }
 }

@@ -7,12 +7,13 @@
 // 例：node scripts/capture-quick.mjs --exe ..\.local\MaiMotionDemo-v1.2.5-windows-x64.exe --profile $env:TEMP\mm-quick-profile --flow annotate
 // 只重拍下載頁（發新版後要做）：node scripts/capture-quick.mjs --flow download（不用 App，--exe／--profile 可省略）
 //
-// 流程（依這個順序跑，同一次啟動 App 接續拍）：
+// 流程（依這個順序跑，同一次啟動 App 接續拍；標 fresh 的流程前面若已經跑過別的流程，會關掉 App、用新的空設定檔再啟動一次）：
 //   download  文件站的 /download（headless Edge）。版本號來自本機建置的快照：發新版後這一頁要重拍。
 //   open      App 剛開啟的空白主畫面（畫面重用 search-home，只量三欄的位置）
 //   search    搜尋並載入示範的歌（SONGS.main）的 BASIC
 //   annotate  接續 search：切到「標註」分頁，一顆一顆標左右手（照面板上的模型建議按 A／D，不會出現「≠模型」）
-//   export    接續 annotate：再載入另一首歌（SONGS.second）的 BASIC，多選兩筆，停在「匯出標記檔」之前（不開系統存檔視窗、不寫任何檔案）
+//   export    fresh（不接續 annotate）：先載入 SONGS.second、再載入 SONGS.main（清單新的在上，main 排第一筆），
+//             在 main 那一筆「⋯」→「選取」、再點 second，停在「匯出標記檔」之前（不開系統存檔視窗、不寫任何檔案）
 // --flow 沒給就全部重拍。只拍某幾個時，它們需要的前置流程（needs）會「只操作、不存檔」地先跑一次，
 // 不會改到前置流程已經提交的圖與 manifest（例如 --flow annotate 會先空跑 search）。
 //
@@ -22,7 +23,7 @@
 //   旁白文字不在這裡，在 src/lib/quick/flows.ts（改字不用重拍）。
 //
 // 安全規則（使用者真正的譜面紀錄在 WebView2 的預設設定檔，絕對不能開到、不能拍到）：
-// - 一律用 WEBVIEW2_USER_DATA_FOLDER 指到 --profile 這個隔離的空白資料夾；每次執行前整個刪掉重建。
+// - 一律用 WEBVIEW2_USER_DATA_FOLDER 指到 --profile 這個隔離的空白資料夾（每次啟動 App 用底下一個新的 launch-<n>）；每次執行前整個刪掉重建。
 //   資料夾裡會放一個記號檔（.maimotion-capture-profile）：已經存在、但沒有記號檔的資料夾一律拒絕刪除與使用，避免刪錯地方。
 //   拍文件站用的 headless Edge 另用系統暫存資料夾裡一個新的設定檔（mm-capture-edge-<時間>），結束時刪掉。
 // - 啟動後譜面紀錄數必須是 0，否則立刻停止（代表沒有隔離成功）。
@@ -119,6 +120,23 @@ const SONG_LIST = `${SONG_ITEMS}.map((b) => { const t = b.querySelector('.title'
 const songButton = (index) => `${SONG_ITEMS}[${index}]`;
 const normTitle = (s) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
+/** 準備步驟（不拍）：打開「搜尋譜面」、搜尋 song、點那首歌、載入它的難度，等到清單有 count 筆。 */
+async function loadSong(c, song, count, log) {
+  await c.click(SEARCH_BUTTON);
+  await sleep(600);
+  await c.waitFor(INDEX_READY, 120000, 500);
+  await c.type('#wiki-query', song.query);
+  await c.click(`document.querySelector('#search-panel-wiki form.search-bar button[type=submit]')`);
+  await c.waitFor(`${SONG_ITEMS}.length > 0 || txt(document.querySelector('#search-panel-wiki')).includes('找不到')`, 30000);
+  await sleep(500);
+  const before = log.length;
+  await c.click(songButton(pickSong(await c.evalJs(SONG_LIST), song, log)));
+  log[before].difficulty = song.difficulty;
+  await c.waitFor(`!!${loadButton(song.difficulty)}`, 10000);
+  await c.click(loadButton(song.difficulty));
+  await c.waitFor(LOADED(count), 180000, 500);
+}
+
 /** 在搜尋結果裡找出 song 那一筆的位置；不確定時丟錯（訊息附上實際的搜尋結果）。 */
 function pickSong(list, song, log) {
   const want = normTitle(song.title);
@@ -139,7 +157,8 @@ const LOADED = (count) =>
   `(() => { const a = document.querySelector('.records-body li.item.is-active'); return document.querySelectorAll('.records-body li.item').length === ${count} && a && !document.querySelector('dialog[open]') && !txt(a).includes('分析中') && !document.body.innerText.includes('沒有可播放的方案'); })()`;
 
 /**
- * @type {Record<string, { target: 'app' | 'web', needs?: string[], run: (ctx: Ctx) => Promise<void> }>}
+ * fresh：要從乾淨的 App 開始（前面跑過別的流程就重新啟動一次，新的空設定檔）。
+ * @type {Record<string, { target: 'app' | 'web', needs?: string[], fresh?: boolean, run: (ctx: Ctx) => Promise<void> }>}
  */
 const FLOWS = {
   // 第 1 頁〈下載〉：文件站的下載頁，鏡頭拉近到最上面的下載鈕。不按（不真的下載）。
@@ -328,70 +347,77 @@ const FLOWS = {
     },
   },
 
-  // 第 5 頁〈多選匯出〉：接續 annotate。先再載入另一首歌（SONGS.second，不拍），讓清單有兩筆；
-  // 「⋯」→「選取」→ 點第二筆 → 框起選取工具列的「匯出標記檔」。不按匯出（會開系統存檔視窗、寫檔）。
+  // 第 5 頁〈多選匯出〉：自己一次乾淨的啟動（fresh）。先載入 SONGS.second、再載入 SONGS.main（不拍），
+  // 清單預設新的在上面，所以 main 排第一筆（不動排序選項）。
+  // 在 main 那一筆按「⋯」→「選取」→ 再點 second 那一筆 → 框起選取工具列的「匯出標記檔」。不按匯出（會開系統存檔視窗、寫檔）。
+  // 點哪一筆用歌名比對決定，不寫死位置；清單順序、選單開在哪一筆、兩筆都選到，任何一項不對就失敗。
   export: {
     target: 'app',
-    needs: ['annotate'],
+    fresh: true,
     async run(c) {
-      // 準備：再載入另一首歌（只操作，不拍）。
-      const song = SONGS.second;
       const songs = [];
-      await c.click(SEARCH_BUTTON);
-      await sleep(600);
-      await c.waitFor(INDEX_READY, 120000, 500);
-      await c.type('#wiki-query', song.query);
-      await c.click(`document.querySelector('#search-panel-wiki form.search-bar button[type=submit]')`);
-      await c.waitFor(`${SONG_ITEMS}.length > 0 || txt(document.querySelector('#search-panel-wiki')).includes('找不到')`, 30000);
-      await sleep(500);
-      const songBtn = songButton(pickSong(await c.evalJs(SONG_LIST), song, songs));
+      await loadSong(c, SONGS.second, 1, songs);
+      await loadSong(c, SONGS.main, 2, songs);
       c.log.songs = songs;
-      c.meta.second = { title: songs[0].chosen, query: song.query, difficulty: song.difficulty };
-      await c.click(songBtn);
-      await c.waitFor(`!!${loadButton(song.difficulty)}`, 10000);
-      await c.click(loadButton(song.difficulty));
-      await c.waitFor(LOADED(2), 180000, 500);
+      c.meta.records = songs.map((s) => ({ title: s.chosen, query: s.query, difficulty: s.difficulty }));
       await c.waitFor(`!document.querySelector('.toast')`, 15000).catch(() => {});
       await sleep(800);
-      c.log.records = await c.evalJs(`[...document.querySelectorAll('.records-body li.item')].map((li) => txt(li))`);
 
-      const item = (i) => `document.querySelectorAll('.records-body li.item')[${i}]`;
-      // 滑鼠停在第一筆上，「⋯」才看得到（平常隱藏）。
-      await c.hover(item(0));
+      const ITEMS = `[...document.querySelectorAll('.records-body li.item')]`;
+      const item = (i) => `${ITEMS}[${i}]`;
+      const texts = await c.evalJs(`${ITEMS}.map((li) => txt(li))`);
+      c.log.records = texts;
+      const indexOf = (song) => {
+        const want = normTitle(song.title);
+        const found = texts.map((t, i) => [normTitle(t), i]).filter(([t]) => t.startsWith(want));
+        if (found.length !== 1) throw new Error(`紀錄清單裡「${song.title}」有 ${found.length} 筆：${texts.join('／')}`);
+        return found[0][1];
+      };
+      const first = indexOf(SONGS.main);
+      const second = indexOf(SONGS.second);
+      if (first !== 0) throw new Error(`紀錄清單第一筆不是「${SONGS.main.title}」：${texts.join('／')}`);
+      const picked = (i) => `txt(${item(i)}).includes('（已選取）')`;
+
+      // 滑鼠停在 main 那一筆上，「⋯」才看得到（平常隱藏）。
+      await c.hover(item(first));
       await sleep(400);
-      const more = `${item(0)}.querySelector('button.more')`;
-      const list = `[${item(0)}, ${item(1)}]`;
+      const more = `${item(first)}.querySelector('button.more')`;
+      const list = `[${item(first)}, ${item(second)}]`;
       await c.frame('list');
       const moreStep = { target: await c.rect(more), focus: await c.rect(list) };
       await c.click(more);
       await c.move(130, 720);
       const menuItem = `[...document.querySelectorAll('[role=menu] [role=menuitem], [role=menu] button')].find((b) => txt(b) === '選取')`;
       await c.waitFor(`!!${menuItem}`, 5000);
+      if (!(await c.evalJs(`${more}.getAttribute('aria-expanded') === 'true'`))) throw new Error(`選單不是開在「${SONGS.main.title}」那一筆`);
       await sleep(400);
       await c.frame('menu');
       c.step({ id: 'more', frame: 'list', after: 'menu', ...moreStep });
 
-      const selectStep = { target: await c.rect(menuItem), focus: await c.rect(`[document.querySelector('[role=menu]'), ${item(0)}]`) };
+      const selectStep = { target: await c.rect(menuItem), focus: await c.rect(`[document.querySelector('[role=menu]'), ${item(first)}]`) };
       await c.click(menuItem);
       await c.waitFor(`txt(document.querySelector('.selection')).includes('已選 1 筆')`, 5000);
+      if (!(await c.evalJs(picked(first)))) throw new Error(`選到的不是「${SONGS.main.title}」`);
       await sleep(600);
       await c.frame('picked1');
       c.step({ id: 'select', frame: 'menu', after: 'picked1', ...selectStep });
 
-      const second = `${item(1)}.querySelector('button.open')`;
-      const pickStep = { target: await c.rect(second), focus: await c.rect(`[document.querySelector('.selection'), ${item(1)}]`) };
-      await c.click(second);
+      const open2 = `${item(second)}.querySelector('button.open')`;
+      const pickStep = { target: await c.rect(open2), focus: await c.rect(`[document.querySelector('.selection'), ${item(second)}]`) };
+      await c.click(open2);
       await c.waitFor(`txt(document.querySelector('.selection')).includes('已選 2 筆')`, 5000);
+      if (!(await c.evalJs(`${picked(first)} && ${picked(second)}`))) throw new Error('已選 2 筆，但不是這兩首都選到');
       await sleep(500);
       await c.frame('picked2');
       c.step({ id: 'pick', frame: 'picked1', after: 'picked2', ...pickStep });
+      c.log.clicked = { menu: texts[first], pick: texts[second] };
 
       const exportButton = `document.querySelector('.selection button[aria-label="匯出標記檔"]')`;
       c.step({
         id: 'export',
         frame: 'picked2',
         highlight: await c.rect(exportButton),
-        focus: await c.rect(`[document.querySelector('.selection'), ${item(1)}]`),
+        focus: await c.rect(`[document.querySelector('.selection'), ${item(first)}, ${item(second)}]`),
       });
     },
   },
@@ -589,11 +615,17 @@ async function startWeb() {
   return { cdp, base };
 }
 
+/** 第幾次啟動 App：每次用 --profile 底下一個新的空資料夾（launch-1、launch-2…），不用刪舊的就是全新的設定檔。 */
+let launches = 0;
+
 async function startApp() {
+  launches += 1;
+  const userData = join(profile, `launch-${launches}`);
+  mkdirSync(userData, { recursive: true });
   const proc = spawn(exe, [], {
     env: {
       ...process.env,
-      WEBVIEW2_USER_DATA_FOLDER: profile,
+      WEBVIEW2_USER_DATA_FOLDER: userData,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
     },
     stdio: 'ignore',
@@ -606,6 +638,26 @@ async function startApp() {
   await sleep(2500);
   await checkViewport(cdp);
   return cdp;
+}
+
+/** 關掉這支腳本啟動的 App（連同子程序），給 fresh 流程重新啟動用。 */
+async function stopApp(cdp) {
+  try {
+    cdp.ws.close();
+  } catch {
+    // 已經關了
+  }
+  for (const entry of started.filter((s) => s.name === 'App')) {
+    if (entry.proc.exitCode === null && entry.proc.pid) {
+      try {
+        execFileSync('taskkill', ['/PID', String(entry.proc.pid), '/T', '/F'], { stdio: 'ignore' });
+      } catch {
+        entry.proc.kill();
+      }
+    }
+    started.splice(started.indexOf(entry), 1);
+  }
+  await sleep(2000);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,9 +677,19 @@ try {
     report.palette = await app.evalJs(`[document.documentElement.dataset.palette ?? null, document.documentElement.dataset.help ?? null]`);
   }
 
+  /** 這次啟動的 App 已經跑過流程（fresh 流程要重新啟動一個乾淨的）。 */
+  let appUsed = false;
   for (const name of runList) {
     const flow = FLOWS[name];
     const dry = !wanted.has(name);
+    if (flow.target === 'app') {
+      if (flow.fresh && appUsed) {
+        await stopApp(app);
+        app = await startApp();
+        appUsed = false;
+      }
+      appUsed = true;
+    }
     const cdp = flow.target === 'web' ? web.cdp : app;
     const frames = [];
     /** 整個流程成功才寫檔，失敗時不會留下和 manifest 對不上的圖。 */
