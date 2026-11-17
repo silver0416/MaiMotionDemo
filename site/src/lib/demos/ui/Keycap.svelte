@@ -2,6 +2,7 @@
   /**
    * 鍵帽提示：一顆膠囊鈕，裡面是鍵（kbd）與它的作用。
    * lit 時鍵反白一下，表示自動示範「現在按了這個鍵」；點下去等於按那個鍵。
+   * still：只是提示、不能按（實際畫面導覽疊在截圖上的鍵帽），外觀一樣，換成 span。
    */
   interface Props {
     /** 鍵上的字 */
@@ -10,16 +11,24 @@
     label: string;
     lit?: boolean;
     disabled?: boolean;
+    still?: boolean;
     onclick?: () => void;
   }
 
-  let { cap, label, lit = false, disabled = false, onclick }: Props = $props();
+  let { cap, label, lit = false, disabled = false, still = false, onclick }: Props = $props();
 </script>
 
-<button class="btn keycap" class:is-lit={lit} {disabled} {onclick} aria-label={`${label}（按鍵 ${cap}）`}>
-  <kbd class="cap">{cap}</kbd>
-  <span class="cap-label">{label}</span>
-</button>
+{#if still}
+  <span class="btn keycap is-still" class:is-lit={lit}>
+    <kbd class="cap">{cap}</kbd>
+    <span class="cap-label">{label}</span>
+  </span>
+{:else}
+  <button class="btn keycap" class:is-lit={lit} {disabled} {onclick} aria-label={`${label}（按鍵 ${cap}）`}>
+    <kbd class="cap">{cap}</kbd>
+    <span class="cap-label">{label}</span>
+  </button>
+{/if}
 
 <style>
   .keycap {
@@ -28,6 +37,17 @@
     background: var(--c-control);
     color: var(--c-text);
     font-weight: 500;
+  }
+
+  /* 不能按：不換游標、滑過不變色、按下不縮。 */
+  .keycap.is-still {
+    cursor: default;
+  }
+
+  .keycap.is-still:hover,
+  .keycap.is-still:active {
+    background: var(--c-control);
+    transform: none;
   }
 
   .cap {

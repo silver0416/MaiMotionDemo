@@ -7,7 +7,8 @@ import { reducedMotion } from '$app/lib/press';
  * - 腳本是一串步驟：每一步有一行旁白（aria-live 會念出來）、要做的事（run），
  *   可以先讓小游標移到某個元素再「按下去」（target），或讓某個鍵帽亮起（key）。
  * - 進入可視範圍才開始播、離開就暫停，回到畫面再接著播。
- * - prefers-reduced-motion：不自動播，直接跳到最後一步的狀態；按「播放」仍可看一次。
+ * - prefers-reduced-motion：不自動播，直接跳到最後一步的狀態（或 reducedStep 指定的那一步）；按「播放」仍可看一次。
+ * - seek(i)：跳到某一步停住（「上一步／下一步」逐步檢視），之後按「播放」從下一步接著播。
  * - 使用者一動手（takeOver），腳本就停，不搶控制權；之後按「播放」或「重播」從頭再看一次。
  * - 所有時間都是畫面上的示意，不是 App 的播放時鐘。
  */
@@ -35,6 +36,11 @@ export interface PlayerOptions {
   intro: string;
   /** 示範結束時的旁白 */
   outro: string;
+  /**
+   * prefers-reduced-motion 時停在哪一步（用 seek 跳過去，不自動播）。
+   * 沒給就照舊：直接跑完腳本、停在最後一步（skipToEnd）。
+   */
+  reducedStep?: number;
 }
 
 const HOLD = 1200;
@@ -139,6 +145,26 @@ export class DemoPlayer {
     this.say = this.#opts.outro;
   }
 
+  /**
+   * 跳到某一步、停住（逐步檢視用）：從頭快速執行到那一步，旁白換成那一步的。
+   * 之後按「播放」從下一步接著播；不算使用者接手（manual），自動播放的計時也清掉。
+   */
+  seek(index: number): void {
+    const to = Math.max(0, Math.min(this.steps.length - 1, index));
+    this.#clear();
+    this.#opts.reset();
+    this.skipping = true;
+    for (let i = 0; i <= to; i += 1) this.steps[i].run?.();
+    this.skipping = false;
+    this.index = to;
+    this.playing = false;
+    this.manual = false;
+    this.done = false;
+    this.#resume = false;
+    this.cursor.show = false;
+    this.say = this.steps[to].say;
+  }
+
   /** 讓鍵帽亮一下（使用者按鍵時也用）。 */
   flash(key: string | undefined): void {
     if (!key) return;
@@ -151,7 +177,8 @@ export class DemoPlayer {
   attach(node: HTMLElement): () => void {
     if (reducedMotion()) {
       // attachment 在 effect 裡執行；直接跑完腳本會讀寫同一批狀態而不斷重跑，所以不追蹤。
-      untrack(() => this.skipToEnd());
+      const at = this.#opts.reducedStep;
+      untrack(() => (at === undefined ? this.skipToEnd() : this.seek(at)));
       return () => this.#clear();
     }
     if (typeof IntersectionObserver === 'undefined') {

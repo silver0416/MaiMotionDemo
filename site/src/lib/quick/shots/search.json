@@ -1,0 +1,162 @@
+{
+  "flow": "search",
+  "app": "1.2.5",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "scale": 2
+  },
+  "frames": [
+    {
+      "id": "home",
+      "src": "/shots/quick/search-home.webp",
+      "bytes": 67236
+    },
+    {
+      "id": "dialog",
+      "src": "/shots/quick/search-dialog.webp",
+      "bytes": 48418
+    },
+    {
+      "id": "typed",
+      "src": "/shots/quick/search-typed.webp",
+      "bytes": 48070
+    },
+    {
+      "id": "results",
+      "src": "/shots/quick/search-results.webp",
+      "bytes": 72270
+    },
+    {
+      "id": "preview",
+      "src": "/shots/quick/search-preview.webp",
+      "bytes": 72342
+    },
+    {
+      "id": "loaded",
+      "src": "/shots/quick/search-loaded.webp",
+      "bytes": 109942
+    }
+  ],
+  "steps": [
+    {
+      "id": "open",
+      "frame": "home",
+      "after": "dialog",
+      "target": [
+        20.8,
+        92.8,
+        230.4,
+        34
+      ],
+      "focus": [
+        12.8,
+        12.8,
+        246.4,
+        122.8
+      ]
+    },
+    {
+      "id": "type",
+      "frame": "dialog",
+      "after": "typed",
+      "target": [
+        196.8,
+        198,
+        803.8,
+        32
+      ],
+      "focus": [
+        180.8,
+        182,
+        918.4,
+        60
+      ]
+    },
+    {
+      "id": "search",
+      "frame": "typed",
+      "after": "results",
+      "target": [
+        1008.6,
+        198,
+        74.6,
+        32
+      ],
+      "focus": [
+        180.8,
+        182,
+        918.4,
+        60
+      ]
+    },
+    {
+      "id": "song",
+      "frame": "results",
+      "after": "preview",
+      "target": [
+        188.8,
+        388.5,
+        582.4,
+        117.6
+      ],
+      "focus": [
+        188.8,
+        388.5,
+        582.4,
+        117.6
+      ]
+    },
+    {
+      "id": "load",
+      "frame": "preview",
+      "after": "loaded",
+      "target": [
+        998.2,
+        538,
+        74.6,
+        32
+      ],
+      "focus": [
+        788,
+        500.5,
+        292.8,
+        198.4
+      ]
+    },
+    {
+      "id": "done",
+      "frame": "loaded",
+      "highlight": [
+        20.8,
+        245.6,
+        230.4,
+        56.4
+      ]
+    },
+    {
+      "id": "play",
+      "frame": "loaded",
+      "highlight": [
+        284.8,
+        587.2,
+        74.6,
+        32
+      ],
+      "focus": [
+        284.8,
+        587.2,
+        74.6,
+        32
+      ]
+    }
+  ],
+  "meta": {
+    "song": {
+      "title": "四月の雨［Standard］",
+      "query": "四月の雨",
+      "difficulty": "BASIC"
+    },
+    "coverImages": 0
+  }
+}

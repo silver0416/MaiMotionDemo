@@ -1,0 +1,107 @@
+{
+  "flow": "export",
+  "app": "1.2.5",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "scale": 2
+  },
+  "frames": [
+    {
+      "id": "list",
+      "src": "/shots/quick/export-list.webp",
+      "bytes": 120928
+    },
+    {
+      "id": "menu",
+      "src": "/shots/quick/export-menu.webp",
+      "bytes": 127390
+    },
+    {
+      "id": "picked1",
+      "src": "/shots/quick/export-picked1.webp",
+      "bytes": 123232
+    },
+    {
+      "id": "picked2",
+      "src": "/shots/quick/export-picked2.webp",
+      "bytes": 123758
+    }
+  ],
+  "steps": [
+    {
+      "id": "more",
+      "frame": "list",
+      "after": "menu",
+      "target": [
+        219.2,
+        249.6,
+        28,
+        28
+      ],
+      "focus": [
+        20.8,
+        245.6,
+        230.4,
+        114.8
+      ]
+    },
+    {
+      "id": "select",
+      "frame": "menu",
+      "after": "picked1",
+      "target": [
+        75.5,
+        469.4,
+        170.4,
+        32
+      ],
+      "focus": [
+        20.8,
+        245.6,
+        231.9,
+        341.6
+      ]
+    },
+    {
+      "id": "pick",
+      "frame": "picked1",
+      "after": "picked2",
+      "target": [
+        20.8,
+        304,
+        230.4,
+        56.4
+      ],
+      "focus": [
+        20.8,
+        207.6,
+        230.4,
+        152.8
+      ]
+    },
+    {
+      "id": "export",
+      "frame": "picked2",
+      "highlight": [
+        101.2,
+        209.6,
+        26,
+        26
+      ],
+      "focus": [
+        20.8,
+        207.6,
+        230.4,
+        152.8
+      ]
+    }
+  ],
+  "meta": {
+    "second": {
+      "title": "かくしん的☆めたまるふぉ～ぜっ！［Standard］",
+      "query": "かくしん的",
+      "difficulty": "BASIC"
+    }
+  }
+}

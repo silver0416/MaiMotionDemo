@@ -1,3 +1,6 @@
+<!-- css="injected"：理由同 Stage.svelte（實際畫面導覽在伺服器端就算繪游標，沒有樣式時會露出來）。 -->
+<svelte:options css="injected" />
+
 <script lang="ts">
   /**
    * 示意動畫的小游標：自動示範時表示「現在按了哪裡」。

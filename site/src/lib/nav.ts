@@ -14,7 +14,7 @@ export const SITE = {
   appVersion: __APP_VERSION__,
 } as const;
 
-export type SectionId = 'intro' | 'start' | 'charts' | 'play' | 'model' | 'annotate' | 'more';
+export type SectionId = 'intro' | 'quick' | 'start' | 'charts' | 'play' | 'model' | 'annotate' | 'more';
 
 export interface Section {
   id: SectionId;
@@ -25,6 +25,7 @@ export interface Section {
 
 export const SECTIONS: readonly Section[] = [
   { id: 'intro', title: '認識 MaiMotionDemo', blurb: '它在做什麼、怎麼推算手順，以及為什麼需要你的標註。' },
+  { id: 'quick', title: '超簡易上手', blurb: '第一次用？跟著實際畫面一步一步做，只教最基本的。' },
   { id: 'start', title: '開始使用', blurb: '安裝 App，貼上第一段譜面，看兩隻手怎麼動。' },
   { id: 'charts', title: '匯入譜面', blurb: '從 Majdata、simai Wiki 搜尋，或自己貼上 simai。' },
   { id: 'play', title: '播放與檢視', blurb: '播放、逐格與循環片段，看懂盤面上的每個記號。' },

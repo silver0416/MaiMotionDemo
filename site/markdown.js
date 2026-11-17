@@ -10,29 +10,34 @@ const AUTO_IMPORTS = [
   "import Callout from '$lib/md/Callout.svelte';",
 ];
 
-/** 「認識 MaiMotionDemo」章節專用的元件資料夾。 */
-const INTRO_DIR = fileURLToPath(new URL('./src/lib/intro/', import.meta.url));
+/**
+ * 有專用元件資料夾的章節：src/content/<章節>/ 底下的頁面另外自動 import src/lib/<章節>/ 裡的每個元件（檔名就是標籤名）。
+ * - intro（認識 MaiMotionDemo）：Steps、LinkRows、Mascot…
+ * - quick（超簡易上手）：QuickTour（實際畫面導覽）
+ */
+const SECTION_COMPONENTS = ['intro', 'quick'];
 
 /**
- * src/content/intro/ 底下的頁面另外自動 import src/lib/intro/ 裡的每個元件（檔名就是標籤名）。
  * 每次轉換都重新列出資料夾：新增元件不必改這裡；刪掉某個元件（例如實驗性的 Mascot）也不會留下壞掉的 import。
  * @param {string} filename
  */
-function introImports(filename) {
-  if (!/[\\/]src[\\/]content[\\/]intro[\\/]/.test(filename)) return [];
+function sectionImports(filename) {
+  const match = /[\\/]src[\\/]content[\\/]([^\\/]+)[\\/]/.exec(filename);
+  const section = match?.[1];
+  if (!section || !SECTION_COMPONENTS.includes(section)) return [];
   let files = [];
   try {
-    files = readdirSync(INTRO_DIR);
+    files = readdirSync(fileURLToPath(new URL(`./src/lib/${section}/`, import.meta.url)));
   } catch {
     return [];
   }
   return files
     .filter((file) => /^[A-Z][A-Za-z0-9]*\.svelte$/.test(file))
-    .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/intro/${file}';`);
+    .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/${section}/${file}';`);
 }
 
 /**
- * markup preprocessor，排在 mdsvex 前面：在 .md 裡加上 Demo／Callout（intro 章節再加 src/lib/intro/ 的元件）的 import。
+ * markup preprocessor，排在 mdsvex 前面：在 .md 裡加上 Demo／Callout（intro、quick 章節再加各自資料夾的元件）的 import。
  * 已經有 instance <script> 就塞進去（Svelte 不允許兩個），沒有就放在 frontmatter 後面。
  * @returns {import('svelte/compiler').PreprocessorGroup}
  */
@@ -41,7 +46,7 @@ export function autoImport() {
     name: 'docs-auto-import',
     markup({ content, filename }) {
       if (!filename?.endsWith('.md')) return;
-      const imports = [...AUTO_IMPORTS, ...introImports(filename)].join('\n');
+      const imports = [...AUTO_IMPORTS, ...sectionImports(filename)].join('\n');
       const instance = /<script(?![^>]*\bmodule\b)(?![^>]*context=["']module["'])[^>]*>/;
       const match = instance.exec(content);
       if (match) {

@@ -1,0 +1,50 @@
+{
+  "flow": "open",
+  "app": "1.2.5",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "scale": 2
+  },
+  "frames": [
+    {
+      "id": "home",
+      "src": "/shots/quick/search-home.webp",
+      "bytes": 67236,
+      "reused": true
+    }
+  ],
+  "steps": [
+    {
+      "id": "records",
+      "frame": "home",
+      "highlight": [
+        12,
+        12,
+        248,
+        776
+      ]
+    },
+    {
+      "id": "disc",
+      "frame": "home",
+      "highlight": [
+        272,
+        12,
+        624,
+        776
+      ]
+    },
+    {
+      "id": "tabs",
+      "frame": "home",
+      "highlight": [
+        908,
+        12,
+        360,
+        776
+      ]
+    }
+  ],
+  "meta": {}
+}

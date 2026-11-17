@@ -59,3 +59,5 @@ keywords: [入門, 教學, 流程, 交出, 提交, 怎麼開始, 下一步]
 <LinkRow href="/annotate/video">對照手元影片標註</LinkRow>
 <LinkRow href="/model/overview">模型的原理</LinkRow>
 </LinkRows>
+
+想要更簡單、一步一步照著實際畫面做的版本，看[超簡易上手](/quick/download)。

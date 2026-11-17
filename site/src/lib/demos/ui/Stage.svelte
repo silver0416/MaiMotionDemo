@@ -1,3 +1,10 @@
+<!--
+  css="injected"：實際畫面導覽（$lib/quick/QuickTour）在伺服器端就算繪這個外框。Stage 同時被延遲載入的演示共用，
+  Vite 把它的 CSS 拆成另一個檔，SvelteKit 不會放進預先產生的 HTML 的 <head>：沒有 JS 時外框沒有樣式，
+  有 JS 時等 CSS 載入才套上、版面會跳。改成由元件自己帶樣式（伺服器端算繪時直接寫進 <head>）。
+-->
+<svelte:options css="injected" />
+
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from '$app/components/Icon.svelte';
@@ -10,7 +17,19 @@
    * - 按鍵只在焦點位於演示內時處理（onkey 回傳 true 才 preventDefault），不攔截整頁的 Ctrl K、/。
    *   點演示裡的空白處也會把焦點放進來（tabindex=-1，不進 Tab 順序）。
    * - 沒有 player 時（互動地圖）只顯示旁白，不畫播放鈕。
+   * - flush：內容區不留內距（實際畫面導覽：截圖貼齊外框）。
+   * - steps：多一組「上一步／下一步」，步數改顯示這裡給的 at／total（腳本的一步可能拆成好幾個小動作）。
    */
+  interface StepNav {
+    /** 目前第幾步（從 1 起算；還沒開始是 0） */
+    at: number;
+    total: number;
+    prev: () => void;
+    next: () => void;
+    canPrev: boolean;
+    canNext: boolean;
+  }
+
   interface Props {
     label: string;
     player?: DemoPlayer;
@@ -18,11 +37,13 @@
     say?: string;
     /** 'bg'：用視窗底色（App 主視窗的縮圖） */
     surface?: 'panel' | 'bg';
+    flush?: boolean;
+    steps?: StepNav;
     onkey?: (key: string, event: KeyboardEvent) => boolean;
     children: Snippet;
   }
 
-  let { label, player, say = '', surface = 'panel', onkey, children }: Props = $props();
+  let { label, player, say = '', surface = 'panel', flush = false, steps, onkey, children }: Props = $props();
 
   let body = $state<HTMLElement | null>(null);
 
@@ -51,7 +72,7 @@
   {onkeydown}
   {@attach (node) => player?.attach(node)}
 >
-  <div class="demo-body" bind:this={body}>
+  <div class="demo-body" class:is-flush={flush} bind:this={body}>
     {@render children()}
     {#if player}
       <Cursor x={player.cursor.x} y={player.cursor.y} show={player.cursor.show} press={player.cursor.press} />
@@ -61,7 +82,15 @@
     <p class="narration" aria-live="polite">{player ? player.say : say}</p>
     {#if player}
       <div class="demo-ctrl">
-        {#if !player.manual}
+        {#if steps}
+          <span class="mono xsmall muted count" aria-hidden="true">{steps.at}／{steps.total}</span>
+          <button class="btn btn--icon" onclick={steps.prev} disabled={!steps.canPrev} aria-label="上一步">
+            <Icon name="chevron-left" size={14} /><span class="nav-text">上一步</span>
+          </button>
+          <button class="btn btn--icon" onclick={steps.next} disabled={!steps.canNext} aria-label="下一步">
+            <span class="nav-text">下一步</span><Icon name="chevron-right" size={14} />
+          </button>
+        {:else if !player.manual}
           <span class="mono xsmall muted count" aria-hidden="true">{Math.max(0, player.index + 1)}／{player.total}</span>
         {/if}
         <button
@@ -115,6 +144,10 @@
     padding: var(--space-4);
   }
 
+  .demo-body.is-flush {
+    padding: 0;
+  }
+
   .demo-foot {
     display: flex;
     flex-wrap: wrap;
@@ -150,8 +183,13 @@
   }
 
   @container demo (width < 420px) {
-    .demo-body {
+    .demo-body:not(.is-flush) {
       padding: var(--space-3);
+    }
+
+    /* 窄的時候「上一步／下一步」只留箭頭（aria-label 仍是完整的字）。 */
+    .nav-text {
+      display: none;
     }
   }
 </style>

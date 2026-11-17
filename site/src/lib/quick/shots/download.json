@@ -1,0 +1,38 @@
+{
+  "flow": "download",
+  "app": "1.2.5",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "scale": 2
+  },
+  "frames": [
+    {
+      "id": "page",
+      "src": "/shots/quick/download-page.webp",
+      "bytes": 131694
+    }
+  ],
+  "steps": [
+    {
+      "id": "button",
+      "frame": "page",
+      "target": [
+        296,
+        245.8,
+        171.7,
+        40
+      ],
+      "focus": [
+        296,
+        88,
+        736,
+        197.8
+      ]
+    }
+  ],
+  "meta": {
+    "button": "下載 Windows 版",
+    "version": "v1.2.5"
+  }
+}
