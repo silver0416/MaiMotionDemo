@@ -10,6 +10,10 @@ on:
       tag:
         description: Release tag to build and attach to (e.g. v1.0.0)
         required: true
+      macos:
+        description: Also rebuild macOS (uncheck to rebuild Linux only)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -53,6 +57,22 @@ jobs:
 
       - run: npm ci
 
+      # Tauri CLI 2.11 下載的 linuxdeploy 是 2024 年 7 月的版本，排除清單太舊，會把建置機的
+      # libwayland-client 打包進 AppImage。較新的 Mesa（例如 Ubuntu 26.04）配上這個舊版會載入失敗，
+      # WebKitWebProcess 印出「Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...」後中止，
+      # 視窗打不開（tauri-apps/tauri#15976）。這裡先把 Tauri 2.12 起改用的新版放進 Tauri 的工具快取，
+      # Tauri 看到檔案已存在就不會再下載舊版。@tauri-apps/cli 升到 2.12 以上後可以拿掉這一步。
+      - name: Use newer linuxdeploy
+        env:
+          LINUXDEPLOY_URL: https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy-07333c6/linuxdeploy-x86_64.AppImage
+          LINUXDEPLOY_SHA256: 36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62
+        run: |
+          TOOLS="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+          mkdir -p "$TOOLS"
+          curl -fsSL --retry 3 -o "$TOOLS/linuxdeploy-x86_64.AppImage" "$LINUXDEPLOY_URL"
+          echo "$LINUXDEPLOY_SHA256  $TOOLS/linuxdeploy-x86_64.AppImage" | sha256sum -c -
+          chmod +x "$TOOLS/linuxdeploy-x86_64.AppImage"
+
       - name: Build AppImage and deb
         run: >
           npm run tauri build --
@@ -70,12 +90,46 @@ jobs:
           cp "$DEB" "out/MaiMotionDemo-${TAG}-linux-x64.deb"
           ls -la out
 
+      # 上傳前先確認 AppImage 打得開：
+      # 1. 不能打包 libwayland-client，要用使用者系統上的版本（理由見上面的 linuxdeploy 步驟）。
+      # 2. 在最舊（22.04）和最新（26.04）的 Ubuntu 容器裡用 Xvfb 實際開 25 秒，WebKit 的畫面程序要還在。
+      #    容器沒有 GPU，Mesa 用軟體繪圖；這次的中止發生在載入 Mesa 時，和有沒有 GPU 無關。
+      - name: Check AppImage
+        run: |
+          cp "out/MaiMotionDemo-${TAG}-linux-x64.AppImage" "$RUNNER_TEMP/app.AppImage"
+          cd "$RUNNER_TEMP"
+          ./app.AppImage --appimage-extract > /dev/null
+          if find squashfs-root -name 'libwayland-client.so*' | grep .; then
+            echo "::error::AppImage bundles libwayland-client"
+            exit 1
+          fi
+          rm -rf squashfs-root
+          for image in ubuntu:22.04 ubuntu:26.04; do
+            echo "::group::$image"
+            docker run --rm -v "$RUNNER_TEMP:/work" -w /work "$image" bash -ec '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends \
+                libwebkit2gtk-4.1-0 libegl-mesa0 libgl1-mesa-dri xvfb xauth > /dev/null
+              APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./app.AppImage > app.log 2>&1 &
+              sleep 25
+              cat app.log
+              for p in /proc/[0-9]*; do readlink "$p/exe" 2> /dev/null || true; done | grep -q WebKitWebProcess
+            ' || { echo "::error::AppImage did not start on $image"; exit 1; }
+            if grep -q 'EGL_BAD\|Aborting' app.log; then
+              echo "::error::WebKit aborted on $image"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" out/* --clobber
 
   macos:
+    if: github.event_name == 'release' || inputs.macos
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
