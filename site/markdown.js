@@ -13,9 +13,14 @@ const AUTO_IMPORTS = [
 /**
  * 有專用元件資料夾的章節：src/content/<章節>/ 底下的頁面另外自動 import src/lib/<章節>/ 裡的每個元件（檔名就是標籤名）。
  * - intro（認識 MaiMotionDemo）：Steps、LinkRows、Mascot…
- * - quick（超簡易上手）：QuickTour（實際畫面導覽）
+ * - quick（基礎操作演示）：QuickTour（實際畫面導覽）
  */
 const SECTION_COMPONENTS = ['intro', 'quick'];
+
+/** 借用別章元件的章節：quick 每頁最後一句由吉祥物講，用的是 intro 的 Mascot。 */
+const SECTION_EXTRA_IMPORTS = {
+  quick: ["import Mascot from '$lib/intro/Mascot.svelte';"],
+};
 
 /**
  * 每次轉換都重新列出資料夾：新增元件不必改這裡；刪掉某個元件（例如實驗性的 Mascot）也不會留下壞掉的 import。
@@ -31,9 +36,12 @@ function sectionImports(filename) {
   } catch {
     return [];
   }
-  return files
-    .filter((file) => /^[A-Z][A-Za-z0-9]*\.svelte$/.test(file))
-    .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/${section}/${file}';`);
+  return [
+    ...files
+      .filter((file) => /^[A-Z][A-Za-z0-9]*\.svelte$/.test(file))
+      .map((file) => `import ${file.slice(0, -'.svelte'.length)} from '$lib/${section}/${file}';`),
+    ...(SECTION_EXTRA_IMPORTS[section] ?? []),
+  ];
 }
 
 /**

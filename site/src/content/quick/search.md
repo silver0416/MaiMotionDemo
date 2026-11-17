@@ -15,6 +15,8 @@ keywords: [找歌, 搜尋, 載入, 開譜, 第一首, 新手]
 4. 在想要的難度旁邊按「載入」。
 5. 譜面出現在左邊的譜面紀錄，按「播放」就能看兩隻手怎麼動。
 
-想知道更多搜尋的用法，看[搜尋匯入](/charts/search)。
+<Mascot>
 
-<QuickNext href="/quick/annotate">開始標記</QuickNext>
+想知道更多搜尋的用法，詳見[搜尋匯入](/charts/search)。
+
+</Mascot>

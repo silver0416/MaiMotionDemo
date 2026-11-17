@@ -6,7 +6,7 @@ import search from './shots/search.json';
 import { EXE_SKETCH } from './sketch';
 
 /**
- * 「超簡易上手」各頁的實際畫面導覽。
+ * 「基礎操作演示」各頁的實際畫面導覽。
  * - 畫面與座標：scripts/capture-quick.mjs 驅動實際的 App（下載頁是網站本身）拍下來，存成 ./shots/<flow>.json（不要手改，重拍會蓋掉）。
  * - 旁白：寫在這裡，依步驟 id 對應（改字不用重拍）。按鈕名稱要和 App 畫面一字不差。
  * - 拍不到的系統畫面（例如在檔案總管連按兩下）用 lead 接在最前面：示意畫面（sketch）＋步驟，版面在 ./sketch.ts。

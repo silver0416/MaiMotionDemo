@@ -13,6 +13,8 @@ keywords: [下載, 安裝, exe, Windows, 新手]
 2. 按最上面的「下載 Windows 版」。
 3. 檔案會存到「下載」資料夾，不需要安裝。
 
-用 macOS 或 Linux，看[下載與啟動](/start/install)。
+<Mascot>
 
-<QuickNext href="/quick/open">開啟 App</QuickNext>
+macOS 或 Linux 版 App 下載方式，詳見[下載與啟動](/start/install)。
+
+</Mascot>

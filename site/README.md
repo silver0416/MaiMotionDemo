@@ -25,7 +25,7 @@ site/
       demos/              動畫演示（見「演示」）
   scripts/
     gen-demos.mjs         呼叫 Rust 核心產生盤面演示資料
-    capture-quick.mjs     驅動桌面 App 拍「超簡易上手」的實際畫面與座標
+    capture-quick.mjs     驅動桌面 App 拍「基礎操作演示」的實際畫面與座標
     build-index.mjs       把內容切塊、算 embedding，產生搜尋索引
   static/                 favicon、robots.txt、search/（索引，建置產物）
   worker/                 cf 專案：cloudflare.config.ts、src/index.ts（/api/search）
@@ -114,7 +114,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 ### 三級標題
 ```
 
-- 章節（`section`）與顯示名稱固定在 `src/lib/nav.ts`：`intro` 認識 MaiMotionDemo、`quick` 超簡易上手、`start` 開始使用、`charts` 匯入譜面、`play` 播放與檢視、`model` 模型怎麼分左右手、`annotate` 真人手順標註、`more` 其他。
+- 章節（`section`）與顯示名稱固定在 `src/lib/nav.ts`：`intro` 認識 MaiMotionDemo、`quick` 基礎操作演示、`start` 開始使用、`charts` 匯入譜面、`play` 播放與檢視、`model` 模型怎麼分左右手、`annotate` 真人手順標註、`more` 其他。
 - `intro` 是給還不知道這個 App 在做什麼的人的導覽（這是什麼、怎麼推算手順、為什麼需要真人標註、標註原則、五步上手），內容來自合作夥伴的介紹文，只講概念、不放操作細節；第一頁開頭有「想直接上手」的提示連到〈第一次播放〉，`start` 第一頁開頭有一句回指。首頁的主要按鈕連到 `intro` 第一頁，「開始新手教學」是第二顆按鈕。
 - 只用 `##` 與 `###`；每個 `##` 是搜尋索引的一塊，所以一塊講一件事，標題用使用者會問的說法。
 - 文案：繁體中文（台灣用語）、全形標點、口語、不討好；按鈕與分頁名稱用「」括起來，和 App 畫面上的字完全一致；鍵盤按鍵用 `<kbd>A</kbd>`；simai 範例用 ```` ```simai ```` 程式碼區塊（版面會加上複製鈕）。
@@ -134,7 +134,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
   - **發新版後下載頁要重拍**（`--flow download`）：截圖裡的版本號與按鈕是拍的時候的下載頁。
   - 步驟的種類由 `ShotStep` 的欄位決定（型別在 `flows.ts`）：`target` 游標飛過去按下（`double` 連按兩下）；`key` 不出現游標、截圖框下方那一列的鍵帽（`Tour.keys`，`Keycap` 的 `still` 版，不蓋在截圖上；有 `keys` 的導覽整段都有這一列，高度不跳）亮一下；〈開始標記〉按哪個鍵由擷取時面板上的模型建議（「模型：L／R」；Slide 的起點與滑行各算一步、不停在 Slide 中間）決定、寫進 manifest，旁白由 `flows.ts` 依 key 產生，不寫死；`highlight` 只框起來不按；有 `after` 就換成那張畫面。拍不到的系統畫面（在檔案總管連按兩下）用 `Tour.lead` 接在最前面：示意畫面（`sketch`，元件在 `src/lib/quick/parts/`、版面在 `src/lib/quick/sketch.ts`），圖說的徽章跟著畫面切換：示意畫面標「示意」，截圖標「實際畫面」。`parts/` 是子資料夾，不會被 .md 自動 import。
   - 播放沿用演示的 `DemoPlayer` 與 `Stage`（進入畫面才播、離開暫停、不循環、重播）；另有「上一步／下一步」（`DemoPlayer.seek`）。鏡頭只動截圖那一層的 `transform`，拉近倍率依舞台寬度算（App 的字在畫面上約是原尺寸的 0.95～1.2 倍）；減少動態時不拉近、不飛游標，停在第一步，一步一張整個畫面加框。不是經由 `<Demo>` 延遲載入，所以預先算繪的 HTML 就有第一張圖（沒有 JS 也看得到），高度由截圖的長寬比固定。
-  - `<QuickNext href="/…">開始標記</QuickNext>`：頁尾的「下一步」主要按鈕。最後一頁接到完整說明時用 `prefix=""` 拿掉「下一步：」。
+  - 每頁最後一句（連到詳細說明）用 intro 的 `<Mascot>` 講（`markdown.js` 的 `SECTION_EXTRA_IMPORTS` 讓 quick 章也能用）；頁尾不放「下一步」按鈕，靠上一頁／下一頁。
 - 演示：`<Demo id="swap" />`，可加 `caption="…"`。可用的 id 見下表。不需要寫 import（建置時自動注入）。
 - 內部連結用絕對路徑：`[影片同步](/annotate/video)`。
 
@@ -233,7 +233,7 @@ npm.cmd run check        # svelte-check＋service worker 的 tsc，要 0 errors�
 npm.cmd run build        # 輸出到 site/build
 npm.cmd run demos        # 重新產生盤面演示資料（需要先 cargo build --release --bin mai-motion-core）
 npm.cmd run icons        # 重新產生 Web App 圖示（static/icon-*.png、apple-touch-icon.png）
-node scripts/capture-quick.mjs --exe <App 執行檔> --profile <新的空資料夾>   # 重拍「超簡易上手」的實際畫面（App 要先關掉；規則見檔頭；--flow 只拍指定的）
+node scripts/capture-quick.mjs --exe <App 執行檔> --profile <新的空資料夾>   # 重拍「基礎操作演示」的實際畫面（App 要先關掉；規則見檔頭；--flow 只拍指定的）
 node scripts/capture-quick.mjs --flow download                              # 發新版後重拍下載頁（網頁模式，不用開 App）
 npm.cmd run index        # 重新產生搜尋索引（呼叫 Workers AI，有快取）
 npm.cmd run eval:search  # 搜尋評估：各模型 × 字面／語意／合併的命中率

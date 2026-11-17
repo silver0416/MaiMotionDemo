@@ -47,6 +47,12 @@ keywords: [入門, 教學, 流程, 交出, 提交, 怎麼開始, 下一步]
 </Step>
 </Steps>
 
+<Mascot>
+
+下一章節將演示基礎操作。
+
+</Mascot>
+
 更多完整的操作說明請見[「真人手順標註」](/annotate/basics)這一章。完成後也可以在「比對」分頁看看自己跟模型有哪裡不同。
 
 想知道更多細節，可以查閱[使用手冊](/)：
@@ -59,5 +65,3 @@ keywords: [入門, 教學, 流程, 交出, 提交, 怎麼開始, 下一步]
 <LinkRow href="/annotate/video">對照手元影片標註</LinkRow>
 <LinkRow href="/model/overview">模型的原理</LinkRow>
 </LinkRows>
-
-想要更簡單、一步一步照著實際畫面做的版本，看[超簡易上手](/quick/download)。

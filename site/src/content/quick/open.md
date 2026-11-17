@@ -14,6 +14,8 @@ keywords: [開啟, 打開, 執行, 主畫面, 新手]
 3. 中間是盤面與播放列。
 4. 右邊是資訊分頁。
 
-打不開的話看這裡：[下載與啟動](/start/install)。
+<Mascot>
 
-<QuickNext href="/quick/search">搜尋第一張譜面</QuickNext>
+打不開的話，詳見[下載與啟動](/start/install)。
+
+</Mascot>

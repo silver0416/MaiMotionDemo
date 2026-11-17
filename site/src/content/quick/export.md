@@ -14,6 +14,8 @@ keywords: [匯出, 標記檔, 多選, 選取, 分享, 交出, 新手]
 3. 按選取工具列的「匯出標記檔」（下載圖示）。
 4. 選存檔位置，就會存成一個標記檔，可以拿來分享或備份。
 
-匯出了什麼、怎麼匯入，看[匯出與匯入標記檔](/charts/bundles)。
+<Mascot>
 
-<QuickNext href="/annotate/basics" prefix="">想學更多標註的用法</QuickNext>
+匯出了什麼、怎麼匯入，詳見[匯出與匯入標記檔](/charts/bundles)。
+
+</Mascot>

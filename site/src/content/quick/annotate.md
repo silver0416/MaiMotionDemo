@@ -15,6 +15,8 @@ keywords: [標註, 標記, 左手, 右手, 鍵盤, 新手]
 4. 一步一步標下去，上面的數字會跟著增加。
 5. 標註會自動存起來，不用另外存檔。
 
-想知道更多標註的用法，看[逐顆標註](/annotate/basics)。
+<Mascot>
 
-<QuickNext href="/quick/export">多選匯出</QuickNext>
+想知道更多標註的用法，詳見[逐顆標註](/annotate/basics)。
+
+</Mascot>

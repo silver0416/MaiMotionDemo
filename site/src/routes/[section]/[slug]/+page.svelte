@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SITE } from '$lib/nav';
+  import { SITE, sectionById, type Page } from '$lib/nav';
   import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
   import PageToc from '$lib/shell/PageToc.svelte';
   import type { PageProps } from './$types';
@@ -11,6 +11,13 @@
   const headings = $derived(data.page.headings);
   const title = $derived(`${data.page.title}｜${SITE.name}`);
   const url = $derived(`${SITE.origin}${data.page.url}`);
+
+  /** 上一頁／下一頁的標題：跨到別的章節時在前面加章名（例如「基礎操作演示：下載」），不然看不出換章了。 */
+  function pagerTitle(target: Page): string {
+    if (target.section === data.page.section) return target.title;
+    const section = sectionById(target.section);
+    return section ? `${section.title}：${target.title}` : target.title;
+  }
 </script>
 
 <svelte:head>
@@ -46,7 +53,7 @@
         {#if data.prev}
           <a class="pager-link" href={data.prev.url} rel="prev">
             <span class="pager-label"><ExtraIcon name="arrow-left" />上一頁</span>
-            <span class="pager-title">{data.prev.title}</span>
+            <span class="pager-title">{pagerTitle(data.prev)}</span>
           </a>
         {:else}
           <span></span>
@@ -54,7 +61,7 @@
         {#if data.next}
           <a class="pager-link is-next" href={data.next.url} rel="next">
             <span class="pager-label">下一頁<ExtraIcon name="arrow-right" /></span>
-            <span class="pager-title">{data.next.title}</span>
+            <span class="pager-title">{pagerTitle(data.next)}</span>
           </a>
         {/if}
       </nav>
