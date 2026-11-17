@@ -1,17 +1,21 @@
 <script lang="ts">
   /**
-   * 會在盤面上走動的吉祥物：站上的標誌（環＝盤面，粉、藍兩點＝左右手），兩個點一起移到盤面上的別處再回來。
+   * 會在盤面上走動的吉祥物：站上的標誌（環＝盤面，粉、藍兩點＝左右手，也是它的眼睛）。
    *
-   * 規則：
-   * - 兩個點的距離永遠不變：兩點是同一組，整組只做平移＋旋轉，移動途中距離也一樣。
-   * - 不交叉：旋轉角度只在 −90°～90° 之間（藍點不會跑到粉點左邊），角度在這個範圍內內插，途中也不會交叉。
-   * - 目的地隨機：靠近 1～8 號按鈕（兩點一起靠到圈邊、或其中一點靠向某顆按鈕），或盤面內任何地方。
-   * - 兩點只靠近圈、不壓到圈上：圓心離盤面中心最遠到 NEAR（點的外緣和圈的內緣之間留一點空隙）。
-   * - 走四次之後回到原位，停住。每次移動的時間隨機，最長 1.5 秒。
-   * - 不循環：第一次捲進畫面時走一輪；滑鼠移上去或點一下再走一輪。
-   * - prefers-reduced-motion：完全不動，就是一個靜止的標誌。
+   * 兩點的規則（任何時候都成立，包含移動途中與被打斷時）：
+   * - 距離永遠不變：兩點是同一組，整組只做平移＋旋轉。
+   * - 不交叉：旋轉角度只在 −90°～90° 之間（藍點不會跑到粉點左邊）。
+   * - 只靠近圈、不壓到圈上：每一格畫面都把兩點收在 LIMIT 以內（fit）。
    *
-   * 純裝飾（aria-hidden）。座標用 Logo.svelte 的 viewBox（0～100，圓心 50,50）。
+   * 它會做的事：
+   * - 走動：第一次捲進畫面時，隨機走四次再回到原位（靠近 1～8 號按鈕、或盤面內任何地方；每次最長 1.5 秒）。不循環。
+   * - 躲游標：滑鼠靠近（SENSE 以內）時，兩點往游標的反方向躲，越近躲越遠；游標離開就回原位。
+   * - 往上跑：點一下、或手機上摸一下，兩點直接跑到上面，停一下再回來。
+   * - 被搓：按住左右來回搓，眼睛變成「> <」，整個左右晃；放開或停下來就恢復。
+   * - prefers-reduced-motion：不走動、不躲、不晃；被搓時眼睛仍會變。
+   *
+   * 純裝飾（aria-hidden）。座標用 Logo.svelte 的 viewBox（0～100，圓心 50,50）；位置用 rAF 逐格算，不靠 CSS 轉場，
+   * 這樣被打斷（走到一半游標靠過來）時也能從當下的位置接著動，而且每一格都檢查得到。
    */
   import { onMount } from 'svelte';
 
@@ -35,6 +39,8 @@
   const MOVES = 4;
   const MAX_MS = 1500;
   const MIN_MS = 450;
+  /** 游標離中心多近（px）就開始躲。 */
+  const SENSE = 120;
 
   /** 兩點中點相對圓心的位移，以及粉點指向藍點的方向（度，−90～90）。 */
   interface Pose {
@@ -44,12 +50,32 @@
   }
 
   const HOME: Pose = { x: 0, y: 0, deg: 0 };
+  /** 兩點都貼近圈的最上面。 */
+  const UP: Pose = { x: 0, y: -Math.sqrt(NEAR * NEAR - HALF * HALF), deg: 0 };
 
   let pose = $state<Pose>(HOME);
-  let ms = $state(0);
-  let root: SVGSVGElement;
-  let running = false;
-  let timer = 0;
+  let rubbing = $state(false);
+  let root: HTMLElement;
+
+  let reduced = false;
+  let frame = 0;
+  let anim: { from: Pose; to: Pose; start: number; ms: number; done?: () => void } | null = null;
+
+  let roaming = false;
+  let roamTimer = 0;
+  let dodging = false;
+  /** 往上跑的那一下還沒結束，先不躲。 */
+  let holdUntil = 0;
+  let hopTimer = 0;
+
+  // 按住時的狀態：pressed、移動量，以及左右換方向的時間（用來判斷是不是在搓）。
+  let pressed = false;
+  let lastX = 0;
+  let dir = 0;
+  let stroke = 0;
+  let moved = 0;
+  let turns: number[] = [];
+  let rubTimer = 0;
 
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
@@ -59,19 +85,40 @@
     return [r * Math.sin(angle), -r * Math.cos(angle)];
   }
 
-  /**
-   * 從 from 移到 to 的途中，兩點會不會壓到圈：平移和旋轉用同一條時間曲線，途中的姿勢只看進度，
-   * 所以沿進度取樣，檢查兩點的圓心都還在 LIMIT 以內。
-   */
+  /** 這個姿勢下，兩點的圓心離盤面中心最遠多少（中點位移乘上 scale）。 */
+  function reach(p: Pose, scale = 1): number {
+    const rad = (p.deg * Math.PI) / 180;
+    const dx = HALF * Math.cos(rad);
+    const dy = HALF * Math.sin(rad);
+    return Math.max(
+      Math.hypot(p.x * scale - dx, p.y * scale - dy),
+      Math.hypot(p.x * scale + dx, p.y * scale + dy),
+    );
+  }
+
+  /** 兩點會壓到圈的話，把中點往圓心收，收到剛好不超過 LIMIT（中點在圓心時兩點離中心只有 HALF，一定收得回來）。 */
+  function fit(p: Pose): Pose {
+    if (reach(p) <= LIMIT) return p;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (reach(p, mid) <= LIMIT) lo = mid;
+      else hi = mid;
+    }
+    return { x: p.x * lo, y: p.y * lo, deg: p.deg };
+  }
+
+  /** 從 from 直接移到 to 的途中，兩點會不會靠圈太近（挑目的地用：選不必被 fit 收回來的路，動作才順）。 */
   function clear(from: Pose, to: Pose): boolean {
     for (let i = 1; i < 24; i++) {
       const p = i / 24;
-      const x = from.x + (to.x - from.x) * p;
-      const y = from.y + (to.y - from.y) * p;
-      const rad = ((from.deg + (to.deg - from.deg) * p) * Math.PI) / 180;
-      const dx = HALF * Math.cos(rad);
-      const dy = HALF * Math.sin(rad);
-      if (Math.hypot(x - dx, y - dy) > LIMIT || Math.hypot(x + dx, y + dy) > LIMIT) return false;
+      const at = {
+        x: from.x + (to.x - from.x) * p,
+        y: from.y + (to.y - from.y) * p,
+        deg: from.deg + (to.deg - from.deg) * p,
+      };
+      if (reach(at) > LIMIT) return false;
     }
     return true;
   }
@@ -113,95 +160,252 @@
       }
       // 太近的不算一次移動。
       if (Math.hypot(next.x - prev.x, next.y - prev.y) < 8) continue;
-      // 過去的路上、以及之後回原位的路上都不能壓到圈（每個姿勢都能直接回家，找不到下一步時就回原位）。
+      // 過去的路上、以及之後回原位的路上都不靠圈太近。
       if (!clear(prev, next) || !clear(next, HOME)) continue;
       return next;
     }
     return HOME;
   }
 
-  function run() {
-    if (running || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    running = true;
+  /** 從現在的位置移到 to，花 ms 毫秒；到了之後呼叫 done。再呼叫一次就從當下的位置改道。 */
+  function go(to: Pose, ms: number, done?: () => void) {
+    anim = { from: pose, to, start: performance.now(), ms: Math.max(1, ms), done };
+    if (!frame) frame = requestAnimationFrame(tick);
+  }
+
+  function tick(now: number) {
+    frame = 0;
+    const a = anim;
+    if (!a) return;
+    const p = Math.min(1, Math.max(0, (now - a.start) / a.ms));
+    // 先快後慢（ease-out）。
+    const e = 1 - (1 - p) ** 3;
+    pose = fit({
+      x: a.from.x + (a.to.x - a.from.x) * e,
+      y: a.from.y + (a.to.y - a.from.y) * e,
+      deg: a.from.deg + (a.to.deg - a.from.deg) * e,
+    });
+    if (p < 1) {
+      frame = requestAnimationFrame(tick);
+      return;
+    }
+    if (anim === a) anim = null;
+    a.done?.();
+  }
+
+  /** 走四次再回原位。 */
+  function roam() {
+    if (roaming || reduced) return;
+    roaming = true;
     let step = 0;
     const move = () => {
+      if (!roaming) return;
       const last = step === MOVES;
-      ms = Math.round(rand(MIN_MS, MAX_MS));
-      pose = last ? HOME : pick(pose);
       step += 1;
-      timer = window.setTimeout(
-        () => {
-          if (last) running = false;
-          else move();
-        },
-        ms + (last ? 0 : rand(120, 380)),
-      );
+      go(last ? HOME : pick(pose), rand(MIN_MS, MAX_MS), () => {
+        if (!roaming) return;
+        if (last) roaming = false;
+        else roamTimer = window.setTimeout(move, rand(120, 380));
+      });
     };
     move();
   }
 
+  function stopRoam() {
+    roaming = false;
+    window.clearTimeout(roamTimer);
+  }
+
+  /** 滑鼠在附近：兩點保持水平（像眼睛），往游標的反方向躲；越近躲得越遠。 */
+  function onNear(event: PointerEvent) {
+    if (reduced || event.pointerType !== 'mouse' || pressed || rubbing) return;
+    const box = root.getBoundingClientRect();
+    const dx = event.clientX - (box.left + box.width / 2);
+    const dy = event.clientY - (box.top + box.height / 2);
+    const distance = Math.hypot(dx, dy);
+    if (distance >= SENSE) {
+      if (dodging) {
+        dodging = false;
+        go(HOME, 500);
+      }
+      return;
+    }
+    if (performance.now() < holdUntil) return;
+    stopRoam();
+    dodging = true;
+    const ax = distance > 0.5 ? -dx / distance : 0;
+    const ay = distance > 0.5 ? -dy / distance : -1;
+    // 兩點水平時，中點往 (ax, ay) 最遠能走多遠而兩點都還在 NEAR 以內。
+    const far = -HALF * Math.abs(ax) + Math.sqrt(HALF * HALF * ax * ax + NEAR * NEAR - HALF * HALF);
+    const strength = Math.min(1, 1.2 - distance / SENSE);
+    go({ x: ax * far * strength, y: ay * far * strength, deg: 0 }, 160);
+  }
+
+  /** 點一下／摸一下：直接跑到上面，停一下再回來。 */
+  function hop() {
+    if (reduced) return;
+    stopRoam();
+    dodging = false;
+    window.clearTimeout(hopTimer);
+    holdUntil = performance.now() + 220 + 650;
+    go(UP, 220, () => {
+      hopTimer = window.setTimeout(() => go(HOME, 520), 650);
+    });
+  }
+
+  function startRub() {
+    if (!rubbing) {
+      rubbing = true;
+      stopRoam();
+      dodging = false;
+      window.clearTimeout(hopTimer);
+      if (!reduced) go(HOME, 120);
+    }
+    window.clearTimeout(rubTimer);
+    // 按著不動超過一下子，就不算在搓了。
+    rubTimer = window.setTimeout(() => (rubbing = false), 600);
+  }
+
+  function onDown(event: PointerEvent) {
+    pressed = true;
+    lastX = event.clientX;
+    dir = 0;
+    stroke = 0;
+    moved = 0;
+    turns = [];
+    // 手指滑出標誌外也繼續收到移動。抓不到（例如這個指標已經不在了）就算了，不影響其他互動。
+    try {
+      root.setPointerCapture(event.pointerId);
+    } catch {
+      // 忽略
+    }
+  }
+
+  function onDrag(event: PointerEvent) {
+    if (!pressed) return;
+    const dx = event.clientX - lastX;
+    lastX = event.clientX;
+    if (!dx) return;
+    moved += Math.abs(dx);
+    const sign = Math.sign(dx);
+    if (sign === dir) {
+      stroke += Math.abs(dx);
+      return;
+    }
+    // 換方向：前一段夠長（不是手抖）才算一次來回。
+    if (dir !== 0 && stroke >= 4) {
+      const now = performance.now();
+      turns = [...turns.filter((time) => now - time < 700), now];
+      if (turns.length >= 2) startRub();
+    }
+    dir = sign;
+    stroke = Math.abs(dx);
+  }
+
+  function onUp(event: PointerEvent) {
+    if (!pressed) return;
+    pressed = false;
+    try {
+      root.releasePointerCapture(event.pointerId);
+    } catch {
+      // 忽略
+    }
+    if (rubbing) {
+      window.clearTimeout(rubTimer);
+      rubTimer = window.setTimeout(() => (rubbing = false), 350);
+      return;
+    }
+    if (moved < 10) hop();
+  }
+
+  function onCancel() {
+    pressed = false;
+    if (!rubbing) return;
+    window.clearTimeout(rubTimer);
+    rubTimer = window.setTimeout(() => (rubbing = false), 350);
+  }
+
   onMount(() => {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) return;
+    reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let start = 0;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        observer.disconnect();
-        start = window.setTimeout(run, 700);
-      },
-      { threshold: 0.6 },
-    );
-    observer.observe(root);
+    let observer: IntersectionObserver | undefined;
+    if (!reduced) {
+      document.addEventListener('pointermove', onNear, { passive: true });
+      if ('IntersectionObserver' in window) {
+        observer = new IntersectionObserver(
+          (entries) => {
+            if (!entries.some((entry) => entry.isIntersecting)) return;
+            observer?.disconnect();
+            start = window.setTimeout(() => {
+              if (!dodging && !rubbing && !pressed) roam();
+            }, 700);
+          },
+          { threshold: 0.6 },
+        );
+        observer.observe(root);
+      }
+    }
     return () => {
-      observer.disconnect();
-      window.clearTimeout(start);
-      window.clearTimeout(timer);
+      document.removeEventListener('pointermove', onNear);
+      observer?.disconnect();
+      cancelAnimationFrame(frame);
+      for (const id of [start, roamTimer, hopTimer, rubTimer]) window.clearTimeout(id);
     };
   });
 </script>
 
-<!-- 純裝飾：滑鼠移上去或點一下只是再走一輪，沒有任何功能，所以不做成按鈕。 -->
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<svg
-  class="roam"
-  width={size}
-  height={size}
-  viewBox="0 0 100 100"
+<!-- 純裝飾的小互動（躲游標、點一下往上跑、搓一搓瞇眼），沒有任何功能，所以不做成按鈕、也不進輔助技術。 -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<span
+  class={['roam', rubbing && 'is-rubbing']}
   aria-hidden="true"
   bind:this={root}
-  onpointerenter={run}
-  onclick={run}
+  onpointerdown={onDown}
+  onpointermove={onDrag}
+  onpointerup={onUp}
+  onpointercancel={onCancel}
 >
-  <circle class="roam-ring" cx="50" cy="50" r="38" />
-  <g
-    class="roam-hands"
-    style:transform={`translate(${pose.x.toFixed(2)}px, ${pose.y.toFixed(2)}px) rotate(${pose.deg.toFixed(2)}deg)`}
-    style:transition-duration={`${ms}ms`}
-  >
-    <circle class="roam-left" cx="36" cy="50" r="10" />
-    <circle class="roam-right" cx="64" cy="50" r="10" />
-  </g>
-</svg>
+  <svg class="roam-logo" width={size} height={size} viewBox="0 0 100 100">
+    <circle class="roam-ring" cx="50" cy="50" r="38" />
+    <g
+      class="roam-hands"
+      transform={`translate(${pose.x.toFixed(2)} ${pose.y.toFixed(2)}) rotate(${pose.deg.toFixed(2)} 50 50)`}
+    >
+      {#if rubbing}
+        <!-- 被搓的時候眼睛瞇成「> <」。 -->
+        <path class="roam-squint roam-squint--left" d="M29 41 L43 50 L29 59" />
+        <path class="roam-squint roam-squint--right" d="M71 41 L57 50 L71 59" />
+      {:else}
+        <circle class="roam-left" cx="36" cy="50" r="10" />
+        <circle class="roam-right" cx="64" cy="50" r="10" />
+      {/if}
+    </g>
+  </svg>
+</span>
 
 <style>
+  /* 外面多一圈當作感應範圍（用負的 margin 抵掉，不影響版面）。左右搓要收得到移動，所以只把上下捲動留給瀏覽器。 */
   .roam {
+    display: inline-flex;
     flex: none;
+    margin: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+    color: var(--c-text-strong);
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .roam-logo {
     display: block;
     overflow: visible;
-    color: var(--c-text-strong);
   }
 
   .roam-ring {
     fill: none;
     stroke: currentColor;
     stroke-width: 10.5;
-  }
-
-  /* 兩點是一組：以圓心為軸平移＋旋轉。transform 的兩個函式分開內插，所以整組是剛體移動，兩點距離不變。 */
-  .roam-hands {
-    transform-origin: 50px 50px;
-    transition-property: transform;
-    transition-timing-function: var(--ease-out);
   }
 
   .roam-left {
@@ -212,9 +416,44 @@
     fill: var(--c-right);
   }
 
+  .roam-squint {
+    fill: none;
+    stroke-width: 7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .roam-squint--left {
+    stroke: var(--c-left);
+  }
+
+  .roam-squint--right {
+    stroke: var(--c-right);
+  }
+
+  /* 被搓的時候左右晃：只在使用者按著搓的期間播，放開就停，不是自己一直動的裝飾。 */
+  .is-rubbing .roam-logo {
+    animation: roam-shake 260ms ease-in-out infinite;
+  }
+
+  @keyframes roam-shake {
+    0%,
+    100% {
+      transform: translateX(0) rotate(0);
+    }
+
+    25% {
+      transform: translateX(-3px) rotate(-9deg);
+    }
+
+    75% {
+      transform: translateX(3px) rotate(9deg);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .roam-hands {
-      transition: none;
+    .is-rubbing .roam-logo {
+      animation: none;
     }
   }
 </style>
