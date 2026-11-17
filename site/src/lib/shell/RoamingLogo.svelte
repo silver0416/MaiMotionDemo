@@ -9,10 +9,11 @@
    *
    * 它會做的事：
    * - 走動：第一次捲進畫面時，隨機走四次再回到原位（靠近 1～8 號按鈕、或盤面內任何地方；每次最長 1.5 秒）。不循環。
-   * - 躲游標：滑鼠靠近（SENSE 以內）時，兩點往游標的反方向躲，越近躲越遠；游標離開就回原位。
+   * - 躲游標：滑鼠靠近（SENSE 以內）時，兩點往游標的反方向躲，只會躲到八個固定的位置（朝 1～8 號按鈕的方向）；游標離開就回原位。
    * - 往上跑：點一下、或手機上摸一下，兩點直接跑到上面，停一下再回來。
-   * - 被搓：按住左右來回搓，眼睛變成「> <」，整個左右晃；放開或停下來就恢復。
-   * - prefers-reduced-motion：不走動、不躲、不晃；被搓時眼睛仍會變。
+   * - 被搓：按住左右來回搓，眼睛變成「> <」並跟著手指左右移（只有眼睛平移，標誌本身不動）；
+   *   放開或停下來之後先維持一下，再睜開眼、移回正中間（不是瞬間跳回去）。
+   * - prefers-reduced-motion：不走動、不躲、眼睛不移；被搓時眼睛仍會變。
    *
    * 純裝飾（aria-hidden）。座標用 Logo.svelte 的 viewBox（0～100，圓心 50,50）；位置用 rAF 逐格算，不靠 CSS 轉場，
    * 這樣被打斷（走到一半游標靠過來）時也能從當下的位置接著動，而且每一格都檢查得到。
@@ -50,6 +51,10 @@
   }
 
   const HOME: Pose = { x: 0, y: 0, deg: 0 };
+  /** 兩點水平時，中點最多能往左右偏多少（兩點都還在 NEAR 以內）。 */
+  const SIDE = NEAR - HALF;
+  /** 放開或停下來之後，眼睛維持「> <」多久才恢復。 */
+  const RUB_HOLD = 700;
   /** 兩點都貼近圈的最上面。 */
   const UP: Pose = { x: 0, y: -Math.sqrt(NEAR * NEAR - HALF * HALF), deg: 0 };
 
@@ -64,6 +69,8 @@
   let roaming = false;
   let roamTimer = 0;
   let dodging = false;
+  /** 現在躲在哪一個固定位置（0～7，朝第幾顆按鈕的方向）；−1 是沒在躲。 */
+  let dodgeSlot = -1;
   /** 往上跑的那一下還沒結束，先不躲。 */
   let holdUntil = 0;
   let hopTimer = 0;
@@ -76,6 +83,9 @@
   let moved = 0;
   let turns: number[] = [];
   let rubTimer = 0;
+  /** 按下時標誌中心的位置與每單位幾 px（被搓時眼睛跟著手指用）。 */
+  let centerX = 0;
+  let unit = 1;
 
   const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
@@ -216,7 +226,10 @@
     window.clearTimeout(roamTimer);
   }
 
-  /** 滑鼠在附近：兩點保持水平（像眼睛），往游標的反方向躲；越近躲得越遠。 */
+  /**
+   * 滑鼠在附近：兩點保持水平（像眼睛），往游標的反方向躲。
+   * 只躲到八個固定的位置：反方向對到最近的那顆按鈕，往那個方向走到底。
+   */
   function onNear(event: PointerEvent) {
     if (reduced || event.pointerType !== 'mouse' || pressed || rubbing) return;
     const box = root.getBoundingClientRect();
@@ -226,19 +239,33 @@
     if (distance >= SENSE) {
       if (dodging) {
         dodging = false;
+        dodgeSlot = -1;
         go(HOME, 500);
       }
       return;
     }
     if (performance.now() < holdUntil) return;
+    // 反方向的角度：從正上方順時針量，0～2π。游標剛好在正中間時沿用原本的位置（沒有就往上）。
+    const away = distance > 0.5 ? (Math.atan2(-dx, dy) + 2 * Math.PI) % (2 * Math.PI) : -1;
+    let slot = dodgeSlot;
+    if (away < 0) {
+      if (slot < 0) slot = 0;
+    } else if (slot < 0) {
+      slot = Math.floor(away / (2 * STEP)) % 8;
+    } else {
+      // 已經躲在某個位置：角度要明顯越過交界才換，游標在交界附近時不會兩邊跳。
+      const center = STEP + 2 * STEP * slot;
+      const off = Math.abs(((away - center + 3 * Math.PI) % (2 * Math.PI)) - Math.PI);
+      if (off > STEP + 0.14) slot = Math.floor(away / (2 * STEP)) % 8;
+    }
+    if (dodging && slot === dodgeSlot) return;
     stopRoam();
     dodging = true;
-    const ax = distance > 0.5 ? -dx / distance : 0;
-    const ay = distance > 0.5 ? -dy / distance : -1;
+    dodgeSlot = slot;
+    const [ax, ay] = button(slot, 1);
     // 兩點水平時，中點往 (ax, ay) 最遠能走多遠而兩點都還在 NEAR 以內。
     const far = -HALF * Math.abs(ax) + Math.sqrt(HALF * HALF * ax * ax + NEAR * NEAR - HALF * HALF);
-    const strength = Math.min(1, 1.2 - distance / SENSE);
-    go({ x: ax * far * strength, y: ay * far * strength, deg: 0 }, 160);
+    go({ x: ax * far, y: ay * far, deg: 0 }, 260);
   }
 
   /** 點一下／摸一下：直接跑到上面，停一下再回來。 */
@@ -246,6 +273,7 @@
     if (reduced) return;
     stopRoam();
     dodging = false;
+    dodgeSlot = -1;
     window.clearTimeout(hopTimer);
     holdUntil = performance.now() + 220 + 650;
     go(UP, 220, () => {
@@ -253,17 +281,28 @@
     });
   }
 
+  /** 搓完了：睜開眼，移回正中間。 */
+  function recover() {
+    rubbing = false;
+    if (!reduced) go(HOME, 480);
+  }
+
+  /** 放開或停下來之後，先維持一下再恢復。 */
+  function settleRub(ms: number) {
+    window.clearTimeout(rubTimer);
+    rubTimer = window.setTimeout(recover, ms);
+  }
+
   function startRub() {
     if (!rubbing) {
       rubbing = true;
       stopRoam();
       dodging = false;
+      dodgeSlot = -1;
       window.clearTimeout(hopTimer);
-      if (!reduced) go(HOME, 120);
     }
-    window.clearTimeout(rubTimer);
-    // 按著不動超過一下子，就不算在搓了。
-    rubTimer = window.setTimeout(() => (rubbing = false), 600);
+    // 按著不動也算停下來。
+    settleRub(RUB_HOLD);
   }
 
   function onDown(event: PointerEvent) {
@@ -273,6 +312,10 @@
     stroke = 0;
     moved = 0;
     turns = [];
+    // 量裡面的 svg（外層多了一圈感應範圍）。
+    const box = (root.firstElementChild ?? root).getBoundingClientRect();
+    centerX = box.left + box.width / 2;
+    unit = box.width / 100 || 1;
     // 手指滑出標誌外也繼續收到移動。抓不到（例如這個指標已經不在了）就算了，不影響其他互動。
     try {
       root.setPointerCapture(event.pointerId);
@@ -287,6 +330,11 @@
     lastX = event.clientX;
     if (!dx) return;
     moved += Math.abs(dx);
+    // 正在被搓：眼睛跟著手指左右移（只有水平平移，手指離中心約半個標誌寬就到底）。
+    if (rubbing && !reduced) {
+      const x = Math.max(-SIDE, Math.min(SIDE, ((event.clientX - centerX) / unit) * 0.35));
+      go({ x, y: 0, deg: 0 }, 90);
+    }
     const sign = Math.sign(dx);
     if (sign === dir) {
       stroke += Math.abs(dx);
@@ -311,8 +359,7 @@
       // 忽略
     }
     if (rubbing) {
-      window.clearTimeout(rubTimer);
-      rubTimer = window.setTimeout(() => (rubbing = false), 350);
+      settleRub(RUB_HOLD);
       return;
     }
     if (moved < 10) hop();
@@ -320,9 +367,7 @@
 
   function onCancel() {
     pressed = false;
-    if (!rubbing) return;
-    window.clearTimeout(rubTimer);
-    rubTimer = window.setTimeout(() => (rubbing = false), 350);
+    if (rubbing) settleRub(RUB_HOLD);
   }
 
   onMount(() => {
@@ -429,31 +474,5 @@
 
   .roam-squint--right {
     stroke: var(--c-right);
-  }
-
-  /* 被搓的時候左右晃：只在使用者按著搓的期間播，放開就停，不是自己一直動的裝飾。 */
-  .is-rubbing .roam-logo {
-    animation: roam-shake 260ms ease-in-out infinite;
-  }
-
-  @keyframes roam-shake {
-    0%,
-    100% {
-      transform: translateX(0) rotate(0);
-    }
-
-    25% {
-      transform: translateX(-3px) rotate(-9deg);
-    }
-
-    75% {
-      transform: translateX(3px) rotate(9deg);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .is-rubbing .roam-logo {
-      animation: none;
-    }
   }
 </style>
