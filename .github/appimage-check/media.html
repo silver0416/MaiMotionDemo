@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>media check</title>
+<style>
+  body { margin: 0; background: #000; }
+  video { width: 320px; height: 180px; }
+</style>
+</head>
+<body>
+<script>
+// AppImage 影片播放檢查的測試頁（由 media-check 載入，見 media-check.c 與 check.sh）。
+// 照 App 的三種用法檢查：影片視窗的 <video>、手部分析的 WebCodecs 與退回用的逐格讀取。
+// 網址的 variant 選擇載入影片的方式：
+//   app    App 在 Linux 的做法（必要）：fetch asset 網址、分段 mp4 改寫成一般 mp4、轉成 blob:，
+//          <video> 用 preload="metadata"（見 frontend/src/lib/video.ts 的 fileSource、videoPreload
+//          與 fmp4.ts；fmp4.js 是 release.yml 用 tsc 從 fmp4.ts 編出來的）。
+//   asset  直接用 asset://（只記錄）：WebKitGTK 的播放器不接受自訂 scheme。
+// 為什麼要這樣做：blob: 配 preload="auto" 時 WebKitGTK 會在解碼前放一個 2 MB 的環狀緩衝區，
+// 超過 2 MB 的影片會讀到錯位的資料；改用 metadata 後 GStreamer 只能從頭依序讀，這時分段 mp4 不能跳轉。
+// 所以測試影片都超過 2 MB，而且有一部和 YouTube 下載相同的分段 mp4（由 release.yml 的「Prepare AppImage check」產生）。
+// 結果用標題回報：「LOG <序號> <內容>」，最後「DONE pass」或「DONE fail」。
+'use strict';
+
+const params = new URLSearchParams(location.search);
+const dir = params.get('dir');
+
+// 和 Linux 上的 convertFileSrc 一樣：asset://localhost/<encodeURIComponent(完整路徑)>
+const assetUrl = (name) => 'asset://localhost/' + encodeURIComponent(dir + '/' + name);
+// 和 video.ts 的 readAsBlobUrl 一樣（改寫失敗時 App 會改用原檔，這裡直接算失敗）
+async function appBlob(name) {
+  const response = await fetch(assetUrl(name));
+  if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
+  const { defragment } = await import('./fmp4.js');
+  return defragment(await response.blob());
+}
+const VARIANTS = {
+  app: { required: true, source: async (name) => URL.createObjectURL(await appBlob(name)), preload: 'metadata' },
+  asset: { required: false, source: async (name) => assetUrl(name), preload: 'auto' },
+};
+const variantName = params.get('variant') || 'app';
+const variant = VARIANTS[variantName];
+const MEDIA = ['h264-dash.mp4', 'vp9.webm', 'h264-aac.mp4', 'h264.mp4'];
+// WebKitGTK 對 blob: 網址的緩衝區大小；測試影片要比它大才測得出問題
+const RING_BUFFER_BYTES = 2 * 1024 * 1024;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let count = 0;
+let failed = false;
+
+async function log(text) {
+  count += 1;
+  document.title = `LOG ${count} ${text}`;
+  await sleep(30);
+}
+
+async function check(name, required, run) {
+  try {
+    await log(`PASS ${name}: ${await run()}`);
+  } catch (error) {
+    const isRequired = required || Boolean(error && error.required);
+    if (isRequired) failed = true;
+    await log(`${isRequired ? 'FAIL' : 'INFO'} ${name}: ${error && error.message ? error.message : error}`);
+  }
+}
+
+function mediaError(video) {
+  const error = video.error;
+  if (!error) return 'error event';
+  return `media error ${error.code}${error.message ? ` (${error.message})` : ''}`;
+}
+
+function waitFor(video, event, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`no ${event} within ${ms / 1000} s (readyState ${video.readyState}, networkState ${video.networkState})`));
+    }, ms);
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error(mediaError(video)));
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      video.removeEventListener(event, onEvent);
+      video.removeEventListener('error', onError);
+    }
+    video.addEventListener(event, onEvent);
+    video.addEventListener('error', onError);
+  });
+}
+
+async function seekTo(video, time) {
+  const seeked = waitFor(video, 'seeked', 10000);
+  video.currentTime = time;
+  await seeked;
+}
+
+function makeVideo(url, options = {}) {
+  const video = document.createElement('video');
+  if (options.crossOrigin) video.crossOrigin = options.crossOrigin;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = variant.preload;
+  video.src = url;
+  if (options.style) video.style.cssText = options.style;
+  document.body.appendChild(video);
+  return video;
+}
+
+function dispose(video, url) {
+  video.pause();
+  video.removeAttribute('src');
+  video.load();
+  video.remove();
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+}
+
+// 畫面要有內容：測試影片是彩色圖樣（變異數約 16000）；全黑、單色或解碼失敗補出的灰色畫面都低很多
+function pixels(context, width, height) {
+  const data = context.getImageData(0, 0, width, height).data;
+  let sum = 0;
+  let sumSquares = 0;
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4 * 97) {
+    const value = data[i] + data[i + 1] + data[i + 2];
+    sum += value;
+    sumSquares += value * value;
+    n += 1;
+  }
+  const mean = sum / n;
+  const variance = sumSquares / n - mean * mean;
+  if (variance < 2000) throw new Error(`frame looks blank or broken (mean ${mean.toFixed(0)}, variance ${variance.toFixed(0)})`);
+  return `pixels ok (variance ${variance.toFixed(0)})`;
+}
+
+// 播放到 time 秒
+function reach(video, time) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`playback stalled at ${video.currentTime.toFixed(2)} s`));
+    }, 20000);
+    const onTime = () => {
+      if (video.currentTime < time) return;
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error(mediaError(video)));
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('error', onError);
+    }
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('error', onError);
+  });
+}
+
+// 影片視窗會改播放速度（慢放、跟主視窗同步）：量實際的速度
+async function measureRate(video, rate, ms) {
+  video.playbackRate = rate;
+  await sleep(200);
+  const startTime = video.currentTime;
+  const startClock = performance.now();
+  await sleep(ms);
+  const measured = (video.currentTime - startTime) / ((performance.now() - startClock) / 1000);
+  video.playbackRate = 1;
+  if (measured < rate * 0.6 || measured > rate * 1.4) throw new Error(`playbackRate ${rate} played at ${measured.toFixed(2)}x`);
+  return measured.toFixed(2);
+}
+
+// 1. 影片視窗：載入、播放、0.5 倍與 2 倍速、跳到檔案後段（2 MB 之後）再播、跳回開頭
+async function playback(url) {
+  const video = makeVideo(url);
+  try {
+    if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
+    await video.play();
+    await reach(video, 1);
+    const slow = await measureRate(video, 0.5, 1000);
+    const fast = await measureRate(video, 2, 800);
+    const late = video.duration - 1.5;
+    await seekTo(video, late);
+    await reach(video, late + 0.5);
+    video.pause();
+    await seekTo(video, 0.5);
+    return `${video.videoWidth}x${video.videoHeight}, ${video.duration.toFixed(2)} s, played at 0.5x ${slow}, 2x ${fast}, ` +
+      `played from ${late.toFixed(1)} s, seeked back`;
+  } finally {
+    dispose(video, url);
+  }
+}
+
+// 2. 手部分析的退回路徑（capture.ts 的 FrameReader）：crossOrigin <video>＋requestVideoFrameCallback＋讀畫布像素
+async function frames(url) {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) throw new Error('requestVideoFrameCallback unavailable');
+  const video = makeVideo(url, {
+    crossOrigin: 'anonymous',
+    style: 'position:fixed;left:0;bottom:0;width:1px;height:1px;pointer-events:none;z-index:-1;',
+  });
+  try {
+    if (video.readyState < 1) await waitFor(video, 'loadedmetadata', 20000);
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const frameAt = async (time) => {
+      await seekTo(video, time);
+      await sleep(200);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return `${video.currentTime.toFixed(2)} s ${pixels(context, canvas.width, canvas.height)}`;
+    };
+
+    video.pause();
+    const first = await frameAt(1);
+    const nextTime = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('no video frame callback while playing')), 15000);
+      const onFrame = (_now, meta) => {
+        if (meta.mediaTime + 1e-4 < 2) {
+          video.requestVideoFrameCallback(onFrame);
+          return;
+        }
+        clearTimeout(timer);
+        video.pause();
+        resolve(meta.mediaTime);
+      };
+      video.requestVideoFrameCallback(onFrame);
+      video.play().catch(reject);
+    });
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const played = pixels(context, canvas.width, canvas.height);
+    const late = await frameAt(video.duration - 1.5);
+    return `seek ${first}; played to ${nextTime.toFixed(3)} s ${played}; seek ${late}`;
+  } finally {
+    dispose(video, url);
+  }
+}
+
+// 只取 WebCodecs 檢查要的：avcC、畫面大小、第一個樣本的位置與大小（只有一個軌的一般 mp4）
+function parseMp4(buffer) {
+  const view = new DataView(buffer);
+  const found = {};
+  const containers = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl']);
+  const walk = (start, end) => {
+    let pos = start;
+    while (pos + 8 <= end) {
+      let size = view.getUint32(pos);
+      const type = String.fromCharCode(...new Uint8Array(buffer, pos + 4, 4));
+      let header = 8;
+      if (size === 1) {
+        size = Number(view.getBigUint64(pos + 8));
+        header = 16;
+      } else if (size === 0) {
+        size = end - pos;
+      }
+      if (size < header) break;
+      const body = pos + header;
+      if (containers.has(type)) walk(body, pos + size);
+      else if (type === 'stsd') walk(body + 8, pos + size);
+      else if (type === 'avc1') {
+        found.width = view.getUint16(body + 24);
+        found.height = view.getUint16(body + 26);
+        walk(body + 78, pos + size);
+      } else if (type === 'avcC') found.avcC = new Uint8Array(buffer.slice(body, pos + size));
+      else if (type === 'stsz') found.firstSize = view.getUint32(body + 4) || view.getUint32(body + 12);
+      else if (type === 'stco') found.firstOffset = view.getUint32(body + 8);
+      else if (type === 'co64') found.firstOffset = Number(view.getBigUint64(body + 8));
+      pos += size;
+    }
+  };
+  walk(0, buffer.byteLength);
+  return found;
+}
+
+// mp4 最外層的結構，例如「ftyp moov sidx + 10×(moof mdat)」
+function topBoxes(buffer) {
+  const view = new DataView(buffer);
+  const types = [];
+  let pos = 0;
+  while (pos + 8 <= buffer.byteLength) {
+    let size = view.getUint32(pos);
+    if (size === 1) size = Number(view.getBigUint64(pos + 8));
+    else if (size === 0) size = buffer.byteLength - pos;
+    if (size < 8) break;
+    types.push(String.fromCharCode(...new Uint8Array(buffer, pos + 4, 4)));
+    pos += size;
+  }
+  const fragments = types.filter((type) => type === 'moof').length;
+  if (!fragments) return types.join(' ');
+  return `${types.filter((type) => type !== 'moof' && type !== 'mdat').join(' ')} + ${fragments}×(moof mdat)`;
+}
+
+// 測試影片的大小與結構，以及 App 改寫後的結構。比緩衝區小就測不出 blob: 的問題；
+// 分段的 h264-dash.mp4 沒被改寫、或改寫後還是分段，也都算失敗。
+async function describeMedia() {
+  const { defragment } = await import('./fmp4.js');
+  const lines = [];
+  const problems = [];
+  for (const name of MEDIA) {
+    const response = await fetch(assetUrl(name));
+    if (!response.ok) throw new Error(`${name}: fetch failed (HTTP ${response.status})`);
+    const file = await response.blob();
+    if (file.size <= RING_BUFFER_BYTES) problems.push(`${name} not larger than 2 MiB`);
+    let line = `${name} ${(file.size / 1048576).toFixed(1)} MiB`;
+    if (name.endsWith('.mp4')) {
+      line += ` ${topBoxes(await file.arrayBuffer())}`;
+      const started = performance.now();
+      const playable = await defragment(file);
+      const elapsed = performance.now() - started;
+      if (playable === file) {
+        line += ' (kept as is)';
+        if (name === 'h264-dash.mp4') problems.push(`${name} was not rewritten`);
+      } else {
+        const layout = topBoxes(await playable.arrayBuffer());
+        line += ` -> ${layout} in ${elapsed.toFixed(0)} ms`;
+        if (layout.includes('moof')) problems.push(`${name} is still fragmented`);
+      }
+    }
+    lines.push(line);
+  }
+  if (problems.length) {
+    const error = new Error(`${problems.join(', ')}; ${lines.join('; ')}`);
+    error.required = true;
+    throw error;
+  }
+  return lines.join('; ');
+}
+
+// 3. 手部分析的 WebCodecs 路徑（webcodecs.ts）：fetch 影片網址、VideoDecoder 解第一格、畫到畫布
+// App 只用 prefer-hardware；不支援時改走逐格讀取，所以這項不是必要，但說支援卻解不出來就算失敗。
+async function webcodecs(url) {
+  if (typeof VideoDecoder === 'undefined' || typeof VideoFrame === 'undefined') throw new Error('WebCodecs unavailable');
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`fetch failed (HTTP ${response.status})`);
+  const buffer = await response.arrayBuffer();
+  const mp4 = parseMp4(buffer);
+  if (!mp4.avcC || !mp4.firstSize || mp4.firstOffset === undefined) throw new Error('could not parse the test mp4');
+  const hex = (value) => value.toString(16).padStart(2, '0');
+  const codec = `avc1.${hex(mp4.avcC[1])}${hex(mp4.avcC[2])}${hex(mp4.avcC[3])}`;
+  const base = { codec, codedWidth: mp4.width, codedHeight: mp4.height, description: mp4.avcC };
+  const support = {};
+  for (const hardwareAcceleration of ['prefer-hardware', 'no-preference']) {
+    support[hardwareAcceleration] = (await VideoDecoder.isConfigSupported({ ...base, hardwareAcceleration })).supported;
+  }
+  const summary = `${codec} prefer-hardware ${support['prefer-hardware'] ? 'yes' : 'no'}, no-preference ${support['no-preference'] ? 'yes' : 'no'}`;
+  const choice = support['prefer-hardware'] ? 'prefer-hardware' : support['no-preference'] ? 'no-preference' : null;
+  if (!choice) throw new Error(`${summary}; the app falls back to frame reading`);
+  try {
+    const frame = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('decoder produced no frame')), 15000);
+      const decoder = new VideoDecoder({
+        output: (output) => {
+          clearTimeout(timer);
+          resolve(output);
+        },
+        error: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      decoder.configure({ ...base, hardwareAcceleration: choice });
+      decoder.decode(new EncodedVideoChunk({
+        type: 'key',
+        timestamp: 0,
+        data: new Uint8Array(buffer, mp4.firstOffset, mp4.firstSize),
+      }));
+      decoder.flush().catch(reject);
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = frame.displayWidth;
+    canvas.height = frame.displayHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(frame, 0, 0);
+    frame.close();
+    return `${summary}; decoded with ${choice}, ${pixels(context, canvas.width, canvas.height)}`;
+  } catch (error) {
+    const wrapped = new Error(`${summary}; decoding with ${choice} failed: ${error && error.message ? error.message : error}`);
+    wrapped.required = choice === 'prefer-hardware';
+    throw wrapped;
+  }
+}
+
+window.addEventListener('error', (event) => log(`INFO page error: ${event.message}`));
+window.addEventListener('unhandledrejection', (event) => log(`INFO unhandled rejection: ${event.reason}`));
+
+(async () => {
+  if (!variant) {
+    await log(`FAIL unknown variant ${variantName}`);
+    document.title = 'DONE fail';
+    return;
+  }
+  await log(`INFO variant ${variantName} (preload ${variant.preload}): ${navigator.userAgent}`);
+  const probe = document.createElement('video');
+  await log(`INFO canPlayType mp4/avc1 "${probe.canPlayType('video/mp4; codecs="avc1.64001f"')}", webm/vp9 "${probe.canPlayType('video/webm; codecs="vp9"')}"`);
+  if (variantName === 'app') await check('test media', false, describeMedia);
+  const { required, source } = variant;
+  const name = (test) => `${variantName} ${test}`;
+  // yt-dlp 下載的 YouTube 影片：只有畫面、H.264、分段 mp4（ftyp moov sidx，再一段段 moof＋mdat）
+  await check(name('play h264-dash.mp4'), required, async () => playback(await source('h264-dash.mp4')));
+  // 沒有 H.264 時下載的 VP9 webm
+  await check(name('play vp9.webm'), required, async () => playback(await source('vp9.webm')));
+  // 自己選的本機影片：H.264＋AAC 音訊、moov 在檔尾
+  await check(name('play h264-aac.mp4'), required, async () => playback(await source('h264-aac.mp4')));
+  await check(name('frames h264.mp4'), required, async () => frames(await source('h264.mp4')));
+  if (variantName === 'app') {
+    await check(name('webcodecs h264.mp4'), false, async () => {
+      const url = await source('h264.mp4');
+      try {
+        return await webcodecs(url);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    });
+  }
+  document.title = failed ? 'DONE fail' : 'DONE pass';
+})();
+</script>
+</body>
+</html>

@@ -14,6 +14,10 @@ on:
         description: Also rebuild macOS (uncheck to rebuild Linux only)
         type: boolean
         default: true
+      upload:
+        description: Attach the files to the release (uncheck to only build, check and keep them as a workflow artifact)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -35,12 +39,44 @@ jobs:
           # vite.config.ts 用 commit 數當 build 號，需要完整歷史。
           fetch-depth: 0
 
+      # gstreamer1.0-* 是要打包進 AppImage 的影片外掛（見「Pick GStreamer plugins」）。
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev build-essential curl wget file \
-            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav gstreamer1.0-gl gstreamer1.0-alsa
+
+      # AppImage 檢查用的程式與測試影片（見「Check AppImage」）。檔案取自這個 workflow 所在的提交
+      # （GITHUB_SHA），不是要建置的 tag：重建舊版時，舊 tag 裡還沒有這些檔案。
+      # 先在這裡編譯，寫錯了不必等建置完才發現。
+      - name: Prepare AppImage check
+        run: |
+          CHECK="$RUNNER_TEMP/check"
+          mkdir -p "$CHECK/media"
+          git archive "$GITHUB_SHA" .github/appimage-check | tar -x -C "$RUNNER_TEMP"
+          FILES="$RUNNER_TEMP/.github/appimage-check"
+          cp "$FILES/check.sh" "$CHECK/"
+          cp "$FILES/media.html" "$CHECK/media/"
+          gcc -O2 -Wall -o "$CHECK/media-check" "$FILES/media-check.c" $(pkg-config --cflags --libs webkit2gtk-4.1)
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+          cd "$CHECK/media"
+          # 每部都要超過 2 MB：WebKitGTK 播 blob: 網址時的緩衝區是 2 MB，比它小的影片測不出問題（見 media.html）
+          src=testsrc2=size=1280x720:rate=30
+          # yt-dlp 下載的 YouTube 影片：只有畫面、H.264 High、分段 mp4（ftyp moov sidx，再一段段 moof＋mdat，沒有 mfra）
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libx264 -profile:v high -pix_fmt yuv420p -g 30 \
+            -movflags +frag_keyframe+empty_moov+default_base_moof+global_sidx+skip_trailer h264-dash.mp4
+          # 沒有 H.264 時下載的 VP9 webm
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libvpx-vp9 -b:v 3M -deadline realtime -cpu-used 8 vp9.webm
+          # 自己選的本機影片：H.264＋AAC 音訊，moov 在檔尾
+          ffmpeg -v error -f lavfi -i "$src" -f lavfi -i sine=frequency=440:sample_rate=48000 -t 10 \
+            -c:v libx264 -profile:v high -pix_fmt yuv420p -c:a aac h264-aac.mp4
+          # 只有一個軌的一般 mp4（逐格讀取與 WebCodecs）
+          ffmpeg -v error -f lavfi -i "$src" -t 10 -c:v libx264 -profile:v high -pix_fmt yuv420p \
+            -movflags +faststart h264.mp4
+          ls -la
 
       - uses: actions/setup-node@v4
         with:
@@ -73,11 +109,32 @@ jobs:
           echo "$LINUXDEPLOY_SHA256  $TOOLS/linuxdeploy-x86_64.AppImage" | sha256sum -c -
           chmod +x "$TOOLS/linuxdeploy-x86_64.AppImage"
 
+      # AppImage 裡的 AppRun 會把 GStreamer 的外掛路徑指到 AppImage 內，只載入 AppImage 附的外掛；
+      # 不附外掛就完全不能播影片（影片視窗、手部分析都用 WebKit 的 GStreamer 解碼）。
+      # 這裡只挑出播放 App 用到的影片所需的外掛：mp4／mov／webm／mkv、H.264（libav）、VP8／VP9、
+      # AAC／Opus／Vorbis 音訊、改播放速度（scaletempo）、WebKit 的 GL 畫面輸出與聲音輸出，再交給 Tauri 的
+      # GStreamer 打包步驟（bundleMediaFramework，見下一步的 --config）。只放需要的，AppImage 才不會大太多。
+      - name: Pick GStreamer plugins
+        run: |
+          src=/usr/lib/x86_64-linux-gnu/gstreamer-1.0
+          dst="$RUNNER_TEMP/gst-plugins"
+          mkdir -p "$dst"
+          for name in \
+            coreelements app playback typefindfunctions pbtypes \
+            videoconvert videoscale videofilter opengl \
+            audioconvert audioresample audiofx volume autodetect pulseaudio alsa \
+            isomp4 matroska audioparsers videoparsersbad \
+            libav vpx opus vorbis; do
+            cp "$src/libgst$name.so" "$dst/"
+          done
+          ls -la "$dst"
+          echo "GSTREAMER_PLUGINS_DIR=$dst" >> "$GITHUB_ENV"
+
       - name: Build AppImage and deb
         run: >
           npm run tauri build --
           --bundles appimage,deb
-          --config '{"bundle":{"active":true,"targets":["appimage","deb"],"icon":["icons/linux/32x32.png","icons/linux/128x128.png","icons/linux/128x128@2x.png","icons/linux/icon.png"]}}'
+          --config '{"bundle":{"active":true,"targets":["appimage","deb"],"icon":["icons/linux/32x32.png","icons/linux/128x128.png","icons/linux/128x128@2x.png","icons/linux/icon.png"],"linux":{"appimage":{"bundleMediaFramework":true}}}}'
 
       - name: Collect artifacts
         run: |
@@ -90,43 +147,55 @@ jobs:
           cp "$DEB" "out/MaiMotionDemo-${TAG}-linux-x64.deb"
           ls -la out
 
-      # 上傳前先確認 AppImage 打得開：
+      # 上傳前先確認 AppImage：
       # 1. 不能打包 libwayland-client，要用使用者系統上的版本（理由見上面的 linuxdeploy 步驟）。
-      # 2. 在最舊（22.04）和最新（26.04）的 Ubuntu 容器裡用 Xvfb 實際開 25 秒，WebKit 的畫面程序要還在。
-      #    容器沒有 GPU，Mesa 用軟體繪圖；這次的中止發生在載入 Mesa 時，和有沒有 GPU 無關。
+      # 2. 要附 GStreamer 外掛（理由見上面的外掛步驟）。
+      # 3. 在最舊（22.04）和最新（26.04）的 Ubuntu 容器裡打得開，而且 AppImage 與 .deb 版（系統的 WebKit）
+      #    都能用 App 在 Linux 的方式播影片（分段 mp4 改寫成一般 mp4、blob: 網址、preload="metadata"，
+      #    見 frontend/src/lib/video.ts；做法見 .github/appimage-check/check.sh）。
+      #    改寫分段 mp4 的程式直接取這次建置的 frontend/src/lib/fmp4.ts，用 tsc 編成測試頁用的 fmp4.js；
+      #    加入這個檔案以前的 tag 沒有它，重建那些版本時這一步會失敗。
       - name: Check AppImage
         run: |
-          cp "out/MaiMotionDemo-${TAG}-linux-x64.AppImage" "$RUNNER_TEMP/app.AppImage"
-          cd "$RUNNER_TEMP"
+          CHECK="$RUNNER_TEMP/check"
+          npx tsc --ignoreConfig --target es2022 --module es2022 --lib es2022,dom --skipLibCheck \
+            --outDir "$CHECK/media" frontend/src/lib/fmp4.ts
+          cp "out/MaiMotionDemo-${TAG}-linux-x64.AppImage" "$CHECK/app.AppImage"
+          cd "$CHECK"
           ./app.AppImage --appimage-extract > /dev/null
           if find squashfs-root -name 'libwayland-client.so*' | grep .; then
             echo "::error::AppImage bundles libwayland-client"
             exit 1
           fi
+          if [ ! -d squashfs-root/usr/lib/gstreamer-1.0 ]; then
+            echo "::error::AppImage has no GStreamer plugins"
+            exit 1
+          fi
+          du -sh squashfs-root/usr/lib squashfs-root/usr/lib/gstreamer-1.0
           rm -rf squashfs-root
+          failed=0
           for image in ubuntu:22.04 ubuntu:26.04; do
             echo "::group::$image"
-            docker run --rm -v "$RUNNER_TEMP:/work" -w /work "$image" bash -ec '
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update -qq
-              apt-get install -y -qq --no-install-recommends \
-                libwebkit2gtk-4.1-0 libegl-mesa0 libgl1-mesa-dri xvfb xauth > /dev/null
-              APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./app.AppImage > app.log 2>&1 &
-              sleep 25
-              cat app.log
-              for p in /proc/[0-9]*; do readlink "$p/exe" 2> /dev/null || true; done | grep -q WebKitWebProcess
-            ' || { echo "::error::AppImage did not start on $image"; exit 1; }
-            if grep -q 'EGL_BAD\|Aborting' app.log; then
-              echo "::error::WebKit aborted on $image"
-              exit 1
+            if ! docker run --rm -v "$CHECK:/work" -w /work "$image" bash /work/check.sh; then
+              echo "::error::AppImage check failed on $image"
+              failed=1
             fi
             echo "::endgroup::"
           done
+          exit "$failed"
 
       - name: Upload to release
+        if: github.event_name == 'release' || inputs.upload
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" out/* --clobber
+
+      - name: Keep the files as a workflow artifact
+        if: github.event_name == 'workflow_dispatch' && !inputs.upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ env.TAG }}
+          path: out/
 
   macos:
     if: github.event_name == 'release' || inputs.macos
@@ -168,6 +237,14 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP" "MaiMotionDemo-${TAG}-macos-universal.zip"
 
       - name: Upload to release
+        if: github.event_name == 'release' || inputs.upload
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" "MaiMotionDemo-${TAG}-macos-universal.zip" --clobber
+
+      - name: Keep the file as a workflow artifact
+        if: github.event_name == 'workflow_dispatch' && !inputs.upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ env.TAG }}
+          path: MaiMotionDemo-${{ env.TAG }}-macos-universal.zip

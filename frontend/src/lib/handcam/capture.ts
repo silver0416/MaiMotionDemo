@@ -2,6 +2,7 @@
 // requestVideoFrameCallback 給的 mediaTime 是該格的精確影片時間。
 
 import type { RgbaFrame } from './pose';
+import { videoPreload } from '../video';
 
 /** 分析時的畫面寬度上限；較大的影片先縮小，加快偵測與追蹤。 */
 const MAX_WIDTH = 1280;
@@ -31,7 +32,8 @@ export class FrameReader {
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.playsInline = true;
-    video.preload = 'auto';
+    // Linux 的 blob: 網址不能用 auto（見 videoPreload）
+    video.preload = videoPreload;
     video.src = url;
     // 不在文件裡的 <video> 不會合成畫面，requestVideoFrameCallback 就不會觸發；
     // 放進文件、縮成 1×1 擺在角落（不可 display:none 或完全透明，否則一樣不合成）。
