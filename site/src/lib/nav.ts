@@ -1,6 +1,8 @@
 /**
- * 章節與頁面清單。章節的 id、名稱、順序固定在這裡；頁面由 src/content/<section>/<slug>.md 的 frontmatter 自動產生，
- * 同一章依 `order` 排（沒寫的排最後，再依檔名）。某一章暫時沒有頁面也沒關係，目錄只是不列出來。
+ * 章節與頁面清單。章節的 id、名稱、順序固定在這裡；頁面由 src/content/<資料夾>/<slug>.md 的 frontmatter 自動產生，
+ * 網址是 /<資料夾>/<slug>。一章可以涵蓋好幾個內容資料夾（`dirs`，例如「開始使用」＝start＋charts），
+ * 合併章節時網址不變。同一章先依 `dirs` 的順序、再依 `order` 排（沒寫的排最後，再依檔名）。
+ * 某一章暫時沒有頁面也沒關係，目錄只是不列出來。
  */
 
 export const SITE = {
@@ -14,25 +16,39 @@ export const SITE = {
   appVersion: __APP_VERSION__,
 } as const;
 
-export type SectionId = 'intro' | 'quick' | 'start' | 'charts' | 'play' | 'model' | 'annotate' | 'more';
+export type SectionId = 'intro' | 'quick' | 'start' | 'play' | 'annotate' | 'model' | 'more';
+
+/**
+ * 章節的分群，決定章節標題下劃線的顏色（側欄、選單、首頁一致）：
+ * guide＝入門導覽（右手藍），detail＝細節（左手粉），讓讀者看出「從這裡開始是細節」。
+ */
+export type SectionTone = 'guide' | 'detail';
 
 export interface Section {
   id: SectionId;
   title: string;
   /** 首頁章節清單上的一句話。 */
   blurb: string;
+  tone: SectionTone;
+  /** 這一章涵蓋的內容資料夾（src/content/<資料夾>，也是網址的第一段），依序排列；沒寫就是只有和 id 同名的那一個。 */
+  dirs?: readonly string[];
 }
 
+// 每一章寫成一行：scripts/build-index.mjs 逐行讀 id、title、dirs（搜尋索引的章節名），不要拆成多行。
 export const SECTIONS: readonly Section[] = [
-  { id: 'intro', title: '認識 MaiMotionDemo', blurb: '它在做什麼、怎麼推算手順，以及為什麼需要你的標註。' },
-  { id: 'quick', title: '基礎操作演示', blurb: '第一次用？跟著實際畫面一步一步做，只教最基本的。' },
-  { id: 'start', title: '開始使用', blurb: '安裝 App，貼上第一段譜面，看兩隻手怎麼動。' },
-  { id: 'charts', title: '匯入譜面', blurb: '從 Majdata、simai Wiki 搜尋，或自己貼上 simai。' },
-  { id: 'play', title: '播放與檢視', blurb: '播放、逐格與循環片段，看懂盤面上的每個記號。' },
-  { id: 'model', title: '模型怎麼分左右手', blurb: '各種打法怎麼比較、為什麼會換手，以及可以調整的偏好。' },
-  { id: 'annotate', title: '真人手順標註', blurb: '自己標出左右手，對照影片，和模型的建議比一比。' },
-  { id: 'more', title: '其他', blurb: '常見問題、設定與其他說明。' },
+  { id: 'intro', title: '認識 MaiMotionDemo', tone: 'guide', blurb: '它在做什麼、怎麼推算手順，以及為什麼需要你的標註。' },
+  { id: 'quick', title: '基礎操作演示', tone: 'guide', blurb: '第一次用？跟著實際畫面一步一步做，只教最基本的。' },
+  { id: 'start', title: '開始使用', tone: 'detail', dirs: ['start', 'charts'], blurb: '安裝 App、第一次播放、看懂盤面，以及搜尋或貼上譜面。' },
+  { id: 'play', title: '播放與檢視', tone: 'detail', blurb: '播放、逐格與循環片段，看懂盤面上的每個記號。' },
+  { id: 'annotate', title: '真人手順標註', tone: 'detail', blurb: '自己標出左右手，對照影片，和模型的建議比一比。' },
+  { id: 'model', title: '模型原理', tone: 'detail', blurb: '各種打法怎麼比較、為什麼會換手，以及可以調整的偏好。' },
+  { id: 'more', title: '其他', tone: 'detail', blurb: '常見問題、設定與其他說明。' },
 ];
+
+/** 這一章涵蓋的內容資料夾。 */
+export function sectionDirs(section: Section): readonly string[] {
+  return section.dirs ?? [section.id];
+}
 
 export interface Heading {
   depth: 2 | 3;
@@ -52,7 +68,10 @@ export interface PageMetadata {
 }
 
 export interface Page {
+  /** 所屬的章節。 */
   section: SectionId;
+  /** 內容資料夾（網址第一段）；章節涵蓋多個資料夾時和 section 不一定相同。 */
+  dir: string;
   slug: string;
   url: string;
   title: string;
@@ -66,21 +85,27 @@ export interface Page {
 // 只取 frontmatter（?meta 由 markdown.js 的 markdownMeta 產生）：直接 import .md 的 metadata 會把每一頁的內容都打包進來。
 const modules = import.meta.glob<PageMetadata>('/src/content/**/*.md', { eager: true, query: '?meta', import: 'default' });
 
-const SECTION_IDS = new Set<string>(SECTIONS.map((section) => section.id));
+/** 內容資料夾 → 所屬章節，以及它在整本手冊裡的先後（章節順序，再依章內 dirs 的順序）。 */
+const DIRS = new Map<string, { section: SectionId; rank: number }>();
+for (const section of SECTIONS) {
+  for (const dir of sectionDirs(section)) DIRS.set(dir, { section: section.id, rank: DIRS.size });
+}
 
 function build(): Page[] {
   const list: Page[] = [];
   for (const [file, meta] of Object.entries(modules)) {
     const match = /^\/src\/content\/([^/]+)\/([^/?]+)\.md(?:\?meta)?$/.exec(file);
-    if (!match || !SECTION_IDS.has(match[1])) {
+    const owner = match ? DIRS.get(match[1]) : undefined;
+    if (!match || !owner) {
       if (import.meta.env.DEV) console.warn(`[nav] ${file} 不在任何章節底下，不會列出`);
       continue;
     }
-    const [, section, slug] = match;
+    const [, dir, slug] = match;
     list.push({
-      section: section as SectionId,
+      section: owner.section,
+      dir,
       slug,
-      url: `/${section}/${slug}`,
+      url: `/${dir}/${slug}`,
       title: meta?.title ?? slug,
       description: meta?.description ?? '',
       order: typeof meta?.order === 'number' ? meta.order : Number.POSITIVE_INFINITY,
@@ -89,12 +114,9 @@ function build(): Page[] {
       headings: Array.isArray(meta?.headings) ? meta.headings : [],
     });
   }
-  const sectionOrder = new Map(SECTIONS.map((section, index) => [section.id, index]));
   return list.sort(
     (a, b) =>
-      (sectionOrder.get(a.section) ?? 0) - (sectionOrder.get(b.section) ?? 0) ||
-      a.order - b.order ||
-      a.slug.localeCompare(b.slug),
+      (DIRS.get(a.dir)?.rank ?? 0) - (DIRS.get(b.dir)?.rank ?? 0) || a.order - b.order || a.slug.localeCompare(b.slug),
   );
 }
 
@@ -114,8 +136,9 @@ export function sectionById(id: string): Section | undefined {
   return SECTIONS.find((section) => section.id === id);
 }
 
-export function findPage(section: string, slug: string): Page | undefined {
-  return PAGES.find((page) => page.section === section && page.slug === slug);
+/** 依網址的兩段（內容資料夾、slug）找頁面，例如 findPage('charts', 'new') → /charts/new。 */
+export function findPage(dir: string, slug: string): Page | undefined {
+  return PAGES.find((page) => page.dir === dir && page.slug === slug);
 }
 
 /** 上一頁／下一頁：跨章節依整本手冊的順序。 */

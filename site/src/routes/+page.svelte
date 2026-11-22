@@ -54,7 +54,7 @@
       {#each chapters as { section, pages } (section.id)}
         <li class="chapter">
           <div class="chapter-head">
-            <h3>{section.title}</h3>
+            <h3 class="section-mark" data-tone={section.tone}>{section.title}</h3>
             <p class="chapter-blurb">{section.blurb}</p>
           </div>
           {#if pages.length > 0}
@@ -174,13 +174,16 @@
     }
   }
 
+  /* 章節名：和側欄一樣加主色下劃線（.section-mark，入門導覽藍、細節粉）。 */
   .chapter-head h3 {
     color: var(--c-text-strong);
     font-size: var(--fs-xl);
+    font-weight: 700;
+    line-height: var(--lh-tight);
   }
 
   .chapter-blurb {
-    margin-top: var(--space-1);
+    margin-top: var(--space-2);
     color: var(--c-text-dim);
     font-size: var(--fs-md);
   }

@@ -3,7 +3,7 @@
   import { normalizePath, sectionsWithPages } from '$lib/nav';
 
   /**
-   * 章節目錄：每章一個小標題＋頁面清單，目前這一頁用 App 的「選中列」樣式（底色＋1px 框）。
+   * 章節目錄：每章一個標題（加主色下劃線，入門導覽藍、細節粉）＋頁面清單，目前這一頁用 App 的「選中列」樣式（底色＋1px 框）。
    * 桌面的左側欄與手機的選單抽屜共用。onNavigate：點了連結之後（手機要關抽屜）。
    */
   interface Props {
@@ -25,7 +25,9 @@
   <div class="nav-tree">
     {#each groups as group (group.section.id)}
       <div class="nav-group">
-        <p class="nav-heading" id={`${uid}-${group.section.id}`}>{group.section.title}</p>
+        <p class="nav-heading section-mark" data-tone={group.section.tone} id={`${uid}-${group.section.id}`}>
+          {group.section.title}
+        </p>
         <ul class="nav-list" aria-labelledby={`${uid}-${group.section.id}`}>
           {#each group.pages as item (item.url)}
             <li>
@@ -47,25 +49,28 @@
 {/if}
 
 <style>
+  /* 章與章之間空一大段（32px），章節標題到它的頁面清單只留 8px，一眼看得出分組。 */
   .nav-tree {
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: var(--space-6);
   }
 
   .nav-group {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-2);
   }
 
-  /* 章節名：同 App 的 .section-title（12px、600、字距 .04em、次要色）。 */
+  /* 章節名：比頁面連結高一階（15px／700、最亮的字色、標題字型），底下一條主色下劃線（.section-mark，
+     顏色依章節的 tone）。用 margin 而不是 padding 內縮，線才只畫在字底下、和連結文字左緣對齊。 */
   .nav-heading {
-    padding: 0 var(--space-3);
-    color: var(--c-text-dim);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    margin-inline: var(--space-3);
+    color: var(--c-text-strong);
+    font-family: var(--font-display);
+    font-size: var(--fs-lg);
+    font-weight: 700;
+    line-height: var(--lh-tight);
   }
 
   .nav-list {
@@ -119,10 +124,15 @@
     outline-offset: -2px;
   }
 
+  /* 觸控：連結放大到 15px，章節名跟著再高一階。 */
   @media (pointer: coarse) {
     .nav-link {
       min-height: 44px;
       font-size: var(--fs-lg);
+    }
+
+    .nav-heading {
+      font-size: var(--fs-xl);
     }
   }
 

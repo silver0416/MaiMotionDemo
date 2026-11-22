@@ -28,6 +28,30 @@
   color: var(--c-text-strong);
 }
 
+/* 章節標題的主色下劃線（側欄、選單抽屜與首頁章節清單共用）：標題文字底下一條 2px 實心線，不是左側邊框。
+   顏色依 nav.ts 的 Section.tone：guide（入門導覽：認識 MaiMotionDemo、基礎操作演示）用右手藍，
+   detail（其餘各章，細節）用左手粉。只用既有的手色 token，不新增色相。 */
+.section-mark {
+  width: fit-content;
+  max-width: 100%;
+  padding-bottom: var(--space-1);
+  border-bottom: 2px solid var(--section-tone, var(--c-border-strong));
+}
+
+.section-mark[data-tone='guide'] {
+  --section-tone: var(--c-right);
+}
+
+.section-mark[data-tone='detail'] {
+  --section-tone: var(--c-left);
+}
+
+@media (prefers-contrast: more) {
+  .section-mark {
+    border-bottom-width: 3px;
+  }
+}
+
 :root {
   /* 文件內文的閱讀字級：文件站唯一新增的字級 token（其他沿用 App）。 */
   --fs-prose: 16px;

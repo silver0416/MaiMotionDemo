@@ -6,8 +6,11 @@ import type { EntryGenerator, PageLoad } from './$types';
 // 內容（延遲載入：每一頁只帶自己的 .md）。
 const contents = import.meta.glob<{ default: Component }>('/src/content/**/*.md');
 
-/** 預先算繪的頁面清單：src/content 底下所有登記在章節裡的 .md。 */
-export const entries: EntryGenerator = () => PAGES.map((page) => ({ section: page.section, slug: page.slug }));
+/**
+ * 預先算繪的頁面清單：src/content 底下所有登記在章節裡的 .md。
+ * 路由參數 [section] 是網址第一段＝內容資料夾（page.dir），不一定等於章節 id（「開始使用」涵蓋 start 與 charts）。
+ */
+export const entries: EntryGenerator = () => PAGES.map((page) => ({ section: page.dir, slug: page.slug }));
 
 export const load: PageLoad = async ({ params }) => {
   const page = findPage(params.section, params.slug);

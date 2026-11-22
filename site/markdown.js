@@ -10,22 +10,28 @@ const AUTO_IMPORTS = [
   "import Callout from '$lib/md/Callout.svelte';",
 ];
 
+/*
+ * 下面兩條規則的 key 都是「內容資料夾」（src/content/<資料夾>/，也是網址第一段），不是 nav.ts 的章節 id：
+ * 一章可以涵蓋多個資料夾（「開始使用」＝start＋charts），同一章的資料夾要一起列。
+ */
+
 /**
- * 有專用元件資料夾的章節：src/content/<章節>/ 底下的頁面另外自動 import src/lib/<章節>/ 裡的每個元件（檔名就是標籤名）。
+ * 有專用元件資料夾的內容資料夾：src/content/<資料夾>/ 底下的頁面另外自動 import src/lib/<資料夾>/ 裡的每個元件（檔名就是標籤名）。
  * - intro（認識 MaiMotionDemo）：Steps、LinkRows、Mascot…
  * - quick（基礎操作演示）：QuickTour（實際畫面導覽）
  */
 const SECTION_COMPONENTS = ['intro', 'quick'];
 
 /**
- * 借用 intro 的 Mascot（吉祥物對話框）的章節；這些章節不必有自己的元件資料夾。
+ * 借用 intro 的 Mascot（吉祥物對話框）的內容資料夾；這些資料夾不必有自己的元件資料夾。
  * - quick：每頁最後一句由吉祥物講
- * - start：〈下載與啟動〉開頭那句
+ * - start、charts（「開始使用」章）：〈下載與啟動〉開頭那句；同一章的頁面都能用
  */
 const MASCOT_IMPORT = "import Mascot from '$lib/intro/Mascot.svelte';";
 const SECTION_EXTRA_IMPORTS = {
   quick: [MASCOT_IMPORT],
   start: [MASCOT_IMPORT],
+  charts: [MASCOT_IMPORT],
 };
 
 /**

@@ -82,11 +82,22 @@ export const QWEN_INSTRUCTION = 'Given a question about the MaiMotionDemo app, r
 // ---------------------------------------------------------------------------
 // 讀內容
 
-/** 從 src/lib/nav.ts 讀章節 id → 顯示名稱（避免在這裡再寫一份）。 */
+/**
+ * 從 src/lib/nav.ts 讀「內容資料夾 → 章節名稱」（避免在這裡再寫一份）。
+ * SECTIONS 一章一行：`{ id: '…', title: '…', …, dirs: ['…', '…'], … }`；沒有 dirs 時資料夾就是 id。
+ * 一章可以涵蓋多個資料夾（「開始使用」＝start＋charts），兩個資料夾的頁面都記成同一個章節名。
+ */
 async function sectionTitles() {
   const source = await readFile(join(ROOT, 'src', 'lib', 'nav.ts'), 'utf8');
   const map = new Map();
-  for (const match of source.matchAll(/\{\s*id:\s*'([^']+)',\s*title:\s*'([^']+)'/g)) map.set(match[1], match[2]);
+  for (const [line] of source.matchAll(/^\s*\{\s*id:\s*'[^']+'.*$/gm)) {
+    const id = /\bid:\s*'([^']+)'/.exec(line)?.[1];
+    const title = /\btitle:\s*'([^']+)'/.exec(line)?.[1];
+    if (!id || !title) continue;
+    const dirs = /\bdirs:\s*\[([^\]]*)\]/.exec(line)?.[1];
+    const folders = dirs ? [...dirs.matchAll(/'([^']+)'/g)].map((match) => match[1]) : [id];
+    for (const folder of folders) map.set(folder, title);
+  }
   return map;
 }
 
@@ -274,6 +285,7 @@ export async function collectChunks() {
       console.warn(`[index] 略過 ${rel}（不在任何章節底下）`);
       continue;
     }
+    // section：內容資料夾（網址第一段）；章節名用 titles.get(section)。
     const [, section, slug] = match;
     const source = await readFile(file, 'utf8');
     const fm = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(source);
