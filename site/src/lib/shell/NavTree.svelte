@@ -3,7 +3,7 @@
   import { normalizePath, sectionsWithPages } from '$lib/nav';
 
   /**
-   * 章節目錄：每章一個標題（加主色下劃線，入門導覽藍、細節粉）＋頁面清單，目前這一頁用 App 的「選中列」樣式（底色＋1px 框）。
+   * 章節目錄：每章一個標題（加螢光筆劃線，入門導覽藍、細節粉）＋頁面清單，目前這一頁用 App 的「選中列」樣式（底色＋1px 框）。
    * 桌面的左側欄與手機的選單抽屜共用。onNavigate：點了連結之後（手機要關抽屜）。
    */
   interface Props {
@@ -62,7 +62,7 @@
     gap: var(--space-2);
   }
 
-  /* 章節名：比頁面連結高一階（15px／700、最亮的字色、標題字型），底下一條主色下劃線（.section-mark，
+  /* 章節名：比頁面連結高一階（15px／700、最亮的字色、標題字型），下半部墊一條螢光筆色帶（.section-mark，
      顏色依章節的 tone）。用 margin 而不是 padding 內縮，線才只畫在字底下、和連結文字左緣對齊。 */
   .nav-heading {
     margin-inline: var(--space-3);

@@ -174,7 +174,7 @@
     }
   }
 
-  /* 章節名：和側欄一樣加主色下劃線（.section-mark，入門導覽藍、細節粉）。 */
+  /* 章節名：和側欄一樣加螢光筆劃線（.section-mark，入門導覽藍、細節粉）。 */
   .chapter-head h3 {
     color: var(--c-text-strong);
     font-size: var(--fs-xl);

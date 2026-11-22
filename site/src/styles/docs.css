@@ -28,14 +28,24 @@
   color: var(--c-text-strong);
 }
 
-/* 章節標題的主色下劃線（側欄、選單抽屜與首頁章節清單共用）：標題文字底下一條 2px 實心線，不是左側邊框。
+/* 章節標題的螢光筆劃線（側欄、選單抽屜與首頁章節清單共用）：一條不透明的色帶墊在標題文字下半部的後面，
+   左右比文字各多出一點，像用螢光筆劃過；不是左側邊框，也不是漸層（色帶是獨立的一塊，用 ::after 墊在字後面）。
    顏色依 nav.ts 的 Section.tone：guide（入門導覽：認識 MaiMotionDemo、基礎操作演示）用右手藍，
-   detail（其餘各章，細節）用左手粉。只用既有的手色 token，不新增色相。 */
+   detail（其餘各章，細節）用左手粉。只用既有的手色 token，不新增色相；
+   和背景色混過（color-mix，結果仍是不透明純色），壓在色帶上的字才看得清楚。 */
 .section-mark {
+  position: relative;
+  z-index: 0;
   width: fit-content;
   max-width: 100%;
-  padding-bottom: var(--space-1);
-  border-bottom: 2px solid var(--section-tone, var(--c-border-strong));
+}
+
+.section-mark::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 50% calc(var(--space-1) * -1) 0;
+  background: color-mix(in srgb, var(--section-tone, var(--c-border-strong)) 55%, var(--c-bg));
 }
 
 .section-mark[data-tone='guide'] {
@@ -44,12 +54,6 @@
 
 .section-mark[data-tone='detail'] {
   --section-tone: var(--c-left);
-}
-
-@media (prefers-contrast: more) {
-  .section-mark {
-    border-bottom-width: 3px;
-  }
 }
 
 :root {
