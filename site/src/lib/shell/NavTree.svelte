@@ -1,9 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { normalizePath, sectionsWithPages } from '$lib/nav';
+  import { MANUAL_LABEL, normalizePath, sectionsWithPages, startsManual } from '$lib/nav';
 
   /**
    * 章節目錄：每章一個標題（加螢光筆劃線，入門導覽藍、細節粉）＋頁面清單，目前這一頁用 App 的「選中列」樣式（底色＋1px 框）。
+   * 入門導覽的兩章和後面各章之間有一條分隔標示（「完整手冊」，兩邊各一條 1px 線）。
    * 桌面的左側欄與手機的選單抽屜共用。onNavigate：點了連結之後（手機要關抽屜）。
    */
   interface Props {
@@ -16,6 +17,7 @@
 
   const uid = $props.id();
   const groups = sectionsWithPages();
+  const sections = groups.map((group) => group.section);
   const current = $derived(normalizePath(page.url.pathname));
 </script>
 
@@ -23,7 +25,10 @@
   <p class="nav-empty">內容整理中，目錄稍後就會出現。</p>
 {:else}
   <div class="nav-tree">
-    {#each groups as group (group.section.id)}
+    {#each groups as group, index (group.section.id)}
+      {#if startsManual(sections, index)}
+        <p class="nav-divider">{MANUAL_LABEL}</p>
+      {/if}
       <div class="nav-group">
         <p class="nav-heading section-mark" data-tone={group.section.tone} id={`${uid}-${group.section.id}`}>
           {group.section.title}
@@ -71,6 +76,27 @@
     font-size: var(--fs-lg);
     font-weight: 700;
     line-height: var(--lh-tight);
+  }
+
+  /* 分隔標示：小字＋左右各一條 1px 線，告訴讀者「從這裡開始是完整手冊」。和章節標題同樣內縮。 */
+  .nav-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-inline: var(--space-3);
+    color: var(--c-text-dim);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: var(--lh-tight);
+  }
+
+  .nav-divider::before,
+  .nav-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--c-border-strong);
   }
 
   .nav-list {

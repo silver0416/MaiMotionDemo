@@ -1,7 +1,7 @@
 ---
 title: 新增譜面
 description: 貼上 simai 本文或整份 maidata.txt、拖檔案進視窗、看懂錯誤訊息，以及分析的上限與快取。
-order: 1
+order: 3
 keywords: [貼上, 匯入, maidata, 檔案, 拖放, 拖曳, 錯誤, 診斷, 報錯, 上限, 太長, 快取, 改名, 編輯原文, inote]
 ---
 

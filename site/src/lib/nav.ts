@@ -1,7 +1,8 @@
 /**
  * 章節與頁面清單。章節的 id、名稱、順序固定在這裡；頁面由 src/content/<資料夾>/<slug>.md 的 frontmatter 自動產生，
  * 網址是 /<資料夾>/<slug>。一章可以涵蓋好幾個內容資料夾（`dirs`，例如「開始使用」＝start＋charts），
- * 合併章節時網址不變。同一章先依 `dirs` 的順序、再依 `order` 排（沒寫的排最後，再依檔名）。
+ * 合併章節時網址不變。同一章依 `order` 排，不分資料夾（「開始使用」的 start 與 charts 兩個資料夾共用一組編號，可以穿插）；
+ * order 相同或沒寫時才依 `dirs` 的順序、再依檔名（沒寫的排最後）。
  * 某一章暫時沒有頁面也沒關係，目錄只是不列出來。
  */
 
@@ -24,6 +25,14 @@ export type SectionId = 'intro' | 'quick' | 'start' | 'play' | 'annotate' | 'mod
  */
 export type SectionTone = 'guide' | 'detail';
 
+/** 入門導覽（guide）和後面各章（detail）之間的分隔標示：側欄、選單與首頁章節清單在第一個 detail 章節前面顯示這幾個字。 */
+export const MANUAL_LABEL = '完整手冊';
+
+/** 這一章是不是「完整手冊」的第一章（前一章還是入門導覽）：是的話在它前面放分隔標示。 */
+export function startsManual(sections: readonly Section[], index: number): boolean {
+  return index > 0 && sections[index].tone === 'detail' && sections[index - 1].tone === 'guide';
+}
+
 export interface Section {
   id: SectionId;
   title: string;
@@ -38,7 +47,7 @@ export interface Section {
 export const SECTIONS: readonly Section[] = [
   { id: 'intro', title: '認識 MaiMotionDemo', tone: 'guide', blurb: '它在做什麼、怎麼推算手順，以及為什麼需要你的標註。' },
   { id: 'quick', title: '基礎操作演示', tone: 'guide', blurb: '第一次用？跟著實際畫面一步一步做，只教最基本的。' },
-  { id: 'start', title: '開始使用', tone: 'detail', dirs: ['start', 'charts'], blurb: '安裝 App、第一次播放、看懂盤面，以及搜尋或貼上譜面。' },
+  { id: 'start', title: '開始使用', tone: 'detail', dirs: ['start', 'charts'], blurb: '安裝 App、認識介面、搜尋或貼上譜面，再播放看兩隻手怎麼動。' },
   { id: 'play', title: '播放與檢視', tone: 'detail', blurb: '播放、逐格與循環片段，看懂盤面上的每個記號。' },
   { id: 'annotate', title: '真人手順標註', tone: 'detail', blurb: '自己標出左右手，對照影片，和模型的建議比一比。' },
   { id: 'model', title: '模型原理', tone: 'detail', blurb: '各種打法怎麼比較、為什麼會換手，以及可以調整的偏好。' },
@@ -85,10 +94,10 @@ export interface Page {
 // 只取 frontmatter（?meta 由 markdown.js 的 markdownMeta 產生）：直接 import .md 的 metadata 會把每一頁的內容都打包進來。
 const modules = import.meta.glob<PageMetadata>('/src/content/**/*.md', { eager: true, query: '?meta', import: 'default' });
 
-/** 內容資料夾 → 所屬章節，以及它在整本手冊裡的先後（章節順序，再依章內 dirs 的順序）。 */
-const DIRS = new Map<string, { section: SectionId; rank: number }>();
+/** 內容資料夾 → 所屬章節、章節的先後（chapter），以及資料夾在整本手冊裡的先後（rank：章節順序，再依章內 dirs 的順序）。 */
+const DIRS = new Map<string, { section: SectionId; chapter: number; rank: number }>();
 for (const section of SECTIONS) {
-  for (const dir of sectionDirs(section)) DIRS.set(dir, { section: section.id, rank: DIRS.size });
+  for (const dir of sectionDirs(section)) DIRS.set(dir, { section: section.id, chapter: SECTIONS.indexOf(section), rank: DIRS.size });
 }
 
 function build(): Page[] {
@@ -116,7 +125,11 @@ function build(): Page[] {
   }
   return list.sort(
     (a, b) =>
-      (DIRS.get(a.dir)?.rank ?? 0) - (DIRS.get(b.dir)?.rank ?? 0) || a.order - b.order || a.slug.localeCompare(b.slug),
+      (DIRS.get(a.dir)?.chapter ?? 0) - (DIRS.get(b.dir)?.chapter ?? 0) ||
+      // Infinity - Infinity 是 NaN：兩頁都沒寫 order 時要當成相等，才會往下比資料夾與檔名。
+      (a.order === b.order ? 0 : a.order - b.order) ||
+      (DIRS.get(a.dir)?.rank ?? 0) - (DIRS.get(b.dir)?.rank ?? 0) ||
+      a.slug.localeCompare(b.slug),
   );
 }
 

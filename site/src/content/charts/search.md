@@ -1,7 +1,7 @@
 ---
 title: 搜尋匯入
 description: 從 simai Wiki、adxdls 或 Majdata 搜尋譜面並匯入，已在本機的譜面不會重複下載。
-order: 2
+order: 4
 keywords: [搜尋譜面, 線上譜面, 下載譜面, 找歌, 歌名, simai wiki, adxdls, AstroDX, majdata, 宴譜, 定數, 譜師]
 ---
 

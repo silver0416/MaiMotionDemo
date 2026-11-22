@@ -1,7 +1,7 @@
 ---
 title: simai 語法
 description: 從 BPM、分割與逗號讀懂 simai，再查完整的支援語法、Slide 長度與各形狀的限制。
-order: 3
+order: 7
 keywords: [語法, 寫法, 格式, 記譜, BPM, 拍子, 分割, 逗號, 結尾, Hold 長度, Slide 長度, 星星, 形狀, wifi, 反引號, HS, 註解]
 ---
 

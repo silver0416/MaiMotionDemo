@@ -52,7 +52,7 @@ site/
 - 頂列：在頁面頂端時和背景同色、沒有分隔線；往下捲之後變成極輕微的毛玻璃（背景 94% 不透明＋`blur(6px)`）加一點陰影。這是使用者 2026-11-15 指定的例外（仿 react.dev），全站只有這一處用半透明與 `backdrop-filter`，不要搬到別的元件。App 外框 iOS 版的頂列（`AppTopbar.svelte`）沿用同一個例外，不算新的；Android 版的頂列不用毛玻璃，離開頂端改成不透明的面板色。
 - App 外框的底部導覽列與 iOS 的返回圓鈕一律不透明（使用者 2026-11-15 決定：iOS 版照 Apple「降低透明度」時的實心樣子，不做玻璃），用 1px 描邊加陰影分層，**不是**半透明例外。
 - 站名只寫英文「MaiMotionDemo」（圓體 M PLUS Rounded 1c ExtraBold，`.wordmark`），後面不接中文；標誌是不帶底色的向量圖（`Logo.svelte`），環跟著文字顏色。
-- 章節標題（側欄、選單抽屜、首頁章節清單）比頁面連結高一階：側欄 15px／700、`--c-text-strong`、`--font-display`（觸控螢幕 19px），首頁 19px／700；字的下半部後面墊一條不透明的色帶，像螢光筆劃過（`docs.css` 的 `.section-mark`，用 `::after`，不是漸層也不是左側邊框；顏色和背景色混過，壓在上面的字才看得清楚）。色帶的顏色由 `nav.ts` 的 `Section.tone` 決定：`guide`（入門導覽：認識 MaiMotionDemo、基礎操作演示）用右手藍 `--c-right`，`detail`（其餘各章，細節）用左手粉 `--c-left`，讓讀者看出「從這裡開始是細節」。元件裡不寫死章節 id。內容頁上方的章節名、上一頁／下一頁只是文字，不加色帶。中文沒有打包的標題字型（中文走系統字型，圓體只收英文字母），所以章節標題靠字重、字級與字色區別。
+- 章節標題（側欄、選單抽屜、首頁章節清單）比頁面連結高一階：側欄 15px／700、`--c-text-strong`、`--font-display`（觸控螢幕 19px），首頁 19px／700；字的下半部後面墊一條不透明的色帶，像螢光筆劃過（`docs.css` 的 `.section-mark`，用 `::after`，不是漸層也不是左側邊框；顏色和背景色混過，壓在上面的字才看得清楚）。色帶的顏色由 `nav.ts` 的 `Section.tone` 決定：`guide`（入門導覽：認識 MaiMotionDemo、基礎操作演示）用右手藍 `--c-right`，`detail`（其餘各章，細節）用左手粉 `--c-left`，讓讀者看出「從這裡開始是細節」。元件裡不寫死章節 id。入門導覽的最後一章和第一個 `detail` 章節之間放一條分隔標示「完整手冊」（`nav.ts` 的 `MANUAL_LABEL`、`startsManual()`）：側欄與選單是小字加左右各一條 1px 線，首頁章節清單是和「章節」同樣的小標。內容頁上方的章節名、上一頁／下一頁只是文字，不加色帶。中文沒有打包的標題字型（中文走系統字型，圓體只收英文字母），所以章節標題靠字重、字級與字色區別。
 
 ### 版面與手機版
 
@@ -115,7 +115,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 ### 三級標題
 ```
 
-- 章節（`section`）、顯示名稱與順序固定在 `src/lib/nav.ts`：`intro` 認識 MaiMotionDemo、`quick` 基礎操作演示、`start` 開始使用（涵蓋 `content/start/` 與 `content/charts/` 兩個資料夾：先是下載與啟動、第一次播放、看懂盤面、介面導覽，再接新增譜面、搜尋匯入、simai 語法、譜面紀錄、匯出與匯入標記檔；`/charts/…` 的網址照舊）、`play` 播放與檢視、`annotate` 真人手順標註、`model` 模型原理、`more` 其他。同一章先依 `dirs` 的順序、再依 `order` 排；上一頁／下一頁跨章時標題前面加章名，同章（例如 `/start/interface` → `/charts/new`）不加。
+- 章節（`section`）、顯示名稱與順序固定在 `src/lib/nav.ts`：`intro` 認識 MaiMotionDemo、`quick` 基礎操作演示、`start` 開始使用（涵蓋 `content/start/` 與 `content/charts/` 兩個資料夾：兩個資料夾的頁面共用一組 `order`、穿插排列：下載與啟動、介面導覽、新增譜面、搜尋匯入、第一次播放、看懂盤面、simai 語法、譜面紀錄、匯出與匯入標記檔；`/charts/…` 的網址照舊）、`play` 播放與檢視、`annotate` 真人手順標註、`model` 模型原理、`more` 其他。同一章依 `order` 排，不分資料夾（order 相同才依 `dirs` 的順序）；上一頁／下一頁跨章時標題前面加章名，同章（例如 `/start/interface` → `/charts/new`）不加。
 - `SECTIONS` 一章寫成一行：`scripts/build-index.mjs` 逐行讀 `id`、`title`、`dirs` 當搜尋索引的章節名。`markdown.js` 依資料夾自動 import 元件的規則（`SECTION_COMPONENTS`、`SECTION_EXTRA_IMPORTS`）的 key 是內容資料夾，同一章的資料夾要一起列（`start` 與 `charts` 都能用 `<Mascot>`）。
 - `intro` 是給還不知道這個 App 在做什麼的人的導覽（這是什麼、怎麼推算手順、為什麼需要真人標註、標註原則、五步上手），內容來自合作夥伴的介紹文，只講概念、不放操作細節；第一頁開頭有「想直接上手」的提示連到〈第一次播放〉，`start` 第一頁開頭有一句回指。首頁的主要按鈕連到 `intro` 第一頁，「閱讀手冊」是第二顆按鈕。
 - 只用 `##` 與 `###`；每個 `##` 是搜尋索引的一塊，所以一塊講一件事，標題用使用者會問的說法。

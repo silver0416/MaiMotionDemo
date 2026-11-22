@@ -1,7 +1,7 @@
 <script lang="ts">
   import Icon from '$app/components/Icon.svelte';
   import Demo from '$lib/demos/Demo.svelte';
-  import { pagesIn, SECTIONS, SITE } from '$lib/nav';
+  import { MANUAL_LABEL, pagesIn, SECTIONS, SITE, startsManual } from '$lib/nav';
   import InstallEntry from '$lib/pwa/InstallEntry.svelte';
   import LatestVersion from '$lib/release/LatestVersion.svelte';
   import ExtraIcon from '$lib/shell/ExtraIcon.svelte';
@@ -51,7 +51,10 @@
   <section class="chapters" aria-labelledby="chapters-title">
     <h2 id="chapters-title" class="chapters-title">章節</h2>
     <ol class="chapter-list">
-      {#each chapters as { section, pages } (section.id)}
+      {#each chapters as { section, pages }, index (section.id)}
+        {#if startsManual(SECTIONS, index)}
+          <li class="chapter-divider">{MANUAL_LABEL}</li>
+        {/if}
         <li class="chapter">
           <div class="chapter-head">
             <h3 class="section-mark" data-tone={section.tone}>{section.title}</h3>
@@ -175,6 +178,16 @@
   }
 
   /* 章節名：和側欄一樣加螢光筆劃線（.section-mark，入門導覽藍、細節粉）。 */
+  /* 入門導覽和後面各章之間的分隔標示：和上方「章節」同樣的小標樣式，自成一列。 */
+  .chapter-divider {
+    padding: var(--space-5) 0 var(--space-2);
+    border-bottom: 1px solid var(--c-border);
+    color: var(--c-text-dim);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
   .chapter-head h3 {
     color: var(--c-text-strong);
     font-size: var(--fs-xl);
