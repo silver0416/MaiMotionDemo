@@ -31,7 +31,9 @@ function scriptHashes(): string[] {
       const type = /\btype="([^"]*)"/.exec(match[1])?.[1];
       // 只有會執行的 script 要 hash（application/json 之類的資料不用）。
       if (type && type !== "module" && type !== "text/javascript") continue;
-      hashes.add(`'sha256-${createHash("sha256").update(match[2], "utf8").digest("base64")}'`);
+      // 瀏覽器解析 HTML 時會把 CRLF 換成 LF 再比對 hash；原始檔是 CRLF（Windows 剛 checkout）時要先換掉，不然 hash 對不上、script 會被擋。
+      const text = match[2].replace(/\r\n?/g, "\n");
+      hashes.add(`'sha256-${createHash("sha256").update(text, "utf8").digest("base64")}'`);
     }
   }
   return [...hashes].sort();
