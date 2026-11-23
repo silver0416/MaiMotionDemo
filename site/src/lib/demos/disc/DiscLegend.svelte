@@ -6,24 +6,36 @@
    */
   import './disc.css';
   import DiscBoard from '$app/components/DiscBoard.svelte';
-  import { BUTTONS, buttonPoint, chevrons } from '$app/lib/disc';
+  import { BUTTONS, buttonPoint } from '$app/lib/disc';
   import { scalePoint } from '$app/lib/notes';
-  import { touchHoldFrame, touchHoldRingRadius, touchPetals, touchRadius, TOUCH_ICON_ANGLE } from '$app/lib/touch';
-  import type { PathSample, Point } from '$app/lib/types';
+  import { touchFans, touchRadius } from '$app/lib/touch';
+  import type { PathSample, Point, SlidePath } from '$app/lib/types';
   import {
     CENTER,
     DISC_RADIUS,
+    EX_GLOW_BLUR_PX,
+    NOTE_DOT,
+    NOTE_RADIUS,
+    STAR_DOT,
+    TOUCH_DOT_RADIUS,
+    TOUCH_DOT_RIM_RADIUS,
     VIEW_BOX,
-    chevronPath,
-    closedPath,
+    bandWidth,
+    borderFill,
     diamondPath,
-    holdOutline,
+    edgeWidth,
+    exGlowOffset,
+    exGlowWidth,
+    fanBody,
+    holdPath,
     len,
     linePath,
     palmCrossPath,
-    partialPath,
     px,
-    starPath,
+    slideTracks,
+    starOnPath,
+    touchHoldBand,
+    touchHoldQuarters,
   } from './draw';
 
   type ItemId =
@@ -43,13 +55,13 @@
 
   /** 用語對照 src/content/start/disc.md。 */
   const ITEMS: { id: ItemId; name: string; text: string }[] = [
-    { id: 'tap', name: 'Tap', text: '空心圓環' },
+    { id: 'tap', name: 'Tap', text: '粗圓環，正中心一個小點' },
     { id: 'hold', name: 'Hold', text: '空心長條，長度代表要按多久' },
-    { id: 'slide', name: 'Slide', text: '星星加上帶箭頭的軌道，出發後有實心星星沿軌道移動' },
-    { id: 'touch', name: 'Touch', text: '四片三角形往落點收攏，中間寫落點名稱' },
-    { id: 'touchHold', name: 'Touch Hold', text: '方框加斜向三角形，外圈亮環是剩餘時間' },
-    { id: 'break', name: 'Break', text: '筆觸換成橘色，形狀不變' },
-    { id: 'ex', name: 'EX', text: '音符內側的線條換色加粗' },
+    { id: 'slide', name: 'Slide', text: '星星沿著一整排箭頭滑過去，走過的箭頭會消失' },
+    { id: 'touch', name: 'Touch', text: '四片三角形往落點收攏，尖端相碰就是判定' },
+    { id: 'touchHold', name: 'Touch Hold', text: '斜向的四片三角形；按住後外框從正上方亮起，亮滿一圈就放開' },
+    { id: 'break', name: 'Break', text: '換成橘色，形狀不變' },
+    { id: 'ex', name: 'EX', text: '音符周圍多一圈柔和的光暈' },
     { id: 'left', name: '左手 L', text: '粉紅色；碰到盤面時實心，外面多一圈接觸環' },
     { id: 'right', name: '右手 R', text: '藍色；沒碰盤面時空心，下方寫目前在做什麼' },
     { id: 'trail', name: '最近軌跡', text: '手後面拖著的粗線，是最近一小段的移動' },
@@ -57,6 +69,10 @@
     { id: 'handover', name: '換手菱形', text: 'Slide 中途換手的位置，上面寫「換手 L→R」' },
     { id: 'palm', name: '手掌虛線圓', text: '一隻手掌同時蓋住好幾個 Touch' },
   ];
+
+  /** EX 光暈用的模糊濾鏡 id。 */
+  const uid = $props.id();
+  const exGlowId = `${uid}-ex-glow`;
 
   let pinned = $state<ItemId | null>(null);
   let hovered = $state<ItemId | null>(null);
@@ -80,14 +96,18 @@
   const P6 = buttonPoint(6);
   const P8 = buttonPoint(8);
 
-  /** 6 → 4 的直線 Slide，取樣點只為了畫箭頭與已通過的部分。 */
+  /** 6 → 4 的直線 Slide，取樣點只為了畫箭頭帶。 */
   const SLIDE: PathSample[] = Array.from({ length: 11 }, (_, i) => {
     const u = i / 10;
     return { u, x: P6.x + (P4.x - P6.x) * u, y: P6.y + (P4.y - P6.y) * u };
   });
   const SLIDE_U = 0.3;
   const HANDOVER_U = 0.62;
-  const ARROWS = chevrons(SLIDE, 9);
+  const SLIDE_PATH: SlidePath = { id: 'legend', shape: '-', startButton: 6, endButton: 4, samples: SLIDE, branches: [] };
+  const ARROWS = slideTracks(SLIDE_PATH, SLIDE_U);
+  /** 圖例裡的環帶都是平常的寬度（沒有判定中）。 */
+  const BAND = bandWidth(false);
+  const EDGE = edgeWidth(BAND);
   const at = (u: number): Point => ({ x: P6.x + (P4.x - P6.x) * u, y: P6.y + (P4.y - P6.y) * u });
   const HANDOVER_AT = px(at(HANDOVER_U));
 
@@ -102,11 +122,13 @@
 
   const tapAt = (p: Point) => px(p);
   const C_PX = px(C);
-  const HOLD_RING = len(touchHoldRingRadius(touchRadius('C')));
+  /** Touch 畫成正在往落點收攏的樣子；Touch Hold 已經收到位、按住了 35%（外框亮起三分之一多一點）。 */
+  const TOUCH_GATHER = 0.6;
+  const TOUCH_HOLD_PROGRESS = 0.35;
+  const HOLD_BAND = touchHoldBand(touchRadius('C'));
   const L_PX = px(P8);
   const R_PX = px(RIGHT_HAND);
   const handR = len(0.075);
-  const CHEVRON = chevronPath();
 </script>
 
 <div class="legend">
@@ -114,6 +136,11 @@
     <div class="mm-frame">
       <svg class="mm-disc legend-svg" class:has-active={active !== null} viewBox={VIEW_BOX} role="img" aria-label="盤面圖例：各種音符、手、軌跡、標籤、換手菱形與手掌虛線圓">
         <DiscBoard center={CENTER} radius={DISC_RADIUS} />
+
+        <!-- EX 的光暈：墊在音符底下的那一筆過這個模糊濾鏡（同 DiscStage）。 -->
+        <filter id={exGlowId} x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation={EX_GLOW_BLUR_PX} />
+        </filter>
 
         <g class="buttons" aria-hidden="true">
           {#each BUTTONS as button (button)}
@@ -139,74 +166,90 @@
             <circle class="hit" cx={px(PALM_CENTER).x} cy={px(PALM_CENTER).y} r={len(PALM_RADIUS)} />
           </g>
 
-          <!-- Slide：軌道、箭頭、起點星星與移動中的星星 -->
+          <!-- Slide：箭頭帶（星星走過的不畫）、起點星星與移動中的星星 -->
           <g class="item" class:is-dim={dim('slide')} class:is-on={active === 'slide'} data-id="slide">
             <g class="slide-path">
-              <path class="slide-path-base" d={linePath(SLIDE)} />
-              <path class="slide-path-done" d={partialPath(SLIDE, SLIDE_U)} />
-              {#each ARROWS as arrow, index (index)}
-                {@const point = px(arrow)}
-                <path
-                  class="chevron"
-                  class:is-passed={arrow.u <= SLIDE_U}
-                  d={CHEVRON}
-                  transform={`translate(${point.x} ${point.y}) rotate(${arrow.angle})`}
-                />
+              {#each ARROWS as track, index (index)}
+                <path class="slide-under" d={track.under} />
+                <path class="slide-chevrons" d={track.chevrons} />
               {/each}
             </g>
             <g class="note">
-              <path class="note-star" d={starPath(P6, 0.1, 0.045)} />
-              <path class="note-star is-moving" d={starPath(at(SLIDE_U), 0.085, 0.038)} />
+              <path class="note-star is-moving" d={starOnPath(SLIDE, SLIDE_U)} />
+              <circle class="note-dot is-moving" cx={px(at(SLIDE_U)).x} cy={px(at(SLIDE_U)).y} r={len(STAR_DOT)} />
             </g>
             <path class="hit" d={linePath(SLIDE)} />
           </g>
 
           <!-- Hold -->
           <g class="item note" class:is-dim={dim('hold')} class:is-on={active === 'hold'} data-id="hold">
-            <path class="hold-bar" d={closedPath(holdOutline(P8, 1, 0.36))} />
+            <!-- 頭的帽子中心在鍵位上；尾在 0.7 倍的位置，尾端中心有一顆小點 -->
+            <path class="note-edge" d={holdPath(P8, 1, 0.7)} stroke-width={EDGE} />
+            <path class="hold-bar" d={holdPath(P8, 1, 0.7)} stroke-width={BAND} />
+            <circle class="note-dot" cx={px(scalePoint(P8, 0.7)).x} cy={px(scalePoint(P8, 0.7)).y} r={len(NOTE_DOT)} />
           </g>
 
           <!-- Tap、Break、EX -->
           <g class="item note" class:is-dim={dim('tap')} class:is-on={active === 'tap'} data-id="tap">
-            <circle class="note-ring" cx={tapAt(P1).x} cy={tapAt(P1).y} r={len(0.085)} />
-            <circle class="note-core" cx={tapAt(P1).x} cy={tapAt(P1).y} r={len(0.048)} />
+            <circle class="note-edge" cx={tapAt(P1).x} cy={tapAt(P1).y} r={len(NOTE_RADIUS)} stroke-width={EDGE} />
+            <circle class="note-ring" cx={tapAt(P1).x} cy={tapAt(P1).y} r={len(NOTE_RADIUS)} stroke-width={BAND} />
+            <circle class="note-dot" cx={tapAt(P1).x} cy={tapAt(P1).y} r={len(NOTE_DOT)} />
           </g>
           <g class="item note is-break" class:is-dim={dim('break')} class:is-on={active === 'break'} data-id="break">
-            <circle class="note-ring" cx={tapAt(P2).x} cy={tapAt(P2).y} r={len(0.085)} />
-            <circle class="note-core" cx={tapAt(P2).x} cy={tapAt(P2).y} r={len(0.048)} />
+            <circle class="note-edge" cx={tapAt(P2).x} cy={tapAt(P2).y} r={len(NOTE_RADIUS)} stroke-width={EDGE} />
+            <circle class="note-ring" cx={tapAt(P2).x} cy={tapAt(P2).y} r={len(NOTE_RADIUS)} stroke-width={BAND} />
+            <circle class="note-dot" cx={tapAt(P2).x} cy={tapAt(P2).y} r={len(NOTE_DOT)} />
           </g>
           <g class="item note is-ex" class:is-dim={dim('ex')} class:is-on={active === 'ex'} data-id="ex">
-            <circle class="note-ring" cx={tapAt(P3).x} cy={tapAt(P3).y} r={len(0.085)} />
-            <circle class="note-core" cx={tapAt(P3).x} cy={tapAt(P3).y} r={len(0.048)} />
+            <circle
+              class="note-ex"
+              cx={tapAt(P3).x}
+              cy={tapAt(P3).y}
+              r={len(NOTE_RADIUS) + exGlowOffset(BAND)}
+              stroke-width={exGlowWidth(BAND)}
+              filter={`url(#${exGlowId})`}
+            />
+            <circle class="note-edge" cx={tapAt(P3).x} cy={tapAt(P3).y} r={len(NOTE_RADIUS)} stroke-width={EDGE} />
+            <circle class="note-ring" cx={tapAt(P3).x} cy={tapAt(P3).y} r={len(NOTE_RADIUS)} stroke-width={BAND} />
+            <circle class="note-dot" cx={tapAt(P3).x} cy={tapAt(P3).y} r={len(NOTE_DOT)} />
           </g>
 
           <!-- Touch（被手掌蓋住的兩顆）與 Touch Hold -->
           <g class="item note" class:is-dim={dim('touch')} class:is-on={active === 'touch'} data-id="touch">
             {#each [{ p: B2, name: 'B2' }, { p: B3, name: 'B3' }] as touch (touch.name)}
-              {#each touchPetals(touch.p, touchRadius('B'), TOUCH_ICON_ANGLE, 1, false) as petal, index (index)}
-                <path class="touch-petal" d={closedPath(petal)} />
+              {#each touchFans(touchRadius('B'), TOUCH_GATHER, false) as fan, index (index)}
+                <path class="touch-fan" d={fanBody(touch.p, fan)} />
               {/each}
-              <text class="touch-label" x={px(touch.p).x} y={px(touch.p).y} text-anchor="middle" dominant-baseline="central">
-                {touch.name}
-              </text>
+              <circle class="touch-dot-rim" cx={px(touch.p).x} cy={px(touch.p).y} r={TOUCH_DOT_RIM_RADIUS} />
+              <circle class="touch-dot" cx={px(touch.p).x} cy={px(touch.p).y} r={TOUCH_DOT_RADIUS} />
             {/each}
           </g>
           <g class="item note" class:is-dim={dim('touchHold')} class:is-on={active === 'touchHold'} data-id="touchHold">
-            <circle class="touch-hold-track" cx={C_PX.x} cy={C_PX.y} r={HOLD_RING} />
-            <circle
-              class="touch-hold-remain"
-              cx={C_PX.x}
-              cy={C_PX.y}
-              r={HOLD_RING}
-              stroke-dasharray={2 * Math.PI * HOLD_RING}
-              stroke-dashoffset={2 * Math.PI * HOLD_RING * 0.35}
-              transform={`rotate(-90 ${C_PX.x} ${C_PX.y})`}
-            />
-            <path class="touch-hold-frame" d={closedPath(touchHoldFrame(C, touchRadius('C'), TOUCH_ICON_ANGLE))} />
-            {#each touchPetals(C, touchRadius('C'), TOUCH_ICON_ANGLE, 1, true) as petal, index (index)}
-              <path class="touch-petal" d={closedPath(petal)} />
+            <!-- 已經按住：粗的圓角菱形外框從正上方順時針亮到 35%（按下去之前沒有外框） -->
+            {#each touchHoldQuarters(C, touchRadius('C')) as quarter, index (index)}
+              {@const fill = borderFill(TOUCH_HOLD_PROGRESS, index)}
+              {#if fill > 0}
+                <path
+                  class="touch-hold-edge"
+                  d={quarter}
+                  pathLength="1"
+                  stroke-dasharray={`${fill} 1`}
+                  stroke-width={HOLD_BAND.edge}
+                />
+                <path
+                  class="touch-hold-fill"
+                  d={quarter}
+                  pathLength="1"
+                  stroke-dasharray={`${fill} 1`}
+                  stroke-width={HOLD_BAND.fill}
+                />
+              {/if}
             {/each}
-            <text class="touch-label is-center" x={C_PX.x} y={C_PX.y} text-anchor="middle" dominant-baseline="central">C</text>
+            {#each touchFans(touchRadius('C'), 1, true) as fan, index (index)}
+              <path class="touch-fan" d={fanBody(C, fan)} />
+            {/each}
+            <circle class="touch-dot-rim" cx={C_PX.x} cy={C_PX.y} r={TOUCH_DOT_RIM_RADIUS} />
+            <circle class="touch-dot" cx={C_PX.x} cy={C_PX.y} r={TOUCH_DOT_RADIUS} />
           </g>
 
           <!-- 音符旁的標籤 -->

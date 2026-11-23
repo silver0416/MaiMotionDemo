@@ -7,20 +7,20 @@
   import './disc.css';
   import DiscBoard from '$app/components/DiscBoard.svelte';
   import Icon from '$app/components/Icon.svelte';
-  import { BUTTONS, buttonPoint, chevrons, pointOnSamples } from '$app/lib/disc';
+  import { BUTTONS, buttonPoint, pointOnSamples } from '$app/lib/disc';
   import {
     approachScale,
     noteVisual,
-    pathLength,
     scalePoint,
     simultaneousSlideHands,
+    tailScale,
     touchGather,
+    eachInfo,
   } from '$app/lib/notes';
   import { buildTrack, sampleWithStarts, trackSlice, type HandState, type Track } from '$app/lib/motion';
   import { MODE_LABEL } from '$app/lib/contract';
   import { activePalms, coveredTargets, palmCovers } from '$app/lib/palm';
   import {
-    TOUCH_ICON_ANGLE,
     fireworkBursts,
     fireworkShape,
     isFireworkTouch,
@@ -28,11 +28,9 @@
     radialAngle,
     sensorKey,
     sparkAngles,
-    touchHoldFrame,
-    touchHoldRingRadius,
+    touchFans,
     touchName,
     touchOuterRadius,
-    touchPetals,
     touchRadius,
     touchSparkRadius,
   } from '$app/lib/touch';
@@ -53,21 +51,38 @@
   import {
     CENTER,
     DISC_RADIUS,
+    EX_GLOW_BLUR_PX,
+    EX_GLOW_SPREAD_PX,
+    NOTE_DOT,
+    NOTE_RADIUS,
+    STAR_DOT,
+    TOUCH_DOT_RADIUS,
+    TOUCH_DOT_RIM_RADIUS,
     VIEW_BOX,
-    chevronPath,
-    closedPath,
+    bandWidth,
+    borderFill,
     diamondPath,
-    holdLength,
-    holdOutline,
+    eachArc,
+    edgeWidth,
+    exGlowOffset,
+    exGlowWidth,
+    fanBody,
+    holdPath,
     len,
     linePath,
     palmCrossPath,
     palmLabel,
-    partialPath,
     px,
     sensorRadius,
     shapePath,
-    starPath,
+    slideTracks,
+    starBand,
+    starOnPath,
+    starOutline,
+    starSpin,
+    touchHoldBand,
+    touchHoldQuarters,
+    touchJustPath,
   } from './draw';
 
   interface Props {
@@ -76,6 +91,10 @@
   }
 
   let { name }: Props = $props();
+
+  /** EX 光暈用的模糊濾鏡，每個演示各一個（同一頁可能有好幾個演示，id 不能撞）。 */
+  const uid = $props.id();
+  const exGlowId = `${uid}-ex-glow`;
 
   // ---- 資料 ----
 
@@ -405,6 +424,9 @@
     demo ? demo.notes.map((note) => noteVisual(note, time, 'window', true, APPROACH_SECONDS)) : [],
   );
 
+  /** 同時押的連線（同 DiscStage）：只看時間，和左右手的分配無關。 */
+  const each = $derived(eachInfo(demo ? demo.notes : []));
+
   interface SensorMark {
     key: string;
     label: string;
@@ -523,7 +545,6 @@
 
   const handMarkerRadius = len(0.075);
   const DIAMOND = diamondPath();
-  const CHEVRON = chevronPath();
 
   // ---- 時間軸標記（同 App 播放列：音符刻度、手掌與換手區間） ----
 
@@ -672,35 +693,40 @@
                 {#if visual.visible && visual.note.pathId}
                   {@const path = data.pathById.get(visual.note.pathId)}
                   {#if path}
-                    {@const arrows = chevrons(
-                      path.samples,
-                      Math.min(26, Math.max(3, Math.round(pathLength(path.samples) / 0.16))),
-                    )}
-                    <g class="slide-path" class:is-break={visual.note.modifiers.breakSlide} opacity={visual.opacity}>
-                      {#each path.branches as branch, index (index)}
-                        <path class="slide-path-branch" d={linePath(branch)} />
-                      {/each}
-                      <path class="slide-path-base" d={linePath(path.samples)} />
-                      {#if visual.slideU > 0}
-                        {#each path.branches as branch, index (index)}
-                          <path class="slide-path-done" d={partialPath(branch, visual.slideU)} />
-                        {/each}
-                        <path class="slide-path-done" d={partialPath(path.samples, visual.slideU)} />
-                      {/if}
-                      {#each arrows as arrow, index (index)}
-                        {@const point = px(arrow)}
-                        <path
-                          class="chevron"
-                          class:is-passed={arrow.u <= visual.slideU}
-                          d={CHEVRON}
-                          transform={`translate(${point.x} ${point.y}) rotate(${arrow.angle})`}
-                        />
+                    <!-- 一條軌道的箭頭合成一個 path；星星走過的箭頭不畫。WiFi 是一整面扇形。
+                         每條箭頭帶兩層：底下黑色（外框＋往後錯開的陰影），上面才是箭頭本身。 -->
+                    <g class="slide-path" class:is-break={visual.note.modifiers.breakSlide} opacity={visual.trackOpacity}>
+                      {#each slideTracks(path, visual.slideU) as track, index (index)}
+                        <path class="slide-under" d={track.under} />
+                        <path class="slide-chevrons" d={track.chevrons} />
                       {/each}
                     </g>
                   {/if}
                 {/if}
               {/each}
             </g>
+
+            {#if each.links.length > 0}
+              <!-- each 連線：同時的兩顆外圈音符之間一段細圓弧，跟著音符一起往外飛。 -->
+              <g class="each-lines" aria-hidden="true">
+                {#each each.links as link (link.key)}
+                  {@const visual = visuals[link.a]}
+                  {@const other = visuals[link.b]}
+                  {#if visual && other && visual.visible && visual.phase === 'upcoming'}
+                    <path
+                      class="each-line"
+                      d={eachArc(visual.note.position, other.note.position, approachScale(visual))}
+                      opacity={visual.grow * visual.opacity}
+                    />
+                  {/if}
+                {/each}
+              </g>
+            {/if}
+
+            <!-- EX 音符共用的模糊濾鏡：把墊在音符底下的那一筆暈開成光暈（同 DiscStage）。 -->
+            <filter id={exGlowId} x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB">
+              <feGaussianBlur stdDeviation={EX_GLOW_BLUR_PX} />
+            </filter>
 
             <g class="notes" aria-hidden="true">
               {#each visuals as visual (visual.note.id)}
@@ -709,12 +735,17 @@
                   {@const factor = approachScale(visual)}
                   {@const center2 = px(scalePoint(note.position, factor))}
                   {@const tag = tagFor(note.id)}
+                  {@const band = bandWidth(visual.phase === 'active')}
                   <g
                     class="note"
                     class:is-active={visual.phase === 'active'}
                     class:is-break={note.modifiers.breakNote}
+                    class:is-break-track={note.modifiers.breakSlide}
                     class:is-ex={note.modifiers.ex}
                     opacity={visual.opacity}
+                    transform={visual.grow < 1
+                      ? `translate(${center2.x} ${center2.y}) scale(${visual.grow}) translate(${-center2.x} ${-center2.y})`
+                      : undefined}
                   >
                     {#if note.kind === 'touch' || note.kind === 'touchHold'}
                       {@const at = note.position}
@@ -725,63 +756,120 @@
                         <circle class="touch-spark-mark" cx={mark.x} cy={mark.y} r={len(touchSparkRadius(r, isHold))} />
                       {/if}
                       {#if isHold}
-                        {@const ring = len(touchHoldRingRadius(r))}
-                        <circle class="touch-hold-track" cx={mark.x} cy={mark.y} r={ring} />
-                        <circle
-                          class="touch-hold-remain"
-                          cx={mark.x}
-                          cy={mark.y}
-                          r={ring}
-                          stroke-dasharray={2 * Math.PI * ring}
-                          stroke-dashoffset={2 * Math.PI * ring * visual.progress}
-                          transform={`rotate(-90 ${mark.x} ${mark.y})`}
-                        />
-                        <path class="touch-hold-frame" d={closedPath(touchHoldFrame(at, r, TOUCH_ICON_ANGLE))} />
-                      {/if}
-                      {#each touchPetals(at, r, TOUCH_ICON_ANGLE, touchGather(visual), isHold) as petal, index (index)}
-                        <path class="touch-petal" d={closedPath(petal)} />
-                      {/each}
-                      <text
-                        class="touch-label"
-                        class:is-center={note.touchArea === 'C'}
-                        x={mark.x}
-                        y={mark.y}
-                        text-anchor="middle"
-                        dominant-baseline="central"
-                      >
-                        {touchName(note.touchArea, note.button)}
-                      </text>
-                    {:else if note.kind === 'hold'}
-                      {@const duration = Math.max(note.endSeconds - note.timeSeconds, 0)}
-                      {@const full = holdLength(duration)}
-                      <path
-                        class="hold-bar"
-                        d={closedPath(
-                          holdOutline(note.position, factor, visual.phase === 'upcoming' ? full : full * (1 - visual.progress)),
-                        )}
-                      />
-                    {:else if note.kind === 'slide'}
-                      {#if note.hasHead}
-                        <path class="note-star" d={starPath(scalePoint(note.position, factor), 0.1, 0.045)} />
-                      {/if}
-                      {#if visual.slideU > 0 && visual.slideU < 1 && note.pathId}
-                        {@const path = data.pathById.get(note.pathId)}
-                        {#if path}
-                          {#each path.branches as branch, index (index)}
-                            <path class="note-star is-moving" d={starPath(pointOnSamples(branch, visual.slideU), 0.085, 0.038)} />
-                          {/each}
-                          <path class="note-star is-moving" d={starPath(pointOnSamples(path.samples, visual.slideU), 0.085, 0.038)} />
+                        {#if visual.phase !== 'upcoming'}
+                          <!-- Touch Hold：按住之後，外面一圈粗的圓角菱形從正上方順時針亮起來，
+                               亮滿一圈就是結束時間。按下去之前沒有外框。 -->
+                          {@const holdBand = touchHoldBand(r)}
+                          <g class="touch-hold-border">
+                            {#each touchHoldQuarters(at, r) as quarter, index (index)}
+                              {@const fill = borderFill(visual.progress, index)}
+                              {#if fill > 0}
+                                <path
+                                  class="touch-hold-edge"
+                                  d={quarter}
+                                  pathLength="1"
+                                  stroke-dasharray={`${fill} 1`}
+                                  stroke-width={holdBand.edge}
+                                />
+                                <path
+                                  class="touch-hold-fill"
+                                  d={quarter}
+                                  pathLength="1"
+                                  stroke-dasharray={`${fill} 1`}
+                                  stroke-width={holdBand.fill}
+                                />
+                              {/if}
+                            {/each}
+                          </g>
                         {/if}
+                      {:else if visual.phase !== 'upcoming'}
+                        <!-- Touch：收到位那一刻亮起一個圓角方框，跟著音符一起淡出 -->
+                        <path class="touch-just" d={touchJustPath(at, r)} />
+                      {/if}
+                      <!-- 四片圓角的直角三角形尖端朝落點、由外往內收攏，四個尖端在落點相碰的瞬間就是判定時間；
+                           收到位時剛好拼成一整塊（Touch 正方形、Touch Hold 菱形）。演示不上色，兩種都挖空。 -->
+                      <g class="touch-fans">
+                        {#each touchFans(r, touchGather(visual), isHold) as fan, index (index)}
+                          <path class="touch-fan" d={fanBody(at, fan)} />
+                        {/each}
+                      </g>
+                      {#if sensorMarks.length > 0}
+                        <!-- 落點標記開著時，音符會蓋住底下的編號，所以改寫在音符中心 -->
+                        <text class="touch-label" x={mark.x} y={mark.y} text-anchor="middle" dominant-baseline="central">
+                          {touchName(note.touchArea, note.button)}
+                        </text>
+                      {:else}
+                        <!-- 落點正中心的圓點：外面一圈白邊，壓在四個尖端上面 -->
+                        <circle class="touch-dot-rim" cx={mark.x} cy={mark.y} r={TOUCH_DOT_RIM_RADIUS} />
+                        <circle class="touch-dot" cx={mark.x} cy={mark.y} r={TOUCH_DOT_RADIUS} />
+                      {/if}
+                    {:else if note.kind === 'hold'}
+                      {@const bar = holdPath(note.position, factor, tailScale(visual))}
+                      {#if note.modifiers.ex}
+                        <!-- EX：同形狀的一圈柔和光暈，貼著外緣往外淡出；墊在深色描邊底下，環帶的邊緣才分得出來 -->
+                        <path
+                          class="note-ex"
+                          d={holdPath(note.position, factor, tailScale(visual), exGlowOffset(band))}
+                          stroke-width={exGlowWidth(band)}
+                          filter={`url(#${exGlowId})`}
+                        />
+                      {/if}
+                      <path class="note-edge" d={bar} stroke-width={edgeWidth(band)} />
+                      <path class="hold-bar" d={bar} stroke-width={band} />
+                      {#if visual.tailTravel > 0}
+                        {@const tail = px(scalePoint(note.position, tailScale(visual)))}
+                        <circle class="note-dot" cx={tail.x} cy={tail.y} r={len(NOTE_DOT)} />
+                      {/if}
+                    {:else if note.kind === 'slide'}
+                      {@const path = note.pathId ? data.pathById.get(note.pathId) : undefined}
+                      {#if visual.phase === 'upcoming' || !path}
+                        {#if note.hasHead}
+                          <!-- 起點星星：飛過來的時候會轉，判定時間剛好轉回一個角朝盤面外側。 -->
+                          {@const starAt = scalePoint(note.position, factor)}
+                          {@const starAngle = radialAngle(note.position) + starSpin(note, time)}
+                          {#if note.modifiers.ex}
+                            <!-- EX：星形的柔和光暈，墊在星星底下 -->
+                            <path
+                              class="note-ex"
+                              d={starOutline(starAt, starAngle)}
+                              stroke-width={EX_GLOW_SPREAD_PX * 2}
+                              filter={`url(#${exGlowId})`}
+                            />
+                          {/if}
+                          <path class="note-star" d={starBand(starAt, starAngle)} />
+                          <circle class="note-dot" cx={center2.x} cy={center2.y} r={len(STAR_DOT)} />
+                        {/if}
+                      {:else}
+                        <!-- 判定之後換成軌道上的星星：先停在起點等，再沿路徑滑到終點。 -->
+                        {#each [...path.branches, path.samples] as line, index (index)}
+                          {@const dot = px(pointOnSamples(line, visual.slideU))}
+                          <path class="note-star is-moving" d={starOnPath(line, visual.slideU)} />
+                          <circle class="note-dot is-moving" cx={dot.x} cy={dot.y} r={len(STAR_DOT)} />
+                        {/each}
                       {/if}
                     {:else}
-                      <circle class="note-ring" cx={center2.x} cy={center2.y} r={len(0.085)} />
-                      <circle class="note-core" cx={center2.x} cy={center2.y} r={len(0.048)} />
+                      {@const ring = len(NOTE_RADIUS)}
+                      {#if note.modifiers.ex}
+                        <!-- EX：一圈柔和的光暈，貼著外緣往外淡出；墊在深色描邊底下，環帶的邊緣才分得出來 -->
+                        <circle
+                          class="note-ex"
+                          cx={center2.x}
+                          cy={center2.y}
+                          r={ring + exGlowOffset(band)}
+                          stroke-width={exGlowWidth(band)}
+                          filter={`url(#${exGlowId})`}
+                        />
+                      {/if}
+                      <circle class="note-edge" cx={center2.x} cy={center2.y} r={ring} stroke-width={edgeWidth(band)} />
+                      <circle class="note-ring" cx={center2.x} cy={center2.y} r={ring} stroke-width={band} />
+                      <circle class="note-dot" cx={center2.x} cy={center2.y} r={len(NOTE_DOT)} />
                     {/if}
 
-                    {#if tag}
+                    {#if tag && visual.tagOpacity > 0}
                       {@const anchor = px(tagAnchor(note, factor))}
                       <text
                         class="note-tag"
+                        opacity={visual.tagOpacity}
                         class:is-left={tag.hand === 'L'}
                         class:is-right={tag.hand === 'R'}
                         class:is-handover={tag.handover}

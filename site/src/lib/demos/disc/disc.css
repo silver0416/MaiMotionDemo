@@ -1,4 +1,5 @@
-/* 文件站盤面演示共用的盤面筆觸，照 App 的 DiscStage.svelte <style> 搬過來（固定色與筆寬相同）。
+/* 文件站盤面演示共用的盤面筆觸，照 App 的 DiscStage.svelte <style> 搬過來（固定色與筆寬相同；
+   演示不能選取音符，所以沒有選中與焦點的樣式）。
    盤面永遠黑底、空心描邊；左手粉、右手藍、換手琥珀。全部收在 svg.mm-disc 底下，不影響頁面其他地方。 */
 
 .mm-frame {
@@ -63,76 +64,103 @@
   stroke-width: 5px;
 }
 
-/* ---- Slide 軌道 ---- */
-.mm-disc .slide-path-base {
-  fill: none;
-  stroke: #6d7788;
-  stroke-width: 5;
-  stroke-linecap: round;
+/*
+ * 音符與軌道的顏色走變數（同 DiscStage）：--nc 音符本體、--sc 滑行中的星星、--tc Slide 軌道。
+ * 演示固定用中性的白與灰，Break 橘；App 的「照遊戲上色」這裡不做。
+ */
+.mm-disc .slide-path {
+  --tc: #8d97a6;
 }
 
-.mm-disc .slide-path-done {
-  fill: none;
-  stroke: #eef2f8;
-  stroke-width: 6;
-  stroke-linecap: round;
+.mm-disc .slide-path.is-break {
+  --tc: #c9863a;
 }
 
-.mm-disc .slide-path-branch {
-  fill: none;
-  stroke: #55606f;
-  stroke-width: 4;
-  stroke-linecap: round;
+.mm-disc .note {
+  --nc: #eef2f8;
+  --sc: #eef2f8;
 }
 
-.mm-disc .slide-path.is-break .slide-path-base,
-.mm-disc .slide-path.is-break .slide-path-branch {
-  stroke: #c9863a;
+.mm-disc .note.is-break {
+  --nc: #f0913a;
 }
 
-.mm-disc .chevron {
-  fill: none;
-  stroke: #9aa5b5;
-  stroke-width: 5;
-  stroke-linecap: round;
+.mm-disc .note.is-break-track {
+  --sc: #f0913a;
+}
+
+/* ---- Slide 軌道：沒有中心線，一整排實心的寬「＞」；比音符暗一階 ----
+   每個箭頭底下墊一層黑色：一圈黑外框（描邊露出 3.5）加上往後錯開的陰影。
+   黑底上看不出來；兩條軌道交疊時，上面那條的箭頭一個一個分得開，不會糊在一起。 */
+.mm-disc .slide-under {
+  fill: #000;
+  stroke: #000;
+  stroke-width: 7;
   stroke-linejoin: round;
 }
 
-.mm-disc .chevron.is-passed {
-  stroke: #ffffff;
+.mm-disc .slide-chevrons {
+  fill: var(--tc);
+}
+
+/* each 連線：同時的兩顆音符之間一段細圓弧。 */
+.mm-disc .each-line {
+  fill: none;
+  stroke: #8d97a6;
+  stroke-width: 4;
 }
 
 /* ---- 音符 ---- */
+/* 墊在環帶下面的深色描邊（Tap 是圓、Hold 是長條）；筆寬寫在元素上。 */
+.mm-disc .note-edge {
+  fill: none;
+  stroke: #0b0d11;
+  stroke-linejoin: miter;
+}
+
+/* Tap：粗環帶，中間挖空；筆寬與 Hold 相同，外緣對齊。 */
 .mm-disc .note-ring {
   fill: none;
-  stroke: #eef2f8;
-  stroke-width: 7;
+  stroke: var(--nc);
 }
 
-.mm-disc .note-core {
-  fill: none;
-  stroke: #aab4c3;
-  stroke-width: 4;
+/* Tap 與星星正中心的小點，Hold 尾端也有一顆。 */
+.mm-disc .note-dot {
+  fill: var(--nc);
 }
 
-.mm-disc .note-star {
+.mm-disc .note-dot.is-moving {
+  fill: var(--sc);
+}
+
+/* EX：墊在音符底下的一圈柔和光暈（Tap 是圓、Hold 是同形狀外框、星星是星形的外輪廓）；
+   筆寬寫在元素上，整圈過一次模糊濾鏡，只往外淡出（同 App 的 DiscStage）。 */
+.mm-disc .note-ex {
   fill: none;
   stroke: #eef2f8;
-  stroke-width: 6;
+  stroke-opacity: 0.88;
   stroke-linejoin: round;
+}
+
+/* 星星：星形環帶，中間挖掉一顆小星。 */
+.mm-disc .note-star {
+  fill: var(--nc);
+  fill-rule: evenodd;
+  stroke: #0b0d11;
+  stroke-width: 3;
+  stroke-linejoin: miter;
+  paint-order: stroke;
 }
 
 .mm-disc .note-star.is-moving {
-  fill: #eef2f8;
-  stroke: #0b0d11;
-  stroke-width: 3;
+  fill: var(--sc);
 }
 
+/* 空心長條：兩端收成六邊形的尖角，筆寬與 Tap 環帶一致。 */
 .mm-disc .hold-bar {
   fill: none;
-  stroke: #eef2f8;
-  stroke-width: 7;
-  stroke-linejoin: round;
+  stroke: var(--nc);
+  stroke-linejoin: miter;
 }
 
 /* Touch 落點參考標記：沿用鍵位標記的中性色。 */
@@ -162,16 +190,33 @@
   fill: #c8d1de;
 }
 
-.mm-disc .touch-petal {
-  fill: none;
-  stroke: #eef2f8;
-  stroke-width: 5;
+/* Touch：四片圓角的直角三角形，直角那個尖端朝落點；中間挖掉一塊小三角形（evenodd），平塗一個顏色。
+   描邊一半壓在底下，露出外緣與孔緣各一圈深色。 */
+.mm-disc .touch-fan {
+  fill: var(--nc);
+  fill-rule: evenodd;
+  stroke: #0b0d11;
+  stroke-width: 3;
   stroke-linejoin: round;
+  paint-order: stroke;
 }
 
-.mm-disc .touch-hold-frame {
+/* 落點正中心的圓點：白邊＋深色描邊，裡面那顆跟著音符的顏色。 */
+.mm-disc .touch-dot-rim {
+  fill: #f6f8fc;
+  stroke: #0b0d11;
+  stroke-width: 3;
+  paint-order: stroke;
+}
+
+.mm-disc .touch-dot {
+  fill: var(--nc);
+}
+
+/* Touch 收到位那一刻亮起的圓角方框。 */
+.mm-disc .touch-just {
   fill: none;
-  stroke: #eef2f8;
+  stroke: #f6f8fc;
   stroke-width: 5;
   stroke-linejoin: round;
 }
@@ -184,31 +229,31 @@
   stroke-linejoin: round;
 }
 
-.mm-disc .touch-hold-track {
+/* Touch Hold 外框：粗的圓角菱形，按住之後從正上方順時針一段一段亮起來；筆寬寫在元素上。
+   底下墊一層深色描邊，疊在別的音符上也分得開。 */
+.mm-disc .touch-hold-edge {
   fill: none;
-  stroke: #3d4551;
-  stroke-width: 4;
-}
-
-.mm-disc .touch-hold-remain {
-  fill: none;
-  stroke: #eef2f8;
-  stroke-width: 8;
+  stroke: #0b0d11;
   stroke-linecap: butt;
+  stroke-linejoin: round;
 }
 
+.mm-disc .touch-hold-fill {
+  fill: none;
+  stroke: var(--nc);
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+}
+
+/* 落點編號寫在音符中心（落點標記與編號都顯示時才有），黑色描邊保證壓在任何筆觸上都讀得到。 */
 .mm-disc .touch-label {
   fill: #eef2f8;
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 700;
   paint-order: stroke;
   stroke: #000;
   stroke-width: 5px;
-}
-
-.mm-disc .touch-label.is-center {
-  font-size: 26px;
 }
 
 /* 煙火筆觸。stroke-opacity 只是短暫的筆觸淡出，不是半透明底色。 */
@@ -230,34 +275,10 @@
   stroke-width: 3;
 }
 
-/* Break 與 EX 只換筆觸顏色，形狀維持一致。 */
-.mm-disc .note.is-break .note-ring,
-.mm-disc .note.is-break .note-star,
-.mm-disc .note.is-break .touch-petal,
-.mm-disc .note.is-break .touch-hold-frame,
-.mm-disc .note.is-break .touch-hold-remain,
-.mm-disc .note.is-break .hold-bar {
-  stroke: #f0913a;
-}
-
-.mm-disc .note.is-ex .note-core {
-  stroke: var(--c-focus);
-  stroke-width: 6;
-}
-
-.mm-disc .note.is-ex .touch-petal {
-  stroke: var(--c-focus);
-  stroke-width: 7;
-}
-
-.mm-disc .note.is-active .note-ring,
-.mm-disc .note.is-active .hold-bar {
-  stroke-width: 9;
-}
-
-.mm-disc .note.is-active .touch-petal,
-.mm-disc .note.is-active .touch-hold-frame {
-  stroke-width: 7;
+/* Break 只換顏色（上面的 --nc，Touch Hold 亮起的外框也跟著），形狀維持一致；EX 另外多一圈光暈（.note-ex）。
+   判定中：Tap／Hold 的環帶加粗（筆寬寫在元素上），Touch 的深色描邊加粗。 */
+.mm-disc .note.is-active .touch-fan {
+  stroke-width: 5;
 }
 
 /* ---- 指派標籤 ---- */

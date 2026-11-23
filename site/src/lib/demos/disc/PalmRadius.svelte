@@ -10,7 +10,7 @@
   import { BUTTONS, buttonPoint } from '$app/lib/disc';
   import { scalePoint } from '$app/lib/notes';
   import { radialAngle, sensorKey, touchName } from '$app/lib/touch';
-  import { DEFAULT_BASE } from '$app/lib/contract';
+  import { DEFAULT_BASE, MODE_LABEL } from '$app/lib/contract';
   import type { Point, TouchSensor } from '$app/lib/types';
   import palmData from '../data/palm.json';
   import { CENTER, DISC_RADIUS, VIEW_BOX, len, palmCrossPath, px, sensorRadius, shapePath } from './draw';
@@ -193,8 +193,11 @@
           onpointercancel={onUp}
         >
           <circle class="grab" cx={centerPx.x} cy={centerPx.y} r={len(0.2)} />
+          <!-- 手的標記同 App：手掌覆蓋時手在掌心、接觸中，外面一圈接觸環，下方寫目前在做什麼。 -->
           <circle cx={centerPx.x} cy={centerPx.y} r={handR} />
+          <circle class="contact-ring" cx={centerPx.x} cy={centerPx.y} r={len(0.115)} />
           <text x={centerPx.x} y={centerPx.y} text-anchor="middle" dominant-baseline="central">R</text>
+          <text class="hand-mode" x={centerPx.x} y={centerPx.y + len(0.17)} text-anchor="middle">{MODE_LABEL.palm}</text>
         </g>
       </svg>
     </div>

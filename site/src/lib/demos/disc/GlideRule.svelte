@@ -15,7 +15,7 @@
   import { reducedMotion } from '$app/lib/press';
   import { segmented } from '$app/lib/segmented';
   import type { MotionMode, Point } from '$app/lib/types';
-  import { CENTER, DISC_RADIUS, len, linePath, px } from './draw';
+  import { CENTER, DISC_RADIUS, NOTE_DOT, NOTE_RADIUS, bandWidth, edgeWidth, len, linePath, px } from './draw';
 
   const GLIDE_DISTANCE = DEFAULT_BASE.glideDistance;
   const REPEAT_SECONDS = DEFAULT_BASE.repetitionSeconds;
@@ -187,9 +187,11 @@
           <g class="notes" aria-hidden="true">
             {#each relation === 'same' ? [A] : [A, B] as point, index (index)}
               {@const p = px(point)}
-              <g class="note" class:is-active={hand.contact && hand.mode === 'tap' && Math.hypot(hand.point.x - point.x, hand.point.y - point.y) < 1e-6}>
-                <circle class="note-ring" cx={p.x} cy={p.y} r={len(0.085)} />
-                <circle class="note-core" cx={p.x} cy={p.y} r={len(0.048)} />
+              {@const band = bandWidth(hand.contact && hand.mode === 'tap' && Math.hypot(hand.point.x - point.x, hand.point.y - point.y) < 1e-6)}
+              <g class="note">
+                <circle class="note-edge" cx={p.x} cy={p.y} r={len(NOTE_RADIUS)} stroke-width={edgeWidth(band)} />
+                <circle class="note-ring" cx={p.x} cy={p.y} r={len(NOTE_RADIUS)} stroke-width={band} />
+                <circle class="note-dot" cx={p.x} cy={p.y} r={len(NOTE_DOT)} />
               </g>
             {/each}
           </g>
