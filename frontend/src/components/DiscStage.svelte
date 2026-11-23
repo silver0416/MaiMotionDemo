@@ -6,22 +6,52 @@
     IMAGE_WIDTH,
     buttonPoint,
     centerPx,
-    chevrons,
+    chevronFan,
+    chevronStrip,
+    directionOnSamples,
+    eachArcPath,
     pointOnSamples,
     polylinePath,
     radiusPx,
+    remainingChevronShadows,
+    remainingChevrons,
     toStage,
     toStageLength,
+    type ChevronStrip,
   } from '../lib/disc';
   import {
     approachScale,
+    eachInfo,
     noteVisual,
-    pathLength,
     scalePoint,
     simultaneousSlideHands,
+    starSpin,
+    tailScale,
     touchGather,
     type NoteVisual,
   } from '../lib/notes';
+  import {
+    EX_GLOW_BLUR_PX,
+    EX_GLOW_SPREAD_PX,
+    NOTE_DOT,
+    NOTE_RADIUS,
+    SHADE_FLAT,
+    STAR_DOT,
+    bandWidth,
+    edgeWidth,
+    exGlowOffset,
+    exGlowWidth,
+    holdOutline,
+    outlineEdges,
+    rimInnerOffset,
+    rimOffset,
+    ringQuarters,
+    starBandPath,
+    starFillHole,
+    starOutlinePath,
+    starFillOuter,
+  } from '../lib/noteShape';
+  import { hitEffects, hitGlow, hitOpacity, hitStrokes, holdLoopRings } from '../lib/hitEffect';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
   import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
   import {
@@ -33,28 +63,35 @@
   } from '../lib/palm';
   import {
     TOUCH_AREA_PLACE,
-    TOUCH_ICON_ANGLE,
+    TOUCH_DOT,
+    TOUCH_DOT_RING,
+    TOUCH_FAN_HOLE,
+    TOUCH_HOLD_BAND,
+    fanLoop,
     fireworkBursts,
     fireworkShape,
     isTouchNote,
     radialAngle,
     sensorKey,
+    sensorMarkRadius,
     sparkAngles,
-    touchHoldFrame,
-    touchHoldRingRadius,
+    touchFans,
+    touchHoldBorder,
+    touchHoldBorderFill,
+    touchJustBorder,
     touchName,
     touchOuterRadius,
-    touchPetals,
     touchPolygon,
     touchRadius,
     touchSparkRadius,
+    type TouchFan,
   } from '../lib/touch';
   import { formatClock } from '../lib/format';
   import { session } from '../state/session.svelte';
   import { playback } from '../state/playback.svelte';
   import { reducedMotion } from '../lib/press';
   import { view } from '../state/view.svelte';
-  import type { Hand, Note, PalmPlacement, PathSample, Point } from '../lib/types';
+  import type { Hand, Note, PalmPlacement, PathSample, Point, SlidePath } from '../lib/types';
 
   const time = $derived(playback.time);
 
@@ -82,6 +119,43 @@
     ),
   );
 
+  /**
+   * Slide 箭頭帶的快取：每條路徑（含 WiFi 側線）的箭頭幾何只算一次，
+   * 換譜面或改校準時整個丟掉重算。播放時只依 slideU 取出還沒走過的那段字串。
+   */
+  const stripCache = $derived.by(() => {
+    void calibration;
+    void session.pathById;
+    return new Map<PathSample[], ChevronStrip>();
+  });
+
+  function stripFor(samples: PathSample[]): ChevronStrip {
+    let strip = stripCache.get(samples);
+    if (!strip) {
+      strip = chevronStrip(samples, calibration);
+      stripCache.set(samples, strip);
+    }
+    return strip;
+  }
+
+  /** WiFi（剛好兩條側線）畫成一整面扇形，其餘形狀是一條箭頭帶。快取的鍵都是中央那條線。 */
+  function isFan(path: SlidePath): boolean {
+    return path.branches.length === 2;
+  }
+
+  function trackFor(path: SlidePath): ChevronStrip {
+    if (!isFan(path)) return stripFor(path.samples);
+    let strip = stripCache.get(path.samples);
+    if (!strip) {
+      strip = chevronFan(path.samples, path.branches[0], path.branches[1], calibration);
+      stripCache.set(path.samples, strip);
+    }
+    return strip;
+  }
+
+  /** 遊戲的 each（同時押）：照遊戲上色時換成黃色，另外畫兩顆之間的連線。只看時間，不影響指派。 */
+  const each = $derived.by(() => eachInfo(session.notes));
+
   // Touch 落點參考標記：座標一律取 chart.touchSensors，前端只決定外形大小。
   const showSensors = $derived(
     view.sensorMode === 'all' || (view.sensorMode === 'auto' && session.hasTouchNotes),
@@ -95,13 +169,6 @@
     at: Point;
   }
 
-  /** 參考標記畫得比音符小一級，音符落下時仍是畫面上最亮的一層。 */
-  function sensorRadius(area: string): number {
-    if (area === 'C') return 0.085;
-    if (area === 'B' || area === 'E') return 0.068;
-    return 0.075;
-  }
-
   const sensorMarks = $derived.by<SensorMark[]>(() => {
     if (!showSensors) return [];
     return session.touchSensors.map((sensor) => {
@@ -111,7 +178,7 @@
         key,
         label: touchName(area, sensor.index),
         used: session.usedSensorKeys.has(key),
-        outline: shapePath(area, sensor.position, sensorRadius(area), radialAngle(sensor.position)),
+        outline: shapePath(area, sensor.position, sensorMarkRadius(area), radialAngle(sensor.position)),
         at: px(sensor.position),
       };
     });
@@ -151,6 +218,42 @@
   const palms = $derived.by(() =>
     view.showPalms ? activePalms(session.palmPlacements, time) : [],
   );
+
+  /**
+   * 目前要畫的打擊效果（可選，預設關閉）。和煙火一樣只由絕對播放時間換算；
+   * 系統設成減少動態效果時不畫。
+   */
+  const hitsOn = $derived(view.hitEffects && view.showNotes && !reducedMotion());
+  const hits = $derived.by(() => (hitsOn ? hitEffects(session.notes, time) : []));
+  /** 按住 Hold／Touch Hold 的期間，從音符頭一圈一圈往外擴的光圈（同一個「打擊效果」開關）。 */
+  const holdRings = $derived.by(() => (hitsOn ? holdLoopRings(calibration, session.notes, time) : []));
+
+  /**
+   * 音符本體的不透明度。開著打擊效果時，判定完的 Tap／Hold／Touch／Touch Hold 像遊戲一樣立刻消失，
+   * 讓光暈接手；不然慢慢淡出的音符會和光暈疊在一起。沒開打擊效果時照原本的淡出。
+   * Slide 不在此列：它的起點打完之後星星還要沿著軌道走。
+   */
+  const HIT_VANISH_SECONDS = 0.05;
+  function noteOpacity(visual: NoteVisual): number {
+    if (!hitsOn || visual.phase !== 'done' || visual.note.kind === 'slide') return visual.opacity;
+    const end = Math.max(visual.note.endSeconds, visual.note.timeSeconds);
+    return visual.opacity * Math.max(0, 1 - (time - end) / HIT_VANISH_SECONDS);
+  }
+
+  /**
+   * 打擊效果的光暈：整組過一次模糊，疊成「外面一圈寬而淡的光＋裡面一條柔邊的亮線」。
+   * 模糊半徑跟著圖形的大小走（`hitGlow`），所以每個效果各有一個濾鏡；
+   * 遊戲的圖是整張一起放大，線和光暈跟著變粗，這樣才不會小的時候糊成一團、大的時候又太銳利。
+   * 濾鏡 id 每個盤面各自一組，同一頁有兩個盤面時不會互相指到。
+   */
+  const hitGlowId = `hit-glow-${Math.random().toString(36).slice(2, 8)}`;
+
+  /**
+   * EX 音符的光暈：每個盤面一個模糊濾鏡，所有 EX 音符共用（模糊半徑是固定的像素值）。
+   * 照遊戲上色時環帶的漸層則是每顆音符各自的（顏色跟著那顆音符的 --nc／--nd），這是它們 id 的前綴。
+   */
+  const exGlowId = `ex-glow-${Math.random().toString(36).slice(2, 8)}`;
+  const shadeId = `shade-${Math.random().toString(36).slice(2, 8)}`;
 
   const PALM_TITLE_SIZE = 27;
   const PALM_LIST_SIZE = 23;
@@ -308,68 +411,88 @@
     return `${kind} ${note.button}`;
   }
 
-  function starPath(atPoint: Point, outer: number, inner: number): string {
-    const p = px(atPoint);
-    const ro = len(outer);
-    const ri = len(inner);
-    let d = '';
-    for (let i = 0; i < 10; i += 1) {
-      const r = i % 2 === 0 ? ro : ri;
-      const angle = (-90 + i * 36) * (Math.PI / 180);
-      const x = p.x + Math.cos(angle) * r;
-      const y = p.y + Math.sin(angle) * r;
-      d += `${i === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
-    }
-    return `${d}Z`;
+  /** 星形環帶（中間挖掉一顆小星）；angle 是其中一個外角指的方向。 */
+  function starBand(atPoint: Point, angle: number, outer?: number, hole?: number): string {
+    return starBandPath(calibration, atPoint, angle, outer, hole);
   }
 
-  function partialPath(samples: PathSample[], upTo: number): string {
-    if (samples.length === 0 || upTo <= 0) return '';
-    const points: Point[] = [];
-    for (const sample of samples) {
-      if (sample.u > upTo) break;
-      points.push({ x: sample.x, y: sample.y });
-    }
-    points.push(pointOnSamples(samples, upTo));
-    return polylinePath(points, calibration);
+  /** 照遊戲上色時，白邊裡面那一層顏色：外角縮一圈、星形孔大一圈，外緣和孔緣各露出一圈白邊。 */
+  function starFill(atPoint: Point, angle: number): string {
+    return starBand(atPoint, angle, starFillOuter(discRadius), starFillHole(discRadius));
   }
 
-  /**
-   * Hold 長條的半寬。取 Tap 空心圓的半徑，筆觸與 Tap 完全對齊，
-   * 長條與 Tap 一眼看得出是同一家族。
-   */
-  const HOLD_HALF_WIDTH = 0.085;
+  /** 起點星星的轉角（notes.starSpin）；只在有飛入動畫時轉。 */
+  function headSpin(note: Note): number {
+    return view.noteMode === 'window' && view.approach ? starSpin(note, time) : 0;
+  }
 
-  /** 兩端矮三角形的高度。矮，所以只取半寬的一半。 */
-  const HOLD_TIP = HOLD_HALF_WIDTH * 0.5;
+  /** 音符在畫面上相對於盤面中心的方向（弧度，y 向下）；環帶明暗的分界落在這個方向上。 */
+  function screenAngle(position: Point): number {
+    const at = px(position);
+    return Math.atan2(at.y - center.y, at.x - center.x);
+  }
 
-  /**
-   * Hold 長條的輪廓：兩條長邊，兩端各收成一個矮三角形。
-   * 三角形的底不畫，所以整條是一圈連續的六邊形空心外框，中間完全挖空。
-   * 頭在判定位置，尾往盤面中心延伸，長度代表時值；
-   * 判定開始後尾端往頭收，剩下的長度就是剩餘時間。
-   */
-  function holdOutline(note: Note, visual: NoteVisual): Point[] {
-    const factor = approachScale(visual);
-    const duration = Math.max(note.endSeconds - note.timeSeconds, 0);
-    const full = Math.min(0.62, Math.max(0.14, duration * 0.42));
-    const length = visual.phase === 'upcoming' ? full : full * (1 - visual.progress);
-    const head = scalePoint(note.position, factor);
-    const tail = scalePoint(note.position, Math.max(factor - length, 0.06));
-    // 由盤面中心指向鍵位的單位向量；長邊沿它、肩寬沿它的垂直方向。
-    const base = Math.hypot(note.position.x, note.position.y) || 1;
-    const ux = note.position.x / base;
-    const uy = note.position.y / base;
-    const w = HOLD_HALF_WIDTH;
-    const tip = HOLD_TIP;
-    return [
-      { x: head.x + ux * tip, y: head.y + uy * tip },
-      { x: head.x - uy * w, y: head.y + ux * w },
-      { x: tail.x - uy * w, y: tail.y + ux * w },
-      { x: tail.x - ux * tip, y: tail.y - uy * tip },
-      { x: tail.x + uy * w, y: tail.y - ux * w },
-      { x: head.x + uy * w, y: head.y - ux * w },
-    ];
+  /** 幾個封閉輪廓接成一條路徑（配 fill-rule: evenodd 就是挖洞）。 */
+  function loopsPath(loops: Point[][]): string {
+    return loops.map((loop) => closedPath(loop)).join('');
+  }
+
+  /** 一條邊（盤面座標的兩個端點）→ 畫面路徑。 */
+  function edgePath(from: Point, to: Point): string {
+    return polylinePath([from, to], calibration);
+  }
+
+  /** Tap 環帶的四段弧：所有 Tap 共用同一組路徑，各自轉到自己的分界方向。 */
+  const quarters = $derived(ringQuarters(len(NOTE_RADIUS)));
+
+  /** 三角形的縮放倍率：三條邊各往外（正）或往內（負）平移這麼多像素。 */
+  function fanScale(fan: TouchFan, offsetPx: number): number {
+    return 1 + offsetPx / len(fan.inradius);
+  }
+
+  /** Touch 的三角形中間挖空；Touch Hold 照遊戲上色時是實心的。 */
+  function fanHollow(isHold: boolean): boolean {
+    return !(isHold && view.noteColors);
+  }
+
+  /** 三角形本體：外輪廓，加上要挖掉的小三角形。 */
+  function fanBody(at: Point, fan: TouchFan, isHold: boolean): string {
+    const loops = [fanLoop(at, fan)];
+    if (fanHollow(isHold)) loops.push(fanLoop(at, fan, TOUCH_FAN_HOLE));
+    return loopsPath(loops);
+  }
+
+  /** 照遊戲上色時白邊裡面的那一層顏色：外緣縮一圈，挖空的小三角形大一圈。 */
+  function fanFill(at: Point, fan: TouchFan, isHold: boolean): string {
+    const loops = [fanLoop(at, fan, fanScale(fan, -FAN_RIM_PX))];
+    if (fanHollow(isHold)) loops.push(fanLoop(at, fan, TOUCH_FAN_HOLE + FAN_HOLE_RIM_PX / len(fan.inradius)));
+    return loopsPath(loops);
+  }
+
+  /** 照遊戲上色時三角形外緣白邊的寬度（像素）；挖空那一塊的邊緣細一點。 */
+  const FAN_RIM_PX = 2;
+  const FAN_HOLE_RIM_PX = 2;
+  /** Touch Hold 外框底下那層深色描邊，兩側各露出多寬（像素）。 */
+  const HOLD_BAND_EDGE_PX = 2;
+
+  function holdPoints(note: Note, visual: NoteVisual, offset = 0): Point[] {
+    return holdOutline(
+      note.position,
+      approachScale(visual),
+      tailScale(visual),
+      NOTE_RADIUS + offset / discRadius,
+    );
+  }
+
+  function holdPath(note: Note, visual: NoteVisual, offset = 0): string {
+    return closedPath(holdPoints(note, visual, offset));
+  }
+
+  /** 軌道上的星星：位置取 Rust 的路徑取樣點，一個角朝前進方向。 */
+  function starOnPath(samples: PathSample[], u: number, fill: boolean): string {
+    const at = pointOnSamples(samples, u);
+    const angle = directionOnSamples(samples, u);
+    return fill ? starFill(at, angle) : starBand(at, angle);
   }
 
   /**
@@ -429,13 +552,14 @@
 <div class="stage-frame">
   <svg
     class="stage-svg"
+    class:is-colored={view.noteColors}
     viewBox={VIEW_BOX}
     preserveAspectRatio="xMidYMid meet"
     aria-label="maimai 盤面：音符與左右手軌跡"
   >
     <g transform={zoomTransform}>
       <!-- 盤面底圖：純向量繪製（DiscBoard），以校準的圓心與半徑為準，不再使用 maimai.png。 -->
-      <DiscBoard {center} radius={discRadius} />
+      <DiscBoard {center} radius={discRadius} grid={view.showBoardGrid} />
 
       {#if view.showCalibrationRing}
         <g class="calib">
@@ -526,56 +650,88 @@
             {#if visual.visible && visual.note.pathId}
               {@const path = session.pathById.get(visual.note.pathId)}
               {#if path}
-                {@const arrows = chevrons(
-                  path.samples,
-                  Math.min(26, Math.max(3, Math.round(pathLength(path.samples) / 0.16))),
-                )}
+                <!-- 一條軌道的箭頭合成一個 path；星星走過的箭頭不畫，只留前方那段。
+                     WiFi 是一整面扇形（尖端在中央、兩翼跟著側線），三顆星共用同一個 slideU。 -->
                 <g
                   class="slide-path"
                   class:is-selected={session.selectedNoteId === visual.note.id}
                   class:is-break={visual.note.modifiers.breakSlide}
-                  opacity={visual.opacity}
+                  class:is-each={each.tracks.has(visual.note.id)}
+                  opacity={visual.trackOpacity}
                 >
-                  {#each path.branches as branch, index (index)}
-                    <path class="slide-path-branch" d={polylinePath(branch, calibration)} />
-                  {/each}
-                  <path class="slide-path-base" d={polylinePath(path.samples, calibration)} />
-                  {#if visual.slideU > 0}
-                    <!-- WiFi 三條線共用同一個 slideU，進度同步推進 -->
+                  <!-- 每條箭頭帶兩層：底下一層黑色（箭頭的外框＋往後錯開的陰影），上面才是箭頭本身。
+                       疊在別條軌道上時，每個箭頭都看得出是一個一個的，不會糊成一片。 -->
+                  {#if !isFan(path)}
                     {#each path.branches as branch, index (index)}
-                      <path class="slide-path-done" d={partialPath(branch, visual.slideU)} />
+                      <path
+                        class="slide-under"
+                        d={remainingChevronShadows(stripFor(branch), visual.slideU)}
+                      />
+                      <path
+                        class="slide-chevrons"
+                        d={remainingChevrons(stripFor(branch), visual.slideU)}
+                      />
                     {/each}
-                    <path class="slide-path-done" d={partialPath(path.samples, visual.slideU)} />
                   {/if}
-                  {#each arrows as arrow, index (index)}
-                    {@const point = px(arrow)}
-                    <path
-                      class="chevron"
-                      class:is-passed={arrow.u <= visual.slideU}
-                      d={`M${-len(0.035)} ${-len(0.032)} L0 0 L${-len(0.035)} ${len(0.032)}`}
-                      transform={`translate(${point.x} ${point.y}) rotate(${arrow.angle})`}
-                    />
-                  {/each}
+                  <path class="slide-under" d={remainingChevronShadows(trackFor(path), visual.slideU)} />
+                  <path class="slide-chevrons" d={remainingChevrons(trackFor(path), visual.slideU)} />
                 </g>
               {/if}
             {/if}
           {/each}
         </g>
 
+        {#if view.noteMode === 'window' && each.links.length > 0}
+          <!-- each 連線：同時的兩顆外圈音符之間一段細圓弧，跟著音符一起往外飛，判定後消失。 -->
+          <g class="each-lines" aria-hidden="true">
+            {#each each.links as link (link.key)}
+              {@const visual = visuals[link.a]}
+              {@const other = visuals[link.b]}
+              {#if visual && other && visual.visible && visual.phase === 'upcoming'}
+                <path
+                  class="each-line"
+                  d={eachArcPath(calibration, visual.note.position, other.note.position, approachScale(visual))}
+                  opacity={visual.grow * visual.opacity}
+                />
+              {/if}
+            {/each}
+          </g>
+        {/if}
+
+        <!-- EX 音符共用的模糊濾鏡：把墊在音符底下的那一筆暈開成光暈。 -->
+        <filter id={exGlowId} x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB">
+          <feGaussianBlur stdDeviation={EX_GLOW_BLUR_PX} />
+        </filter>
+
         <g class="notes">
-          {#each visuals as visual (visual.note.id)}
+          {#each visuals as visual, slot (visual.note.id)}
             {@const note = visual.note}
             {#if visual.visible}
               {@const factor = approachScale(visual)}
               {@const center2 = px(scalePoint(note.position, factor))}
               {@const tag = view.showAssignmentTags ? tagFor(note.id) : null}
+              {@const selected = session.selectedNoteId === note.id}
+              {@const band = bandWidth(selected || visual.phase === 'active')}
+              <!-- 起飛前在內圈原地放大：以音符中心縮放整組，筆寬跟著縮；指派標籤在放大期不畫。
+                   倍率只由播放時間換算，暫停與拖曳都停在同一刻。Touch 的 grow 永遠是 1。 -->
               <g
                 class="note"
-                class:is-selected={session.selectedNoteId === note.id}
+                class:is-tap={note.kind === 'tap'}
+                class:is-hold={note.kind === 'hold'}
+                class:is-slide={note.kind === 'slide'}
+                class:is-touch={note.kind === 'touch' || note.kind === 'touchHold'}
+                class:is-touch-hold={note.kind === 'touchHold'}
+                class:is-each={each.heads.has(note.id)}
+                class:is-each-track={each.tracks.has(note.id)}
+                class:is-selected={selected}
                 class:is-active={visual.phase === 'active'}
                 class:is-break={note.modifiers.breakNote}
+                class:is-break-track={note.modifiers.breakSlide}
                 class:is-ex={note.modifiers.ex}
-                opacity={visual.opacity}
+                opacity={noteOpacity(visual)}
+                transform={visual.grow < 1
+                  ? `translate(${center2.x} ${center2.y}) scale(${visual.grow}) translate(${-center2.x} ${-center2.y})`
+                  : undefined}
                 role="button"
                 tabindex="0"
                 aria-label={noteLabel(note, visual)}
@@ -583,12 +739,13 @@
                 onkeydown={(event) => onNoteKey(event, note.id)}
               >
                 {#if note.kind === 'touch' || note.kind === 'touchHold'}
-                  <!-- Touch 一律停在 Rust 給的落點上，按壓提示是四片三角形由外往內收攏；
-                       收到位的瞬間就是判定時間，不從盤面中心飛出去。 -->
+                  <!-- Touch 一律停在 Rust 給的落點上，照遊戲畫：四片三角形尖端朝落點、由外往內收攏，
+                       四個尖端在落點相碰的瞬間就是判定時間，不從盤面中心飛出去。 -->
                   {@const at = note.position}
                   {@const mark = px(at)}
                   {@const r = touchRadius(note.touchArea)}
                   {@const isHold = note.kind === 'touchHold'}
+                  {@const fans = touchFans(r, touchGather(visual), isHold)}
                   {#if note.modifiers.fireworks}
                     <!-- 判定前就預告會放煙火，不必等到效果出現 -->
                     <circle
@@ -599,69 +756,222 @@
                     />
                   {/if}
                   {#if isHold}
-                    {@const ring = len(touchHoldRingRadius(r))}
-                    <!-- 剩餘時間：方框外面一整圈，從正上方順時針消耗，長度只由播放時間換算 -->
-                    <circle class="touch-hold-track" cx={mark.x} cy={mark.y} r={ring} />
+                    {#if visual.phase !== 'upcoming'}
+                      <!-- Touch Hold：按住之後，外面一圈粗的圓角菱形從正上方順時針亮起來，
+                           亮滿一圈就是結束時間。按下去之前沒有外框（照遊戲）。 -->
+                      {@const bandWidth = len(r * TOUCH_HOLD_BAND)}
+                      <g class="touch-hold-border">
+                        {#each touchHoldBorder(at, r) as quarter, index (index)}
+                          {@const fill = touchHoldBorderFill(visual.progress, index)}
+                          <g class="quarter">
+                            {#if fill > 0}
+                              <path
+                                class="touch-hold-edge"
+                                d={polylinePath(quarter, calibration)}
+                                pathLength="1"
+                                stroke-dasharray={`${fill} 1`}
+                                stroke-width={bandWidth + HOLD_BAND_EDGE_PX * 2}
+                              />
+                              <path
+                                class="touch-hold-fill"
+                                d={polylinePath(quarter, calibration)}
+                                pathLength="1"
+                                stroke-dasharray={`${fill} 1`}
+                                stroke-width={bandWidth}
+                              />
+                            {/if}
+                          </g>
+                        {/each}
+                      </g>
+                    {/if}
+                  {:else if visual.phase !== 'upcoming'}
+                    <!-- Touch：收到位那一刻亮起一個圓角方框，跟著音符一起淡出 -->
+                    <path class="touch-just" d={closedPath(touchJustBorder(at, r))} />
+                  {/if}
+                  <!-- 四片圓角的直角三角形；收到位時剛好拼成一整塊（Touch 正方形、Touch Hold 菱形）。 -->
+                  {#if view.noteColors}
+                    <!-- 照遊戲上色時，四片的深色外框先整圈畫在最底下：
+                         收到位時片與片之間只剩白邊拼成的接縫，中間不會夾一條黑線。 -->
+                    <path class="touch-fan-edge" d={loopsPath(fans.map((fan) => fanLoop(at, fan)))} />
+                  {/if}
+                  <g class="touch-fans" class:is-hold={isHold}>
+                    {#each fans as fan, index (index)}
+                      <g class="fan">
+                        <!-- EX 在 Touch／Touch Hold 上不畫：遊戲建立這兩種音符時直接把 EX 關掉，沒有 EX 的樣子。 -->
+                        <path class="touch-fan" d={fanBody(at, fan, isHold)} />
+                        {#if view.noteColors}
+                          <path class="touch-fan-fill" d={fanFill(at, fan, isHold)} />
+                        {/if}
+                      </g>
+                    {/each}
+                  </g>
+                  {#if showSensors && view.showSensorLabels}
+                    <!-- 落點標記開著時，音符會蓋住底下的編號，所以改寫在音符中心 -->
+                    <text
+                      class="touch-label"
+                      x={mark.x}
+                      y={mark.y}
+                      text-anchor="middle"
+                      dominant-baseline="central"
+                    >
+                      {touchName(note.touchArea, note.button)}
+                    </text>
+                  {:else}
+                    <!-- 落點正中心的圓點：外面一圈白邊，壓在四個尖端上面 -->
                     <circle
-                      class="touch-hold-remain"
+                      class="touch-dot-rim"
                       cx={mark.x}
                       cy={mark.y}
-                      r={ring}
-                      stroke-dasharray={2 * Math.PI * ring}
-                      stroke-dashoffset={2 * Math.PI * ring * visual.progress}
-                      transform={`rotate(-90 ${mark.x} ${mark.y})`}
+                      r={len(TOUCH_DOT + TOUCH_DOT_RING)}
                     />
-                    <!-- 目標方框固定在落點，斜向的三角形往它收 -->
-                    <path
-                      class="touch-hold-frame"
-                      d={closedPath(touchHoldFrame(at, r, TOUCH_ICON_ANGLE))}
-                    />
+                    <circle class="touch-dot" cx={mark.x} cy={mark.y} r={len(TOUCH_DOT)} />
                   {/if}
-                  {#each touchPetals(at, r, TOUCH_ICON_ANGLE, touchGather(visual), isHold) as petal, index (index)}
-                    <path class="touch-petal" d={closedPath(petal)} />
-                  {/each}
-                  <text
-                    class="touch-label"
-                    class:is-center={note.touchArea === 'C'}
-                    x={mark.x}
-                    y={mark.y}
-                    text-anchor="middle"
-                    dominant-baseline="central"
-                  >
-                    {touchName(note.touchArea, note.button)}
-                  </text>
                 {:else if note.kind === 'hold'}
-                  <!-- 空心長條：兩條長邊＋兩端矮三角形，中間挖空，不畫三角形的底。 -->
-                  <path class="hold-bar" d={closedPath(holdOutline(note, visual))} />
-                {:else if note.kind === 'slide'}
-                  {#if note.hasHead}
-                    <path class="note-star" d={starPath(scalePoint(note.position, factor), 0.1, 0.045)} />
-                  {/if}
-                  {#if visual.slideU > 0 && visual.slideU < 1 && note.pathId}
-                    {@const path = session.pathById.get(note.pathId)}
-                    {#if path}
-                      <!-- WiFi 側線的導引星與中央同一個 slideU，三顆星同時抵達 -->
-                      {#each path.branches as branch, index (index)}
-                        <path
-                          class="note-star is-moving"
-                          d={starPath(pointOnSamples(branch, visual.slideU), 0.085, 0.038)}
-                        />
-                      {/each}
+                  <!-- 空心長條：一圈粗環帶，兩端收成六邊形的尖角；墊一層深色描邊，疊在別的東西上也分得開。 -->
+                  {@const bar = holdPath(note, visual)}
+                  <!-- EX：同形狀的一圈柔和光暈，貼著外緣往外淡出。
+                       照遊戲上色時直接貼著白邊（蓋住深色描邊）；白色音符時墊在深色描邊底下，環帶的邊緣才分得出來。 -->
+                  {#snippet holdGlow()}
+                    <path
+                      class="note-ex"
+                      d={holdPath(note, visual, exGlowOffset(band))}
+                      stroke-width={exGlowWidth(band)}
+                      filter={`url(#${exGlowId})`}
+                    />
+                  {/snippet}
+                  {#if note.modifiers.ex && !view.noteColors}{@render holdGlow()}{/if}
+                  <path class="note-edge" d={bar} stroke-width={edgeWidth(band)} />
+                  {#if note.modifiers.ex && view.noteColors}{@render holdGlow()}{/if}
+                  <path class="hold-bar" d={bar} stroke-width={band} />
+                  {#if view.noteColors}
+                    <!-- 照遊戲上色：六條邊各自由深漸到淺（每條邊一個線性漸層），外緣與內緣各一圈白邊 -->
+                    {#each outlineEdges(holdPoints(note, visual)) as edge, index (index)}
+                      {@const from = px(edge.from)}
+                      {@const to = px(edge.to)}
+                      <linearGradient
+                        id={`${shadeId}-${slot}-${index}`}
+                        gradientUnits="userSpaceOnUse"
+                        x1={from.x}
+                        y1={from.y}
+                        x2={to.x}
+                        y2={to.y}
+                      >
+                        <stop class="shade-deep" offset="0" />
+                        <stop class="shade-deep" offset={SHADE_FLAT} />
+                        <stop class="shade-light" offset="1" />
+                      </linearGradient>
                       <path
-                        class="note-star is-moving"
-                        d={starPath(pointOnSamples(path.samples, visual.slideU), 0.085, 0.038)}
+                        class="note-shade"
+                        d={edgePath(edge.from, edge.to)}
+                        stroke={`url(#${shadeId}-${slot}-${index})`}
+                        stroke-width={band}
                       />
+                    {/each}
+                    <path class="note-rim" d={holdPath(note, visual, rimOffset(band))} />
+                    <path class="note-rim is-inner" d={holdPath(note, visual, rimInnerOffset(band))} />
+                  {/if}
+                  {#if visual.tailTravel > 0}
+                    <!-- 尾端離開內圈之後，尾巴中心有一顆小點（遊戲裡標示 Hold 結束的位置） -->
+                    {@const tail = px(scalePoint(note.position, tailScale(visual)))}
+                    <circle class="note-dot" cx={tail.x} cy={tail.y} r={len(NOTE_DOT)} />
+                  {/if}
+                {:else if note.kind === 'slide'}
+                  {@const path = note.pathId ? session.pathById.get(note.pathId) : undefined}
+                  {#if visual.phase === 'upcoming' || !path}
+                    {#if note.hasHead}
+                      <!-- 起點星星：飛到鍵位之前，一個角朝盤面外側。 -->
+                      {@const at = scalePoint(note.position, factor)}
+                      {@const angle = radialAngle(note.position) + headSpin(note)}
+                      {#if note.modifiers.ex}
+                        <!-- EX：星形的柔和光暈，墊在星星底下 -->
+                        <path
+                          class="note-ex"
+                          d={starOutlinePath(calibration, at, angle)}
+                          stroke-width={EX_GLOW_SPREAD_PX * 2}
+                          filter={`url(#${exGlowId})`}
+                        />
+                      {/if}
+                      <path class="note-star" d={starBand(at, angle)} />
+                      {#if view.noteColors}
+                        <path class="note-star-fill" d={starFill(at, angle)} />
+                      {/if}
+                      <circle class="note-dot" cx={center2.x} cy={center2.y} r={len(STAR_DOT)} />
                     {/if}
+                  {:else}
+                    <!-- 判定之後換成軌道上的星星：先停在起點等，再沿路徑滑到終點，一個角朝前進方向。
+                         WiFi 側線的星星與中央同一個 slideU，三顆同時抵達。 -->
+                    {#each [...path.branches, path.samples] as line, index (index)}
+                      {@const dot = px(pointOnSamples(line, visual.slideU))}
+                      <path class="note-star is-moving" d={starOnPath(line, visual.slideU, false)} />
+                      {#if view.noteColors}
+                        <path class="note-star-fill is-moving" d={starOnPath(line, visual.slideU, true)} />
+                      {/if}
+                      <circle class="note-dot is-moving" cx={dot.x} cy={dot.y} r={len(STAR_DOT)} />
+                    {/each}
                   {/if}
                 {:else}
-                  <circle class="note-ring" cx={center2.x} cy={center2.y} r={len(0.085)} />
-                  <circle class="note-core" cx={center2.x} cy={center2.y} r={len(0.048)} />
+                  <!-- Tap：一圈粗環帶＋正中心一個小點，中間挖空，看得到下面的軌跡與手。 -->
+                  {@const ring = len(NOTE_RADIUS)}
+                  <!-- EX：一圈柔和的光暈，貼著外緣往外淡出（照遊戲，不是另外一圈細線）。
+                       照遊戲上色時直接貼著白邊（蓋住深色描邊）；白色音符時墊在深色描邊底下，環帶的邊緣才分得出來。 -->
+                  {#snippet tapGlow()}
+                    <circle
+                      class="note-ex"
+                      cx={center2.x}
+                      cy={center2.y}
+                      r={ring + exGlowOffset(band)}
+                      stroke-width={exGlowWidth(band)}
+                      filter={`url(#${exGlowId})`}
+                    />
+                  {/snippet}
+                  {#if note.modifiers.ex && !view.noteColors}{@render tapGlow()}{/if}
+                  <circle class="note-edge" cx={center2.x} cy={center2.y} r={ring} stroke-width={edgeWidth(band)} />
+                  {#if note.modifiers.ex && view.noteColors}{@render tapGlow()}{/if}
+                  <circle class="note-ring" cx={center2.x} cy={center2.y} r={ring} stroke-width={band} />
+                  {#if view.noteColors}
+                    <!-- 照遊戲上色：一圈切成四段，每段順時針由深漸到淺（每段一條弧＋一個線性漸層），
+                         整組轉到「盤面中心 → 音符」的方向；外緣與內緣各一圈白邊 -->
+                    <g
+                      transform={`translate(${center2.x} ${center2.y}) rotate(${(screenAngle(note.position) * 180) / Math.PI})`}
+                    >
+                      {#each quarters as quarter, index (index)}
+                        <linearGradient
+                          id={`${shadeId}-${slot}-${index}`}
+                          gradientUnits="userSpaceOnUse"
+                          x1={quarter.from.x}
+                          y1={quarter.from.y}
+                          x2={quarter.to.x}
+                          y2={quarter.to.y}
+                        >
+                          <stop class="shade-deep" offset="0" />
+                          <stop class="shade-deep" offset={SHADE_FLAT} />
+                          <stop class="shade-light" offset="1" />
+                        </linearGradient>
+                        <path
+                          class="note-shade"
+                          d={quarter.d}
+                          stroke={`url(#${shadeId}-${slot}-${index})`}
+                          stroke-width={band}
+                        />
+                      {/each}
+                    </g>
+                    <circle class="note-rim" cx={center2.x} cy={center2.y} r={ring + rimOffset(band)} />
+                    <circle
+                      class="note-rim is-inner"
+                      cx={center2.x}
+                      cy={center2.y}
+                      r={ring + rimInnerOffset(band)}
+                    />
+                  {/if}
+                  <circle class="note-dot" cx={center2.x} cy={center2.y} r={len(NOTE_DOT)} />
                 {/if}
 
-                {#if tag}
+                {#if tag && visual.tagOpacity > 0}
                   {@const anchor = px(tagAnchor(note, factor))}
+                  <!-- 起飛後才淡入，避免內圈放大中的多顆音符標籤擠在盤面中心 -->
                   <text
                     class="note-tag"
+                    opacity={visual.tagOpacity}
                     class:is-left={tag.hand === 'L'}
                     class:is-right={tag.hand === 'R'}
                     class:is-handover={tag.handover}
@@ -683,6 +993,70 @@
             {/if}
           {/each}
         </g>
+
+        {#if hits.length > 0 || holdRings.length > 0}
+          <!-- 打擊效果（可選）：判定那一刻在原地放出的光暈。一般音符是六角形、Break 是星星、
+               Touch 是實心圓。線條本身只畫一次，光暈交給濾鏡：寬的模糊當外圈的光、
+               窄的模糊疊兩次當柔邊的亮線（使用者 2026-11-23 要求要有模糊的光暈，不要純線條）。
+               進度只由絕對播放時間換算，暫停與拖曳都停在同一刻。
+               按住 Hold／Touch Hold 的期間另有圓形的光圈一圈一圈往外擴：每一圈各自的濾鏡，
+               線寬與模糊都跟著那一圈的半徑放大。 -->
+          <g class="hits" aria-hidden="true">
+            {#each holdRings as ring, slot (ring.key)}
+              <filter
+                id={`${hitGlowId}-loop-${slot}`}
+                x="-45%"
+                y="-45%"
+                width="190%"
+                height="190%"
+                color-interpolation-filters="sRGB"
+              >
+                <feGaussianBlur in="SourceGraphic" stdDeviation={ring.wide} result="wide" />
+                <feGaussianBlur in="SourceGraphic" stdDeviation={ring.soft} result="soft" />
+                <feMerge>
+                  <feMergeNode in="wide" />
+                  <feMergeNode in="soft" />
+                  <feMergeNode in="soft" />
+                </feMerge>
+              </filter>
+              <path
+                class="hit-line hit-ring"
+                d={ring.d}
+                stroke-width={ring.width}
+                opacity={ring.opacity}
+                filter={`url(#${hitGlowId}-loop-${slot})`}
+              />
+            {/each}
+            {#each hits as hit, slot (hit.key)}
+              {@const glow = hitGlow(calibration, hit)}
+              <filter
+                id={`${hitGlowId}-${slot}`}
+                x="-45%"
+                y="-45%"
+                width="190%"
+                height="190%"
+                color-interpolation-filters="sRGB"
+              >
+                <feGaussianBlur in="SourceGraphic" stdDeviation={glow.wide} result="wide" />
+                <feGaussianBlur in="SourceGraphic" stdDeviation={glow.soft} result="soft" />
+                <feMerge>
+                  <feMergeNode in="wide" />
+                  <feMergeNode in="soft" />
+                  <feMergeNode in="soft" />
+                </feMerge>
+              </filter>
+              <g class="hit" opacity={hitOpacity(hit)} filter={`url(#${hitGlowId}-${slot})`}>
+                {#each hitStrokes(calibration, hit) as stroke, index (index)}
+                  {#if stroke.filled}
+                    <path class="hit-fill" d={stroke.d} />
+                  {:else}
+                    <path class="hit-line" d={stroke.d} stroke-width={stroke.width} />
+                  {/if}
+                {/each}
+              </g>
+            {/each}
+          </g>
+        {/if}
 
         {#if bursts.length > 0}
           <!-- 煙火：在 Rust 落點擴散，進度完全由絕對播放時間決定，
@@ -988,84 +1362,276 @@
     stroke-width: 5px;
   }
 
-  .slide-path-base {
-    fill: none;
-    stroke: #6d7788;
-    stroke-width: 5;
-    stroke-linecap: round;
+  /*
+   * 音符與軌道的顏色走變數：--nc（音符本體）、--sc（滑行中的星星）、--tc（Slide 軌道）。
+   * 平常是中性的白與灰，Break 橘；「照遊戲上色」打開（.is-colored）才換成遊戲的配色，形狀完全不變。
+   */
+  .slide-path {
+    --tc: #8d97a6;
   }
 
-  .slide-path-done {
-    fill: none;
-    stroke: #eef2f8;
-    stroke-width: 6;
-    stroke-linecap: round;
-  }
-
-  .slide-path-branch {
-    fill: none;
-    stroke: #55606f;
-    stroke-width: 4;
-    stroke-linecap: round;
-  }
-
-  .slide-path.is-selected .slide-path-base {
-    stroke: var(--c-accent);
-    stroke-width: 7;
-  }
-
-  .slide-path.is-break .slide-path-base,
-  .slide-path.is-break .slide-path-branch {
-    stroke: #c9863a;
-  }
-
-  .chevron {
-    fill: none;
-    stroke: #9aa5b5;
-    stroke-width: 5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .chevron.is-passed {
-    stroke: #ffffff;
+  .slide-path.is-break {
+    --tc: #c9863a;
   }
 
   .note {
+    --nc: #eef2f8;
+    --sc: #eef2f8;
+    /* 明暗的深色那一端；不上色時用不到。 */
+    --nd: #eef2f8;
+    /* EX 光暈的顏色；不上色時是白光。 */
+    --xc: #eef2f8;
     cursor: pointer;
   }
 
-  .note-ring {
-    fill: none;
-    stroke: #eef2f8;
-    stroke-width: 7;
+  .note.is-break {
+    --nc: #f0913a;
   }
 
-  .note-core {
+  .note.is-break-track {
+    --sc: #f0913a;
+  }
+
+  /* 遊戲配色：Tap／Hold 粉紅、Slide 與 Touch 藍、同時押黃、Break 橘。
+     每個顏色有淺（--nc）深（--nd）兩端：環帶不是一個顏色塗滿，是由深漸到淺（量自遊戲畫面）。
+     EX 光暈的顏色（--xc）照遊戲：Tap／Hold 粉、星星白，同時押與 Break 都是黃。 */
+  .stage-svg.is-colored .note.is-tap,
+  .stage-svg.is-colored .note.is-hold {
+    /* 深淺兩端與 EX 光暈都量自使用者 2026-11-23 的截圖。 */
+    --nc: #ff7fd0;
+    --nd: #ff1f7f;
+    --xc: #ffc0f2;
+  }
+
+  .stage-svg.is-colored .note.is-slide,
+  .stage-svg.is-colored .note.is-touch {
+    --nc: #22b8f0;
+    --sc: #22b8f0;
+    --xc: #ffffff;
+  }
+
+  .stage-svg.is-colored .note.is-touch {
+    --nc: #1aa6f7;
+    --nd: #1aa6f7;
+  }
+
+  .stage-svg.is-colored .slide-path {
+    --tc: #22b8f0;
+  }
+
+  .stage-svg.is-colored .note.is-each {
+    --nc: #fbfd1e;
+    --nd: #f4cc2d;
+    --xc: #fffe77;
+  }
+
+  .stage-svg.is-colored .note.is-slide.is-each {
+    --nc: #faf52c;
+  }
+
+  .stage-svg.is-colored .note.is-each-track {
+    --sc: #faf52c;
+  }
+
+  .stage-svg.is-colored .slide-path.is-each {
+    --tc: #faf52c;
+  }
+
+  .stage-svg.is-colored .note.is-break {
+    --nc: #ffb24a;
+    --nd: #ec7a10;
+    --xc: #fffe77;
+  }
+
+  .stage-svg.is-colored .note.is-slide.is-break {
+    --nc: #f0913a;
+  }
+
+  /* Touch Hold 的四片三角形與外框四段，照遊戲各有自己的顏色：右上紅、右下黃、左下綠、左上藍
+     （三角形量自遊戲錄影；外框那一段比三角形淡一階）。 */
+  .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(1) {
+    --nc: #f64303;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(2) {
+    --nc: #f3ee00;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(3) {
+    --nc: #10a667;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(4) {
+    --nc: #0093f6;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(1) {
+    --nc: #f5713a;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(2) {
+    --nc: #f2d62a;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(3) {
+    --nc: #2fbf7a;
+  }
+
+  .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(4) {
+    --nc: #3aa6ee;
+  }
+
+  .stage-svg.is-colored .note.is-break-track {
+    --sc: #f0913a;
+  }
+
+  .stage-svg.is-colored .slide-path.is-break {
+    --tc: #f0913a;
+  }
+
+  .note.is-selected,
+  .stage-svg.is-colored .note.is-selected,
+  .stage-svg.is-colored .note.is-selected .fan,
+  .stage-svg.is-colored .note.is-selected .quarter {
+    --nc: var(--c-accent);
+    --nd: var(--c-accent);
+    --sc: var(--c-accent);
+    --xc: var(--c-accent);
+  }
+
+  .slide-path.is-selected,
+  .stage-svg.is-colored .slide-path.is-selected {
+    --tc: var(--c-accent);
+  }
+
+  .note:focus-visible,
+  .stage-svg.is-colored .note:focus-visible,
+  .stage-svg.is-colored .note:focus-visible .fan,
+  .stage-svg.is-colored .note:focus-visible .quarter {
+    --nc: var(--c-focus);
+    --nd: var(--c-focus);
+    --xc: var(--c-focus);
+    outline: none;
+  }
+
+  /* Slide 軌道：沒有中心線，一整排實心的寬「＞」。平常比音符暗一階，音符與手永遠壓在上面。
+     每個箭頭底下墊一層黑色：一圈黑外框（描邊露出 3.5）加上往後錯開的陰影。
+     黑底上看不出來；兩條軌道交疊時，上面那條的箭頭一個一個分得開，不會糊在一起。 */
+  .slide-under {
+    fill: #000;
+    stroke: #000;
+    stroke-width: 7;
+    stroke-linejoin: round;
+  }
+
+  .slide-chevrons {
+    fill: var(--tc);
+  }
+
+  /* each 連線：細圓弧，比音符暗一階。 */
+  .each-line {
     fill: none;
-    stroke: #aab4c3;
+    stroke: #8d97a6;
     stroke-width: 4;
   }
 
-  .note-star {
+  .stage-svg.is-colored .each-line {
+    stroke: #faf52c;
+  }
+
+  /* 墊在環帶下面的深色描邊（Tap 是圓、Hold 是長條）；筆寬由環帶寬度換算，寫在元素上。 */
+  .note-edge {
     fill: none;
-    stroke: #eef2f8;
-    stroke-width: 6;
+    stroke: #0b0d11;
+    stroke-linejoin: miter;
+  }
+
+  /* Tap：粗環帶，中間挖空；筆寬與 Hold 相同（noteShape 的 BAND_PX），外緣對齊。 */
+  .note-ring {
+    fill: none;
+    stroke: var(--nc);
+  }
+
+  /* 照遊戲上色時疊在環帶上的明暗：每一段（Tap 的四分之一圈、Hold 的一條邊）一筆，
+     筆觸是從深（--nd）漸到淺（--nc）的線性漸層，漸層寫在元素旁邊、筆觸指過去。
+     連續的漸層是使用者 2026-11-23 要求的（原本是幾階純色）；只用在音符本體，不是面板底色。 */
+  .note-shade {
+    fill: none;
+    stroke-linecap: butt;
+  }
+
+  .shade-deep {
+    stop-color: var(--nd);
+  }
+
+  .shade-light {
+    stop-color: var(--nc);
+  }
+
+  /* 照遊戲上色時，環帶外緣的一圈白邊（noteShape 的 RIM_PX）；內緣那一圈細一點。 */
+  .note-rim {
+    fill: none;
+    stroke: #f6f8fc;
+    stroke-width: 3.5;
+    stroke-linejoin: miter;
+  }
+
+  .note-rim.is-inner {
+    stroke-width: 2.5;
+  }
+
+  /* Tap 與星星正中心的小點，Hold 尾端也有一顆。 */
+  .note-dot {
+    fill: var(--nc);
+  }
+
+  .note-dot.is-moving {
+    fill: var(--sc);
+  }
+
+  /* EX：墊在音符底下的一圈柔和光暈（Tap 是圓、Hold 是同形狀外框、星星是星形的外輪廓），
+     筆寬寫在元素上，整圈過一次模糊濾鏡；只往外淡出，洞裡面不亮。
+     照遊戲的樣子，使用者 2026-11-23 要求（原本是多一圈細線）。 */
+  .note-ex {
+    fill: none;
+    stroke: var(--xc);
+    stroke-opacity: 0.88;
     stroke-linejoin: round;
+  }
+
+  /* 星星：星形環帶，中間挖掉一顆小星（evenodd）。描邊一半壓在底下，露出外緣與孔緣各一圈深色。 */
+  .note-star {
+    fill: var(--nc);
+    fill-rule: evenodd;
+    stroke: #0b0d11;
+    stroke-width: 3;
+    stroke-linejoin: miter;
+    paint-order: stroke;
   }
 
   .note-star.is-moving {
-    fill: #eef2f8;
-    stroke: #0b0d11;
-    stroke-width: 3;
+    fill: var(--sc);
   }
 
-  /* 空心長條：中間完全挖空，線寬與 Tap 空心圓一致。 */
+  /* 照遊戲上色：外面那顆變成白邊，顏色畫在裡面縮一圈的這一層。 */
+  .stage-svg.is-colored .note-star {
+    fill: #f6f8fc;
+  }
+
+  .note-star-fill {
+    fill: var(--nc);
+    fill-rule: evenodd;
+  }
+
+  .note-star-fill.is-moving {
+    fill: var(--sc);
+  }
+
+  /* 空心長條：中間完全挖空，筆寬與 Tap 環帶一致。 */
   .hold-bar {
     fill: none;
-    stroke: #eef2f8;
-    stroke-width: 7;
-    stroke-linejoin: round;
+    stroke: var(--nc);
+    stroke-linejoin: miter;
   }
 
   /* Touch 落點參考標記。沿用鍵位標記的中性色，不新增色相。 */
@@ -1096,18 +1662,52 @@
     fill: #c8d1de;
   }
 
-  /* Touch 按壓提示：四片空心三角形，尖端朝落點。 */
-  .touch-petal {
+  /* Touch：四片圓角的直角三角形，直角那個尖端朝落點；中間挖掉一塊小三角形（evenodd），
+     和 Tap 的環帶同一個做法。描邊一半壓在底下，露出外緣與孔緣各一圈深色。 */
+  .touch-fan {
+    fill: var(--nc);
+    fill-rule: evenodd;
+    stroke: #0b0d11;
+    stroke-width: 3;
+    stroke-linejoin: round;
+    paint-order: stroke;
+  }
+
+  /* 照遊戲上色：外面那一層變成白邊，顏色畫在裡面縮一圈的這一層（平塗，遊戲的三角形幾乎沒有明暗）。 */
+  .stage-svg.is-colored .touch-fan {
+    fill: #f6f8fc;
+    stroke: none;
+  }
+
+  /* 上色時四片共用的深色外框，墊在四片底下（見模板的說明）。 */
+  .touch-fan-edge {
     fill: none;
-    stroke: #eef2f8;
-    stroke-width: 5;
+    stroke: #0b0d11;
+    stroke-width: 3;
     stroke-linejoin: round;
   }
 
-  /* Touch Hold 的目標方框，配斜向三角形。 */
-  .touch-hold-frame {
+  .touch-fan-fill {
+    fill: var(--nc);
+    fill-rule: evenodd;
+  }
+
+  /* 落點正中心的圓點：白邊＋深色描邊，裡面那顆跟著音符的顏色。 */
+  .touch-dot-rim {
+    fill: #f6f8fc;
+    stroke: #0b0d11;
+    stroke-width: 3;
+    paint-order: stroke;
+  }
+
+  .touch-dot {
+    fill: var(--nc);
+  }
+
+  /* Touch 收到位那一刻亮起的圓角方框。 */
+  .touch-just {
     fill: none;
-    stroke: #eef2f8;
+    stroke: #f6f8fc;
     stroke-width: 5;
     stroke-linejoin: round;
   }
@@ -1120,34 +1720,31 @@
     stroke-linejoin: round;
   }
 
-  /* Touch Hold 剩餘時間環：底環固定一整圈，亮環順時針消耗。 */
-  .touch-hold-track {
+  /* Touch Hold 外框：粗的圓角菱形，按住之後從正上方順時針一段一段亮起來；筆寬寫在元素上。
+     底下墊一層深色描邊，疊在別的音符上也分得開。 */
+  .touch-hold-edge {
     fill: none;
-    stroke: #3d4551;
-    stroke-width: 4;
-  }
-
-  .touch-hold-remain {
-    fill: none;
-    stroke: #eef2f8;
-    stroke-width: 8;
+    stroke: #0b0d11;
     stroke-linecap: butt;
+    stroke-linejoin: round;
   }
 
-  /* 落點編號放在三角形圍出來的中心，黑色描邊保證壓在任何筆觸上都讀得到。 */
+  .touch-hold-fill {
+    fill: none;
+    stroke: var(--nc);
+    stroke-linecap: butt;
+    stroke-linejoin: round;
+  }
+
+  /* 落點編號寫在音符中心（落點標記開著時才有），黑色描邊保證壓在任何筆觸上都讀得到。 */
   .touch-label {
     fill: #eef2f8;
     font-family: var(--font-mono);
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 700;
     paint-order: stroke;
     stroke: #000;
     stroke-width: 5px;
-  }
-
-  /* C 的外形較大，字也放大一級，中央不會看起來空掉。 */
-  .touch-label.is-center {
-    font-size: 26px;
   }
 
   /* 煙火筆觸。stroke-opacity 只是短暫的筆觸淡出，不是半透明底色。 */
@@ -1169,54 +1766,56 @@
     stroke-width: 3;
   }
 
-  /* Break 與 EX 只換筆觸顏色，形狀維持一致，不單靠顏色傳達種類。 */
-  .note.is-break .note-ring,
-  .note.is-break .note-star,
-  .note.is-break .touch-petal,
-  .note.is-break .touch-hold-frame,
-  .note.is-break .touch-hold-remain,
-  .note.is-break .hold-bar {
-    stroke: #f0913a;
+  /* 打擊效果：發光的線條。線只畫一次（筆寬寫在元素上），光暈由整組的模糊濾鏡疊出來；
+     線條略帶透明，兩條線交疊的地方會更亮，像遊戲的加亮混色。
+     模糊與半透明只用在這個一閃而過的筆觸上，不是面板底色。
+     不上色時是白光，照遊戲上色時是遊戲的淡黃光。 */
+  .hits {
+    pointer-events: none;
   }
 
-  .note.is-ex .note-core {
-    stroke: var(--c-focus);
-    stroke-width: 6;
+  .hit-line {
+    fill: none;
+    stroke: #f4f7fb;
+    stroke-opacity: 0.8;
+    stroke-linejoin: round;
   }
 
-  .note.is-ex .touch-petal {
-    stroke: var(--c-focus);
+  /* 按住 Hold／Touch Hold 時往外擴的光圈：一圈一圈各自獨立、不會互相交疊加亮，
+     所以線本身畫到全亮，靠整圈的不透明度淡出（錄影裡剛冒出來的那一圈幾乎是全亮）。 */
+  .hit-ring {
+    stroke-opacity: 1;
+  }
+
+  /* Touch 的實心圓：整片淡淡的光，邊緣被濾鏡暈開。 */
+  .hit-fill {
+    fill: #eef2f8;
+    fill-opacity: 0.6;
+    stroke: none;
+  }
+
+  .stage-svg.is-colored .hit-line {
+    stroke: #f2e75c;
+  }
+
+  .stage-svg.is-colored .hit-fill {
+    fill: #f8ee7c;
+  }
+
+  /* 光圈的黃比六角形那組亮一階（錄影裡量到的顏色）。 */
+  .stage-svg.is-colored .hit-ring {
+    stroke: #fff76a;
+  }
+
+  /* 判定中、選中：Tap／Hold 的環帶加粗（筆寬寫在元素上），Touch 的深色描邊加粗。 */
+  .note.is-active .touch-fan,
+  .note.is-active .touch-fan-edge {
+    stroke-width: 5;
+  }
+
+  .note.is-selected .touch-fan,
+  .note.is-selected .touch-fan-edge {
     stroke-width: 7;
-  }
-
-  .note.is-active .note-ring,
-  .note.is-active .hold-bar {
-    stroke-width: 9;
-  }
-
-  .note.is-active .touch-petal,
-  .note.is-active .touch-hold-frame {
-    stroke-width: 7;
-  }
-
-  .note.is-selected .note-ring,
-  .note.is-selected .note-star,
-  .note.is-selected .touch-petal,
-  .note.is-selected .touch-hold-frame {
-    stroke: var(--c-accent);
-    stroke-width: 9;
-  }
-
-  .note:focus-visible {
-    outline: none;
-  }
-
-  .note:focus-visible .note-ring,
-  .note:focus-visible .note-star,
-  .note:focus-visible .touch-petal,
-  .note:focus-visible .touch-hold-frame,
-  .note:focus-visible .hold-bar {
-    stroke: var(--c-focus);
   }
 
   .note-tag {

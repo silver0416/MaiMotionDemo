@@ -107,19 +107,23 @@
     center: Point;
     /** 外環半徑（viewBox 像素）。 */
     radius: number;
+    /** 畫不畫裡面的格線（內圈的磚與外區的點線）。關掉只留外環與鍵位白點。 */
+    grid?: boolean;
   }
 
-  let { center, radius }: Props = $props();
+  let { center, radius, grid = true }: Props = $props();
 </script>
 
 <!-- 底圖不帶語意，讀屏略過；線寬用 non-scaling-stroke，以 viewBox 像素指定，和原圖一樣粗細。 -->
 <g class="board" aria-hidden="true" transform={`translate(${center.x} ${center.y}) scale(${radius})`}>
-  {#each TILES as d, index (index)}
-    <path class="tile" {d} />
-  {/each}
-  {#each LINES as d, index (index)}
-    <path class="dotted" {d} />
-  {/each}
+  {#if grid}
+    {#each TILES as d, index (index)}
+      <path class="tile" {d} />
+    {/each}
+    {#each LINES as d, index (index)}
+      <path class="dotted" {d} />
+    {/each}
+  {/if}
   <circle class="ring" cx="0" cy="0" r="1" />
   {#each BUTTON_DOTS as dot, index (index)}
     <circle class="button-dot" cx={dot.x} cy={dot.y} r="0.03" />

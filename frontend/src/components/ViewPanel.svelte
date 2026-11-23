@@ -6,10 +6,13 @@
   import { PALM_APPROX_HINT } from '../lib/palm';
   import {
     TOUCH_AREA_PLACE,
-    touchHoldFrame,
-    touchHoldRingRadius,
-    touchPetals,
+    TOUCH_FAN_HOLE,
+    TOUCH_HOLD_BAND,
+    fanLoop,
+    touchFans,
+    touchHoldBorder,
     touchPolygon,
+    touchSparkRadius,
   } from '../lib/touch';
   import { view } from '../state/view.svelte';
   import type { SensorDisplayMode } from '../state/view.svelte';
@@ -41,14 +44,14 @@
       key: 'touch',
       area: 'A',
       name: 'Touch',
-      hint: '四片三角形由外往落點收攏，收到位就是判定時間',
+      hint: '上下左右四片三角形往落點收攏，四個尖端碰在一起就是判定時間',
       note: true,
     },
     {
       key: 'hold',
       area: 'A',
       name: 'Touch Hold',
-      hint: '方框＋斜向三角形；外面一整圈亮環順時針消耗，代表剩餘時間',
+      hint: '斜向四片三角形拼成菱形；按住之後外面一圈粗框順時針亮起來，亮滿一圈就結束',
       note: true,
       hold: true,
     },
@@ -56,7 +59,7 @@
       key: 'fireworks',
       area: 'A',
       name: '煙火 f',
-      hint: '虛線外框預告，判定時間在落點擴散一次',
+      hint: '虛線圓圈預告，判定時間在落點擴散一次',
       note: true,
       spark: true,
     },
@@ -65,6 +68,26 @@
   const LEGEND_ORIGIN = { x: 0, y: 0 };
   /** 圖例的落點外形半徑（viewBox 單位），對應盤面的 touchRadius。 */
   const LEGEND_RADIUS = 11;
+
+  /** 圖例裡的 Touch 音符：四片收攏到位的三角形，中間挖空。和盤面共用同一組外形。 */
+  function legendFans(hold: boolean): string {
+    return touchFans(LEGEND_RADIUS, 1, hold)
+      .map(
+        (fan) =>
+          legendPoly(fanLoop(LEGEND_ORIGIN, fan)) + legendPoly(fanLoop(LEGEND_ORIGIN, fan, TOUCH_FAN_HOLE)),
+      )
+      .join('');
+  }
+
+  /** Touch Hold 連外框一起塞進圖例，整個縮小一點。 */
+  const LEGEND_HOLD_SCALE = 0.78;
+  /** 圖例裡外框的筆寬：比盤面的比例細一點，和裡面的三角形之間留一條縫。 */
+  const LEGEND_HOLD_BAND = LEGEND_RADIUS * LEGEND_HOLD_SCALE * TOUCH_HOLD_BAND * 0.7;
+
+  /** 圖例裡 Touch Hold 的菱形外框。 */
+  function legendBorder(): string {
+    return legendPoly(touchHoldBorder(LEGEND_ORIGIN, LEGEND_RADIUS * LEGEND_HOLD_SCALE).flat());
+  }
 
   /** 圖例外形與盤面共用 touchPolygon；這裡把「朝外」畫成朝上。 */
   function legendPath(area: string, radius: number): string {
@@ -138,6 +161,13 @@
         <span>顯示 1–8 鍵位編號</span>
       </label>
       <label class="check">
+        <input type="checkbox" bind:checked={view.showBoardGrid} />
+        <span>
+          顯示盤面格線
+          <span class="field-hint help">盤面裡面的感應區方塊與點線；關掉只留外圈和八個鍵位。</span>
+        </span>
+      </label>
+      <label class="check">
         <input type="checkbox" bind:checked={view.showFireworks} />
         <span>
           顯示煙火效果
@@ -195,23 +225,17 @@
         <svg class="legend-mark" viewBox="0 0 40 40" aria-hidden="true">
           {#if item.note}
             {#if item.spark}
-              <path class="mark-spark" d={legendPath(item.area, LEGEND_RADIUS * 1.18)} />
+              <circle class="mark-spark" cx="20" cy="20" r={touchSparkRadius(LEGEND_RADIUS, false)} />
             {/if}
             {#if item.hold}
-              <circle
-                class="mark-hold-ring"
-                cx="20"
-                cy="20"
-                r={touchHoldRingRadius(LEGEND_RADIUS)}
-              />
-              <path
-                class="mark-hold-frame"
-                d={legendPoly(touchHoldFrame(LEGEND_ORIGIN, LEGEND_RADIUS, -Math.PI / 2))}
-              />
+              <path class="mark-hold-border" d={legendBorder()} stroke-width={LEGEND_HOLD_BAND} />
+              <g transform={`translate(20 20) scale(${LEGEND_HOLD_SCALE}) translate(-20 -20)`}>
+                <path class="mark-fan" d={legendFans(true)} />
+              </g>
+            {:else}
+              <path class="mark-fan" d={legendFans(false)} />
             {/if}
-            {#each touchPetals(LEGEND_ORIGIN, LEGEND_RADIUS, -Math.PI / 2, 1, !!item.hold) as petal, index (index)}
-              <path class="mark-petal" d={legendPoly(petal)} />
-            {/each}
+            <circle class="mark-dot" cx="20" cy="20" r="2.6" />
           {:else}
             <path class="mark-ring" d={legendPath(item.area, LEGEND_RADIUS)} />
             <path class="mark-core" d={legendPath(item.area, 5.5)} />
@@ -270,7 +294,7 @@
       <span>
         音符飛入動畫
         <span class="field-hint help">
-          Tap／Hold／Slide 由中心飛向鍵位，Touch 原地由外往落點收攏。純視覺效果，不改變判定時間。
+          Tap／Hold／Slide 先在內圈原地放大，再飛向鍵位；Touch 原地由外往落點收攏。純視覺效果，不改變判定時間。
         </span>
       </span>
     </label>
@@ -278,7 +302,7 @@
       <div style="margin-top: var(--space-3)">
         <NumberField
           label="飛入時間"
-          hint="音符提前多久出現。"
+          hint="音符從內圈飛到鍵位要多久。起飛前會先在原地放大，所以會更早出現。"
           value={view.approachSeconds}
           min={0.2}
           max={2}
@@ -288,6 +312,24 @@
         />
       </div>
     {/if}
+    <label class="check" style="margin-top: var(--space-3)">
+      <input type="checkbox" bind:checked={view.noteColors} />
+      <span>
+        照遊戲上色
+        <span class="field-hint help">
+          Tap／Hold 粉紅、Slide 與 Touch 藍、同時押黃、Break 橘，Touch Hold 四色。關掉是白色音符，粉紅與藍只留給左右手。
+        </span>
+      </span>
+    </label>
+    <label class="check" style="margin-top: var(--space-3)">
+      <input type="checkbox" bind:checked={view.hitEffects} />
+      <span>
+        打擊效果
+        <span class="field-hint help">
+          音符判定的那一刻在原地放出光暈：一般音符是六角形，Break 是星星，Touch 是實心圓；Hold 按住時是一圈圈往外擴的圓，放開才是六角形。只是畫面效果，不代表判定結果。
+        </span>
+      </span>
+    </label>
   </section>
 
   <section class="section">
@@ -401,18 +443,27 @@
     stroke-linejoin: round;
   }
 
-  .mark-petal,
-  .mark-hold-frame {
-    fill: none;
-    stroke: var(--c-text);
-    stroke-width: 1.6;
+  /* 四片拼在一起時，底色的細描邊就是片與片之間的接縫。 */
+  .mark-fan {
+    fill: var(--c-text);
+    fill-rule: evenodd;
+    stroke: var(--c-panel);
+    stroke-width: 1.2;
     stroke-linejoin: round;
   }
 
-  .mark-hold-ring {
+  /* 筆寬寫在元素上（跟著外形的比例算）。 */
+  .mark-hold-border {
     fill: none;
     stroke: var(--c-text-dim);
-    stroke-width: 2.4;
+    stroke-linejoin: round;
+  }
+
+  /* 落點正中心的圓點，外面一圈底色把它和四個尖端分開。 */
+  .mark-dot {
+    fill: var(--c-text);
+    stroke: var(--c-panel);
+    stroke-width: 1.4;
   }
 
   .mark-core {
