@@ -16,8 +16,11 @@ use crate::solver::{self, HandRules};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// 特徵格式版本；模型檔記錄的版本不同就拒絕載入。
-pub const FEATURE_VERSION: u32 = 1;
+/// 支援的最新特徵格式版本；模型檔記錄的版本不在 1..=這個值就拒絕載入。
+/// 第 1 版：31 維。第 2 版（2026-11-07，只用手標訓練的研究模型）：31 維後面另接「手被佔住」
+/// `OCC_COLS` 欄。第 3 版（2026-11-22，浅葱 asagi 用）：31 維後面另接「兩手現在在哪裡」`HANDPOS_COLS` 欄
+/// （沒有「手被佔住」）。第 1 版模型的輸入不受影響。
+pub const FEATURE_VERSION: u32 = 3;
 const FEATURES: usize = 31;
 /// 特徵 31 維＋V3 的手（接觸、滑行各 2 維：有沒有、左 −1／右 +1）。
 const INPUTS: usize = FEATURES + 4;
@@ -25,6 +28,20 @@ const INPUTS: usize = FEATURES + 4;
 const X_COLS: [usize; 6] = [7, 17, 18, 20, 22, 24];
 /// 群內由左到右的排名，鏡像時變成 1 − rank。
 const RANK_COL: usize = 15;
+/// 第 2 版特徵的「手被佔住」欄數（與 J:\MaiMotionML\hl\occ.py 逐項對應）：每顆落下時還沒放開的
+/// 長押、滑行、Touch Hold 有幾個、在哪裡、多久後放開；自己是長音符時期間有多少別的音符；
+/// 基座分給左手、右手的各在哪裡、離這顆多遠。
+const OCC_COLS: usize = 14;
+/// 「手被佔住」裡鏡像時 x 取負號的欄：佔住的平均 x、需要另一隻手的平均 x、左手 x、右手 x。
+const OCC_X_NEG: [usize; 4] = [1, 5, 7, 10];
+/// 基座分給左手／右手的佔住欄（有無、x、y、距離）：鏡像時兩組對調，純模型一律清成 0。
+const OCC_L: [usize; 4] = [6, 7, 8, 12];
+const OCC_R: [usize; 4] = [9, 10, 11, 13];
+/// 第 3 版特徵的「兩手現在在哪裡」欄數（與 J:\MaiMotionML\hl\handpos.py 逐項對應，見 [`handpos_rows`]）。
+/// 全部以「基座給這一步的那隻手／另一隻手」表示，左右鏡像不變。
+const HANDPOS_COLS: usize = 17;
+/// [`handpos_rows`] 把同一拍的動作併在一起看的時間差（秒）。
+const HANDPOS_EPS: f64 = 0.002;
 
 /// 內建模型。rurikon（瑠璃紺）是 ruri 的網路配 V4 權重，ayame（菖蒲，あやめ）是以 V4 基座重訓的分組架構
 /// （2026-10-30 使用者選入 App；tokiwa、akane、ruri 收進前端的「顯示更多模型」）。
@@ -34,7 +51,11 @@ const RANK_COL: usize = 15;
 /// （2026-11-07 使用者定名並加進主卡；紺瑠璃、菖蒲仍是主卡，排在山吹下一排）。
 /// entan（鉛丹）也是 TemotoAI-2：山吹的設定，訓練時另外加入影片自動辨識的 Touch／Slide 標籤
 /// （每批五成視窗取自影片，研究 run r4_aug_ts_sh5），配 V4.1（2026-11-09 使用者定名，主卡放在山吹旁）。
-pub const MODEL_IDS: [&str; 9] = [
+/// asagi（浅葱）也是 TemotoAI-2：訓練池加上 2026-11-14 手標的 51 首（共 130 首）、影片的 Touch／Slide 標籤
+/// （每批五成視窗），輸入用第 3 版特徵（多「兩手現在在哪裡」17 欄）
+/// （2026-11-22 使用者定名並放進 App，當時配 V4.1，研究 run n51_aug_hp）。2026-11-23 使用者決定換成
+/// 照 V4.3 的手重訓的版本（同樣的配方，研究 run n51_aug_hp_v43），模型檔附 V4.3 的權重。
+pub const MODEL_IDS: [&str; 10] = [
     "temoto-1-tokiwa",
     "temoto-1-akane",
     "temoto-1-ruri",
@@ -44,6 +65,7 @@ pub const MODEL_IDS: [&str; 9] = [
     "temoto-1-shoubu",
     "temoto-2-yamabuki",
     "temoto-2-entan",
+    "temoto-2-asagi",
 ];
 
 /// 分組特徵的格式版本（分組架構的模型檔另外記錄）。
@@ -109,7 +131,12 @@ pub struct TemotoModel {
     /// 基座（V3）的手是不是輸入：模型檔標頭 `input` 為 `"none"` 的純模型不看，那兩欄一律當成
     /// 「沒有」；這時每顆都照模型判斷（`flipAt` 0.5），基座只負責算動作與確認做得到。
     uses_base: bool,
-    /// 每顆的輸入維度：逐顆架構 `INPUTS`，分組架構另加 `G_COLS`。
+    /// 第 2 版特徵：31 維後面另接「手被佔住」`OCC_COLS` 欄（在 V3 的手之前）。
+    occ: bool,
+    /// 第 3 版特徵：31 維後面另接「兩手現在在哪裡」`HANDPOS_COLS` 欄（在 V3 的手之前）。
+    handpos: bool,
+    /// 每顆的輸入維度：逐顆架構 `INPUTS`（第 2 版另加 `OCC_COLS`、第 3 版另加 `HANDPOS_COLS`），
+    /// 分組架構再加 `G_COLS`。
     inputs: usize,
     /// 分組架構：推論視窗長度（訓練時的切段長度，視窗重疊一半）。逐顆架構為 None，整首一次跑完。
     window: Option<usize>,
@@ -198,12 +225,17 @@ impl TemotoModel {
         let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
         let header: serde_json::Value = serde_json::from_slice(&bytes[12..12 + len])
             .map_err(|e| format!("模型標頭無法解析：{e}"))?;
-        if header["featureVersion"].as_u64() != Some(FEATURE_VERSION as u64) {
-            return Err(format!(
-                "模型需要第 {} 版特徵，這個版本是第 {FEATURE_VERSION} 版",
-                header["featureVersion"]
-            ));
-        }
+        let (occ, handpos) = match header["featureVersion"].as_u64() {
+            Some(1) => (false, false),
+            Some(2) => (true, false),
+            Some(3) => (false, true),
+            _ => {
+                return Err(format!(
+                    "模型需要第 {} 版特徵，這個版本支援到第 {FEATURE_VERSION} 版",
+                    header["featureVersion"]
+                ))
+            }
+        };
         let data = &bytes[12 + len..];
         let weights: Vec<f32> = data
             .chunks_exact(2)
@@ -227,7 +259,13 @@ impl TemotoModel {
                 header["groupFeatures"]
             ));
         }
-        let inputs = if grouped { INPUTS + G_COLS } else { INPUTS };
+        if handpos && header["input"].as_str() == Some("none") {
+            return Err("第 3 版特徵是照基座的手算的，不能配不看基座的純模型".into());
+        }
+        let inputs = INPUTS
+            + if occ { OCC_COLS } else { 0 }
+            + if handpos { HANDPOS_COLS } else { 0 }
+            + if grouped { G_COLS } else { 0 };
         let window = match header["window"].as_u64() {
             Some(w) if grouped && w >= 2 => Some(w as usize),
             None if !grouped => None,
@@ -321,6 +359,8 @@ impl TemotoModel {
             tuning,
             flip_at: header["flipAt"].as_f64().map_or(0.5, |v| v as f32),
             uses_base: header["input"].as_str() != Some("none"),
+            occ,
+            handpos,
             inputs,
             window,
             mu,
@@ -336,7 +376,8 @@ impl TemotoModel {
     /// rurikon、ayame（分組架構，基座 V4）與 konruri、shoubu（基座 V4.1）也是 0.5。
     ///
     /// konruri、shoubu 和 rurikon、ayame 共用模型檔，只把附帶的權重換成 V4.1（不另存一份網路）。
-    /// yamabuki、entan（TemotoAI-2）的模型檔本身就附 V4.1 權重，門檻 0.5（研究評測時也沒寫 flipAt）。
+    /// yamabuki、entan（TemotoAI-2）的模型檔本身就附 V4.1 權重，asagi 附 V4.3 權重，門檻 0.5（研究評測時也沒寫 flipAt）。
+    /// asagi 的模型檔是第 3 版特徵。
     pub fn builtin(id: &str) -> Option<&'static TemotoModel> {
         const RURIKON_FILE: &[u8] = include_bytes!("../models/temoto-1-rurikon.temoto");
         const AYAME_FILE: &[u8] = include_bytes!("../models/temoto-1-ayame.temoto");
@@ -349,6 +390,7 @@ impl TemotoModel {
         static SHOUBU: OnceLock<TemotoModel> = OnceLock::new();
         static YAMABUKI: OnceLock<TemotoModel> = OnceLock::new();
         static ENTAN: OnceLock<TemotoModel> = OnceLock::new();
+        static ASAGI: OnceLock<TemotoModel> = OnceLock::new();
         match id {
             "temoto-1-tokiwa" => Some(TOKIWA.get_or_init(|| {
                 Self {
@@ -388,6 +430,10 @@ impl TemotoModel {
                 Self::load(include_bytes!("../models/temoto-2-entan.temoto"))
                     .expect("內建模型 entan")
             })),
+            "temoto-2-asagi" => Some(ASAGI.get_or_init(|| {
+                Self::load(include_bytes!("../models/temoto-2-asagi.temoto"))
+                    .expect("內建模型 asagi")
+            })),
             _ => None,
         }
     }
@@ -401,7 +447,7 @@ impl TemotoModel {
         self.tuning
     }
 
-    /// 基座在提醒文字裡的名稱：附帶的權重和哪個 V3 變體相同就用它的名字（V3.1、V3.2、V4、V4.1），
+    /// 基座在提醒文字裡的名稱：附帶的權重和哪個 V3 變體相同就用它的名字（V3.1、V3.2、V4、V4.1、V4.3），
     /// 沒附權重是原始 V3，都對不上時只說「基座」。
     pub fn base_label(&self) -> String {
         let Some(tuning) = self.tuning else {
@@ -512,6 +558,10 @@ impl TemotoModel {
         };
         let mut out = Vec::with_capacity(input.x.len() * self.inputs);
         let mut r = vec![0f32; self.inputs];
+        // 排列同訓練：31 維、（第 2 版）手被佔住或（第 3 版）兩手位置、V3 的手 4 維、（分組架構）分組特徵
+        let base_at = FEATURES
+            + if self.occ { OCC_COLS } else { 0 }
+            + if self.handpos { HANDPOS_COLS } else { 0 };
         for (i, row) in input.x.iter().enumerate() {
             r[..FEATURES].copy_from_slice(row);
             if flipped {
@@ -520,6 +570,27 @@ impl TemotoModel {
                 }
                 r[RANK_COL] = 1.0 - r[RANK_COL];
             }
+            if self.occ {
+                let mut o = input.occ[i];
+                if !self.uses_base {
+                    for c in OCC_L.iter().chain(&OCC_R) {
+                        o[*c] = 0.0;
+                    }
+                }
+                if flipped {
+                    for c in OCC_X_NEG {
+                        o[c] = -o[c];
+                    }
+                    for (lc, rc) in OCC_L.iter().zip(OCC_R) {
+                        o.swap(*lc, rc);
+                    }
+                }
+                r[FEATURES..base_at].copy_from_slice(&o);
+            }
+            if self.handpos {
+                // 以基座的手／另一隻手表示，鏡像不用改
+                r[FEATURES..base_at].copy_from_slice(&input.handpos[i]);
+            }
             let (hand, track) = if self.uses_base {
                 (input.v3_hand[i], input.v3_track[i])
             } else {
@@ -527,10 +598,10 @@ impl TemotoModel {
             };
             let [a, b] = enc(hand);
             let [c, d] = enc(track);
-            r[FEATURES..INPUTS].copy_from_slice(&[a, b, c, d]);
+            r[base_at..base_at + 4].copy_from_slice(&[a, b, c, d]);
             // 分組特徵左右鏡像不變
-            if self.inputs > INPUTS {
-                r[INPUTS..].copy_from_slice(&input.g[i]);
+            if self.inputs > base_at + 4 {
+                r[base_at + 4..].copy_from_slice(&input.g[i]);
             }
             for (k, v) in r.iter().enumerate() {
                 out.push((v - self.mu[k]) / self.sd[k]);
@@ -740,6 +811,10 @@ pub struct Features {
     pub x: Vec<[f32; FEATURES]>,
     pub v3_hand: Vec<i8>,
     pub v3_track: Vec<i8>,
+    /// 「手被佔住」（第 2 版特徵的模型才用，見 [`occ_rows`]）。
+    pub occ: Vec<[f32; OCC_COLS]>,
+    /// 「兩手現在在哪裡」（第 3 版特徵的模型才用，見 [`handpos_rows`]）。
+    pub handpos: Vec<[f32; HANDPOS_COLS]>,
     /// 分組特徵（分組架構才用）：每顆的特徵、所在的組與組內序號，以及每組的描述。
     pub g: Vec<[f32; G_COLS]>,
     pub gid: Vec<Option<usize>>,
@@ -784,6 +859,296 @@ fn button_xy(b: u8) -> (f64, f64) {
 
 fn lg(dt: f64) -> f64 {
     (dt.max(0.0) * 10.0).ln_1p()
+}
+
+/// 「手被佔住」特徵（第 2 版，與 J:\MaiMotionML\hl\occ.py 逐項對應；`notes` 是排序後的音符）。
+///
+/// 每顆音符落下的那一刻（前後各留 1 ms），還沒放開的長音符：長押、Touch Hold 從按下到放開，
+/// Slide 從開始滑到滑完（拍星星到開始滑之間手是空的，不算）。欄位：
+/// 0 個數 log(1+n)、1–2 此刻位置的平均（Slide 依進度取軌跡上的點）、3 最早放開的剩餘時間、
+/// 4–5 自己是長音符時期間開始的其他音符數 log(1+n) 與平均 x、
+/// 6–8／9–11 基座分給左手／右手的有無與平均位置、12／13 這顆離它們最近的距離。
+/// 基座的手每個（音符, 部位）取第一筆指派；Slide 看滑行的手，沒有就看拍星星的手。
+fn occ_rows(
+    chart: &Chart,
+    notes: &[&Note],
+    paths: &HashMap<&str, &SlidePath>,
+    solution: Option<&Solution>,
+) -> Vec<[f32; OCC_COLS]> {
+    let mut first: HashMap<(&str, &str), i8> = HashMap::new();
+    if let Some(s) = solution {
+        for a in &s.assignments {
+            first
+                .entry((a.note_id.as_str(), a.part.as_str()))
+                .or_insert(if a.hand == Hand::R { 1 } else { 0 });
+        }
+    }
+    let base_hand = |n: &Note| -> i8 {
+        let get = |part: &str| first.get(&(n.id.as_str(), part)).copied();
+        let main = if n.kind == "slide" {
+            "slide"
+        } else {
+            "contact"
+        };
+        get(main).or(get("head")).unwrap_or(-1)
+    };
+    let or_t = |v: Option<f64>, t: f64| v.filter(|v| *v != 0.0).unwrap_or(t);
+    let start_of = |n: &Note| {
+        if n.kind == "slide" {
+            or_t(n.motion_start, n.time_seconds)
+        } else {
+            n.time_seconds
+        }
+    };
+    let end_of = |n: &Note| {
+        if n.kind == "slide" {
+            or_t(n.motion_end, n.time_seconds)
+        } else if n.end_seconds != 0.0 {
+            n.end_seconds
+        } else {
+            n.time_seconds
+        }
+    };
+    let pos_at = |n: &Note, t: f64| -> (f64, f64) {
+        if n.kind == "slide" {
+            if let Some(p) = n.path_id.as_deref().and_then(|id| paths.get(id)) {
+                let s = &p.samples;
+                let (ms, me) = (
+                    or_t(n.motion_start, n.time_seconds),
+                    or_t(n.motion_end, n.time_seconds),
+                );
+                if !s.is_empty() && me > ms {
+                    let q = ((t - ms) / (me - ms)).clamp(0.0, 1.0);
+                    // Python 的 round 是四捨六入五成雙
+                    let k = (q * (s.len() - 1) as f64).round_ties_even() as usize;
+                    return (s[k].x, s[k].y);
+                }
+            }
+        }
+        (n.position.x, n.position.y)
+    };
+    let is_long = |n: &Note| {
+        matches!(n.kind.as_str(), "hold" | "slide" | "touchHold") && end_of(n) > start_of(n) + 0.01
+    };
+    let longs: Vec<&Note> = chart.notes.iter().filter(|n| is_long(n)).collect();
+    let mean = |v: &[(f64, f64)]| {
+        let k = v.len() as f64;
+        (
+            v.iter().map(|p| p.0).sum::<f64>() / k,
+            v.iter().map(|p| p.1).sum::<f64>() / k,
+        )
+    };
+    notes
+        .iter()
+        .map(|&n| {
+            let t = n.time_seconds;
+            let mut row = [0f32; OCC_COLS];
+            let occ: Vec<&Note> = longs
+                .iter()
+                .copied()
+                .filter(|&m| {
+                    !std::ptr::eq(m, n) && start_of(m) < t - 0.001 && end_of(m) > t + 0.001
+                })
+                .collect();
+            if !occ.is_empty() {
+                let ps: Vec<(f64, f64)> = occ.iter().map(|m| pos_at(m, t)).collect();
+                let (mx, my) = mean(&ps);
+                row[0] = (occ.len() as f64).ln_1p() as f32;
+                row[1] = mx as f32;
+                row[2] = my as f32;
+                row[3] = lg(occ.iter().map(|m| end_of(m)).fold(f64::INFINITY, f64::min) - t) as f32;
+                let (x, y) = (n.position.x, n.position.y);
+                for (hand, at, dist) in [(0i8, 6, 12), (1, 9, 13)] {
+                    let hp: Vec<(f64, f64)> = occ
+                        .iter()
+                        .zip(&ps)
+                        .filter(|(m, _)| base_hand(m) == hand)
+                        .map(|(_, p)| *p)
+                        .collect();
+                    if !hp.is_empty() {
+                        let (hx, hy) = mean(&hp);
+                        row[at] = 1.0;
+                        row[at + 1] = hx as f32;
+                        row[at + 2] = hy as f32;
+                        row[dist] =
+                            hp.iter()
+                                .map(|p| (p.0 - x).hypot(p.1 - y))
+                                .fold(f64::INFINITY, f64::min) as f32;
+                    }
+                }
+            }
+            if is_long(n) {
+                let (a, b) = (start_of(n), end_of(n));
+                let busy: Vec<f64> = chart
+                    .notes
+                    .iter()
+                    .filter(|m| a + 0.001 < m.time_seconds && m.time_seconds < b - 0.001)
+                    .map(|m| m.position.x)
+                    .collect();
+                row[4] = (busy.len() as f64).ln_1p() as f32;
+                if !busy.is_empty() {
+                    row[5] = (busy.iter().sum::<f64>() / busy.len() as f64) as f32;
+                }
+            }
+            row
+        })
+        .collect()
+}
+
+/// 「兩手現在在哪裡」特徵（第 3 版，與 J:\MaiMotionML\hl\handpos.py 逐項對應；`notes` 是排序後的音符，
+/// `hand`／`track` 是基座給每顆接觸、滑行的手：−1 沒有、0 左、1 右）。
+///
+/// 照基座的手依時間走：接觸在判定時間、滑行在開始滑的時間，相差 `HANDPOS_EPS` 內算同一拍，
+/// 同一拍的動作都用這一拍之前的狀態算，算完才更新。每隻手記停在哪裡（接觸＝音符位置，滑行＝終點鍵，
+/// 取 key 最後一段裡最後一個 1–8 的數字）、什麼時候空下來（長押、Touch Hold 到放開，滑行到滑完）、
+/// 上一個動作是不是滑行（停在哪）。欄位（h＝基座給這一步的手，o＝另一隻手）：
+/// 接觸：0 有基座的手、1 h 離這顆多遠、2 o 離這顆多遠、3 兩者相減、4 兩手位置都已知、
+/// 5／6 h／o 閒了多久（秒，0–2，沒用過＝2）、7 這顆在 h 那一邊 +1／另一邊 −1（|x| < 0.2 為 0）、
+/// 8 同一個位置 1 秒內上一次是 h +1／o −1、9 距離上一次多久、
+/// 10 同一拍只有兩顆接觸而且兩手各一顆：照基座分的移動距離 − 對調後的移動距離、
+/// 11 同上：基座的分法左手在左 +1／顛倒 −1（兩顆 x 相差不到 0.2 為 0）。
+/// 滑行：12 有基座的滑行手、13 星星頭和滑行同一隻手 +1／不同 −1、14／15 滑行那隻手／另一隻手離起點多遠、
+/// 16 滑行那隻手上一個動作是滑到這個起點 +1／另一隻手上一個動作滑到這裡 −1。
+fn handpos_rows(notes: &[&Note], hand: &[i8], track: &[i8]) -> Vec<[f32; HANDPOS_COLS]> {
+    let mut rows = vec![[0f32; HANDPOS_COLS]; notes.len()];
+    // (時間, 0 接觸／1 滑行, 第幾顆)
+    let mut events: Vec<(f64, u8, usize)> = vec![];
+    for (i, n) in notes.iter().enumerate() {
+        if hand[i] >= 0 {
+            events.push((n.time_seconds, 0, i));
+        }
+        if track[i] >= 0 {
+            events.push((n.motion_start.unwrap_or(n.time_seconds), 1, i));
+        }
+    }
+    events.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap()
+            .then(a.1.cmp(&b.1))
+            .then(a.2.cmp(&b.2))
+    });
+    let xy = |n: &Note| (n.position.x, n.position.y);
+    let dist = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
+    let place = |n: &Note| -> String {
+        let mut s = n.touch_area.clone().unwrap_or_default();
+        if n.button != 0 {
+            s.push_str(&n.button.to_string());
+        }
+        s
+    };
+    let slide_end = |n: &Note| -> (f64, f64) {
+        let shape = n.key.rsplit('|').next().unwrap_or("");
+        match shape.chars().rev().find(|c| ('1'..='8').contains(c)) {
+            Some(c) => {
+                let a = (-67.5 + 45.0 * (c as u8 - b'1') as f64).to_radians();
+                (a.cos(), a.sin())
+            }
+            None => xy(n),
+        }
+    };
+    let nonzero = |v: f64| if v != 0.0 { Some(v) } else { None };
+    let mut pos: [Option<(f64, f64)>; 2] = [None, None];
+    let mut free: [Option<f64>; 2] = [None, None];
+    let mut last_track: [Option<(f64, f64)>; 2] = [None, None];
+    let mut last_key: HashMap<String, (f64, usize)> = HashMap::new();
+    let mut a = 0;
+    while a < events.len() {
+        let t = events[a].0;
+        let mut b = a;
+        while b < events.len() && events[b].0 - t <= HANDPOS_EPS {
+            b += 1;
+        }
+        let slot = &events[a..b];
+        let contacts: Vec<usize> = slot.iter().filter(|e| e.1 == 0).map(|e| e.2).collect();
+        for &(_, part, i) in slot {
+            let n = notes[i];
+            let at = xy(n);
+            let row = &mut rows[i];
+            if part == 0 {
+                let h = hand[i] as usize;
+                let o = 1 - h;
+                row[0] = 1.0;
+                if let (Some(ph), Some(po)) = (pos[h], pos[o]) {
+                    let (d1, d2) = (dist(ph, at), dist(po, at));
+                    row[1] = d1 as f32;
+                    row[2] = d2 as f32;
+                    row[3] = (d1 - d2) as f32;
+                    row[4] = 1.0;
+                }
+                let idle = |f: Option<f64>| f.map_or(2.0, |f| (t - f).clamp(0.0, 2.0)) as f32;
+                row[5] = idle(free[h]);
+                row[6] = idle(free[o]);
+                if at.0.abs() >= 0.2 {
+                    row[7] = if (at.0 > 0.0) == (h == 1) { 1.0 } else { -1.0 };
+                }
+                if let Some(&(pt, ph)) = last_key.get(&place(n)) {
+                    if t - pt > HANDPOS_EPS && t - pt <= 1.0 {
+                        row[8] = if ph == h { 1.0 } else { -1.0 };
+                        row[9] = (t - pt) as f32;
+                    }
+                }
+                let others: Vec<usize> = contacts
+                    .iter()
+                    .copied()
+                    .filter(|&j| j != i && hand[j] as usize == o)
+                    .collect();
+                if contacts.len() == 2 && others.len() == 1 {
+                    let other = xy(notes[others[0]]);
+                    if let (Some(ph), Some(po)) = (pos[h], pos[o]) {
+                        row[10] = ((dist(ph, at) + dist(po, other))
+                            - (dist(ph, other) + dist(po, at)))
+                            as f32;
+                    }
+                    let dx = at.0 - other.0;
+                    if dx.abs() >= 0.2 {
+                        row[11] = if (dx > 0.0) == (h == 1) { 1.0 } else { -1.0 };
+                    }
+                }
+            } else {
+                let h = track[i] as usize;
+                let o = 1 - h;
+                row[12] = 1.0;
+                if hand[i] >= 0 {
+                    row[13] = if hand[i] as usize == h { 1.0 } else { -1.0 };
+                }
+                if let (Some(ph), Some(po)) = (pos[h], pos[o]) {
+                    row[14] = dist(ph, at) as f32;
+                    row[15] = dist(po, at) as f32;
+                }
+                if last_track[h].is_some_and(|p| dist(p, at) < 0.1) {
+                    row[16] = 1.0;
+                } else if last_track[o].is_some_and(|p| dist(p, at) < 0.1) {
+                    row[16] = -1.0;
+                }
+            }
+        }
+        for &(_, part, i) in slot {
+            let n = notes[i];
+            if part == 0 {
+                let h = hand[i] as usize;
+                pos[h] = Some(xy(n));
+                free[h] = Some(if n.kind == "slide" {
+                    t
+                } else {
+                    nonzero(n.end_seconds).unwrap_or(t)
+                });
+                last_key.insert(place(n), (t, h));
+                last_track[h] = None;
+            } else {
+                let h = track[i] as usize;
+                pos[h] = Some(slide_end(n));
+                free[h] = Some(
+                    n.motion_end
+                        .and_then(nonzero)
+                        .or(nonzero(n.end_seconds))
+                        .unwrap_or(t),
+                );
+                last_track[h] = pos[h];
+            }
+        }
+        a = b;
+    }
+    rows
 }
 
 /// 與 build_data.py 的 song_features 逐項對應。
@@ -850,6 +1215,8 @@ pub fn features(chart: &Chart, solution: Option<&Solution>) -> Features {
         x: vec![],
         v3_hand: vec![],
         v3_track: vec![],
+        occ: occ_rows(chart, &notes, &paths, solution),
+        handpos: vec![],
         g: vec![[0.0; G_COLS]; notes.len()],
         gid: vec![None; notes.len()],
         gpos: vec![0; notes.len()],
@@ -976,6 +1343,7 @@ pub fn features(chart: &Chart, solution: Option<&Solution>) -> Features {
         out.v3_track
             .push(a.and_then(|a| a.get("slide").copied()).unwrap_or(-1));
     }
+    out.handpos = handpos_rows(&notes, &out.v3_hand, &out.v3_track);
     // 分組特徵（與 g1/build_data.py 的 build 逐項對應）：自動分組依序編號；
     // 和前面的組重疊、或譜面上不到兩顆的組略過。
     let pos: HashMap<&str, usize> = notes
@@ -1409,5 +1777,186 @@ mod tests {
         assert_eq!(group_kind(&[(1, n), (2, n)]), 2);
         assert_eq!(group_kind(&[(1, n), (2, n), (4, n)]), 3);
         assert_eq!(group_kind(&[(1, n), (0, t)]), 4);
+    }
+
+    fn near(a: f32, b: f64) {
+        assert!((a as f64 - b).abs() < 1e-6, "{a} != {b}");
+    }
+
+    /// 「手被佔住」（第 2 版特徵，對應 J:\MaiMotionML\hl\occ.py）：長押期間落下的音符記下還沒放開的
+    /// 長押（位置、剩餘時間；有基座時記在基座分給的那隻手，另一隻手是 0），長押本身記下期間的音符。
+    #[test]
+    fn occupied_hands_follow_training() {
+        let chart = crate::parse_chart("(120){4}1h[1:1],5,6,E", 0.0)
+            .unwrap()
+            .chart;
+        let input = features(&chart, None);
+        let at = |i: usize| &chart.notes[input.order[i]];
+        let (hold, tap5, tap6) = (at(0), at(1), at(2));
+        assert_eq!(hold.kind, "hold");
+        // 長押（0–2 秒）：自己沒有被佔住；期間開始的音符 2 顆
+        let r = input.occ[0];
+        assert_eq!(r[..4], [0.0; 4]);
+        near(r[4], 3f64.ln());
+        near(r[5], (tap5.position.x + tap6.position.x) / 2.0);
+        // 0.5、1 秒的音符：被 1 個長押佔住，位置是長押的鍵位，還要 1.5、1 秒才放開
+        for (i, rest) in [(1, 1.5f64), (2, 1.0)] {
+            let r = input.occ[i];
+            near(r[0], 2f64.ln());
+            near(r[1], hold.position.x);
+            near(r[2], hold.position.y);
+            near(r[3], (rest * 10.0).ln_1p());
+            // 沒有基座：手的欄位都是 0；自己不是長音符
+            assert_eq!(r[4..], [0.0; 10]);
+        }
+        let base = solver::solve(&chart, &SolverConfig::default()).unwrap();
+        let top = &base[0];
+        let input = features(&chart, Some(top));
+        let right = top
+            .assignments
+            .iter()
+            .find(|a| a.note_id == hold.id && a.part == "contact")
+            .unwrap()
+            .hand
+            == Hand::R;
+        let (on, off) = if right {
+            (OCC_R, OCC_L)
+        } else {
+            (OCC_L, OCC_R)
+        };
+        for (i, tap) in [(1, tap5), (2, tap6)] {
+            let r = input.occ[i];
+            assert_eq!(r[on[0]], 1.0);
+            near(r[on[1]], hold.position.x);
+            near(r[on[2]], hold.position.y);
+            let d = (hold.position.x - tap.position.x).hypot(hold.position.y - tap.position.y);
+            near(r[on[3]], d);
+            for c in off {
+                assert_eq!(r[c], 0.0);
+            }
+        }
+    }
+
+    /// Slide 從開始滑才佔住手（拍星星到開始滑之間手是空的）；滑行中的位置依進度取軌跡上的點。
+    #[test]
+    fn slide_occupies_hand_only_while_moving() {
+        // 120 BPM：星星 0 秒、0.5 秒開始滑、1 秒滑完；3 在 0.25 秒、7 在 0.875 秒
+        let chart = crate::parse_chart("(120){16}1-5[4:1],,3,,,,,7,E", 0.0)
+            .unwrap()
+            .chart;
+        let input = features(&chart, None);
+        let slide = &chart.notes[input.order[0]];
+        assert_eq!(slide.kind, "slide");
+        assert_eq!(input.occ[1], [0.0; OCC_COLS]);
+        let r = input.occ[2];
+        near(r[0], 2f64.ln());
+        near(r[3], 1.25f64.ln_1p());
+        // 滑了 3/4：取軌跡上 round(0.75 × (點數 − 1)) 那一點（直線只有起點、終點兩點 → 終點），
+        // 不是星星的位置
+        let end = chart.paths[0].samples.last().unwrap();
+        near(r[1], end.x);
+        near(r[2], end.y);
+        assert!((end.x - slide.position.x).abs() > 0.5);
+        // 滑行期間（0.5–1 秒）開始的音符只有 7
+        let seven = &chart.notes[input.order[2]];
+        near(input.occ[0][4], 2f64.ln());
+        near(input.occ[0][5], seven.position.x);
+    }
+
+    /// 「兩手現在在哪裡」（第 3 版特徵，對應 J:\MaiMotionML\hl\handpos.py）：照基座的手走，
+    /// 記下這一步離兩手多遠、同一個鍵上一次是誰、星星頭和滑行是不是同一隻手、是不是一筆畫。
+    #[test]
+    fn hand_positions_follow_training() {
+        // 120 BPM 八分：1、8、1、(1,8 同時)，各隔 0.25 秒
+        let chart = crate::parse_chart("(120){8}1,8,1,1/8,E", 0.0)
+            .unwrap()
+            .chart;
+        let mut order: Vec<usize> = (0..chart.notes.len()).collect();
+        order.sort_by(|&a, &b| {
+            let (na, nb) = (&chart.notes[a], &chart.notes[b]);
+            na.time_seconds
+                .partial_cmp(&nb.time_seconds)
+                .unwrap()
+                .then(na.position.x.partial_cmp(&nb.position.x).unwrap())
+        });
+        let notes: Vec<&Note> = order.iter().map(|&i| &chart.notes[i]).collect();
+        // 排序後：1、8、1、8（x 較小）、1
+        assert_eq!(
+            notes.iter().map(|n| n.button).collect::<Vec<_>>(),
+            [1, 8, 1, 8, 1]
+        );
+        let d = (notes[0].position.x - notes[1].position.x)
+            .hypot(notes[0].position.y - notes[1].position.y);
+        // 基座：右、左、左（同一個鍵換了手）、最後同時兩顆左右顛倒（8 右、1 左）
+        let rows = handpos_rows(&notes, &[1, 0, 0, 1, 0], &[-1; 5]);
+        // 第一顆：兩手都還沒用過
+        assert_eq!(rows[0][0], 1.0);
+        assert_eq!(rows[0][1..5], [0.0; 4]);
+        assert_eq!(rows[0][5..7], [2.0, 2.0]);
+        assert_eq!(rows[0][7], 1.0);
+        // 第二顆（8，左手）：左手還沒有位置；右手 0.25 秒前用過；8 在左邊
+        assert_eq!(rows[1][4], 0.0);
+        near(rows[1][6], 0.25);
+        assert_eq!(rows[1][7], 1.0);
+        // 第三顆（1，基座給左手）：左手在 8、右手就在 1 上 → 基座選了遠的手；同一個鍵上一次是另一隻手
+        near(rows[2][1], d);
+        near(rows[2][2], 0.0);
+        near(rows[2][3], d);
+        assert_eq!(rows[2][4], 1.0);
+        assert_eq!(rows[2][7], -1.0);
+        assert_eq!(rows[2][8], -1.0);
+        near(rows[2][9], 0.5);
+        // 同時兩顆：8 給右手、1 給左手 → 左右顛倒；這時兩手都停在 1，怎麼分移動距離都一樣
+        for i in [3, 4] {
+            near(rows[i][10], 0.0);
+            assert_eq!(rows[i][11], -1.0);
+        }
+        // 第三顆改給右手：同時兩顆之前右手在 1、左手在 8，顛倒著分兩手都要換位置，對調就都不用動
+        let swapped = handpos_rows(&notes, &[1, 0, 1, 1, 0], &[-1; 5]);
+        assert_eq!(swapped[2][8], 1.0);
+        for i in [3, 4] {
+            near(swapped[i][10], 2.0 * d);
+            assert_eq!(swapped[i][11], -1.0);
+        }
+        // 沒有滑行
+        assert!(rows.iter().all(|r| r[12..] == [0.0; 5]));
+
+        // 兩條接在一起的 Slide：1-5 滑完接 5-1。基座：第一條頭和滑行都右手，第二條頭左手、滑行右手
+        let chart = crate::parse_chart("(120){4}1-5[4:1],,5-1[4:1],,E", 0.0)
+            .unwrap()
+            .chart;
+        let notes: Vec<&Note> = chart.notes.iter().collect();
+        assert!(notes.len() == 2 && notes[0].time_seconds < notes[1].time_seconds);
+        let rows = handpos_rows(&notes, &[1, 0], &[1, 1]);
+        assert_eq!(rows[0][12..14], [1.0, 1.0]);
+        assert_eq!(rows[0][16], 0.0);
+        // 第二條：頭左手、滑行右手 → 不同手；右手上一個動作正好滑到這個起點 → 一筆畫
+        assert_eq!(rows[1][13], -1.0);
+        assert_eq!(rows[1][16], 1.0);
+    }
+
+    /// 第 2 版模型檔：輸入多 `OCC_COLS` 維、第 3 版多 `HANDPOS_COLS` 維；第 1 版照舊，第 4 版以後拒絕。
+    #[test]
+    fn feature_version_sets_inputs() {
+        let bytes: &[u8] = include_bytes!("../models/temoto-1-ruri.temoto");
+        let len = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
+        let header: serde_json::Value = serde_json::from_slice(&bytes[12..12 + len]).unwrap();
+        let with_version = |v: u64| {
+            let mut h = header.clone();
+            h["featureVersion"] = v.into();
+            let h = serde_json::to_vec(&h).unwrap();
+            let mut edited = bytes[..8].to_vec();
+            edited.extend((h.len() as u32).to_le_bytes());
+            edited.extend(&h);
+            edited.extend(&bytes[12 + len..]);
+            TemotoModel::load(&edited)
+        };
+        assert!(with_version(1).is_ok());
+        // ruri 的權重是第 1 版的維度，標成第 2 版就對不上
+        let err = with_version(2).err().unwrap();
+        assert!(err.contains("維"), "{err}");
+        let err = with_version(3).err().unwrap();
+        assert!(err.contains("維"), "{err}");
+        assert!(with_version(4).is_err());
     }
 }

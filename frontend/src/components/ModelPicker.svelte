@@ -2,7 +2,6 @@
   import Icon from './Icon.svelte';
   import { reducedMotion } from '../lib/press';
   import {
-    MAIN_BASE,
     MAIN_MODELS,
     MORE_BASES,
     MORE_MODELS,
@@ -16,7 +15,7 @@
 
   /**
    * 比對頁的模型選單（2026-11-08 使用者指定）：按鈕是膠囊，選項沿用參數頁的評分方式卡，
-   * 一律半寬、高度是原本 AI 卡的 2/3（扇形跟著縮成 2/3）。參數頁直接看得到的排上面，
+   * 半寬、高度是原本 AI 卡的 2/3（扇形跟著縮成 2/3；分隔線上面只有一張時佔一整列）。參數頁直接看得到的排上面，
    * 「顯示更多模型」裡的排在分隔線下面，各自的順序同參數頁。
    * 開合動畫與鍵盤操作照 Dropdown：焦點留在按鈕（aria-activedescendant），
    * 左右鍵逐張、上下鍵跨一排、Enter／Space 選定、Esc 關閉。
@@ -62,10 +61,13 @@
     spoken: `${item.label}（${TEMOTO_COLOR_NAME[item.color]}）`,
   });
 
-  const SHOWN: readonly Option[] = [baseOption(MAIN_BASE), ...MAIN_MODELS.map(modelOption)];
+  // 2026-11-24 起參數頁主區只有浅葱一張，基座全部在「顯示更多模型」裡。
+  const SHOWN: readonly Option[] = MAIN_MODELS.map(modelOption);
   const MORE: readonly Option[] = [...MORE_BASES.map(baseOption), ...MORE_MODELS.map(modelOption)];
   const OPTIONS: readonly Option[] = [...SHOWN, ...MORE];
   const COLUMNS = 2;
+  /** 分隔線上面只有一張時佔一整列（同參數頁），不留半張的空位。 */
+  const SHOWN_SOLO = SHOWN.length === 1;
   /** 每張卡在畫面上的列與欄：分隔線下面從新的一列開始。 */
   const CELLS = OPTIONS.map((_, index) => {
     const shown = index < SHOWN.length;
@@ -246,7 +248,7 @@
   }
 </script>
 
-{#snippet cards(list: readonly Option[], start: number, name: string)}
+{#snippet cards(list: readonly Option[], start: number, name: string, solo = false)}
   <div class="grid" role="group" aria-label={name}>
     {#each list as option, offset (option.choice.id)}
       {@const index = start + offset}
@@ -254,6 +256,7 @@
       <button
         id={`${menuId}-${index}`}
         class={`model-card model-card--${option.color ?? 'v3'} card`}
+        class:card--solo={solo}
         class:is-active={index === selected}
         class:is-current={keyboard && index === active}
         type="button"
@@ -311,7 +314,7 @@
     onpointerleave={() => (hover = null)}
   >
     {#key openCount}
-      {@render cards(SHOWN, 0, '主要模型')}
+      {@render cards(SHOWN, 0, '主要模型', SHOWN_SOLO)}
       <div class="pop-divider" aria-hidden="true"></div>
       {@render cards(MORE, SHOWN.length, '更多模型')}
     {/key}
@@ -451,6 +454,18 @@
     bottom: -20.5cqi;
     width: 41cqi;
     height: 41cqi;
+  }
+
+  /* 分隔線上面只有一張時佔一整列；卡寬約是半寬的兩倍，扇形從 20.5cqi 減半，和半寬卡看起來一樣大。 */
+  .card--solo {
+    grid-column: 1 / -1;
+  }
+
+  .card--solo::before {
+    right: -10.25cqi;
+    bottom: -10.25cqi;
+    width: 20.5cqi;
+    height: 20.5cqi;
   }
 
   /* 方向鍵移到的卡：和全域焦點框一樣。 */

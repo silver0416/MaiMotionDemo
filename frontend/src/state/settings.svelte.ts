@@ -35,12 +35,34 @@ const VIEW_KEYS = [
 
 type ViewKey = (typeof VIEW_KEYS)[number];
 
+/**
+ * 顯示設定預設值的版號。某一版換了預設值、而且要讓更新上來的人也自動換過去時就加一，
+ * 並在 VIEW_RESETS 列出那一代換掉的欄位：讀到比較舊的存檔，這些欄位不沿用存檔的值，改用這一版的預設
+ * （之後使用者自己再改的照常保存）。更新後第一次開啟的通知另見 state/discDefaultsIntro.ts。
+ * 1＝2026-11-23 使用者指定：照遊戲上色打開、打擊效果打開、盤面格線關掉。
+ */
+export const VIEW_LINEUP = 1;
+const VIEW_RESETS: Record<number, readonly ViewKey[]> = {
+  1: ['noteColors', 'hitEffects', 'showBoardGrid'],
+};
+
 interface StoredSettings {
   view: Partial<Record<ViewKey, unknown>>;
   config: Partial<ConfigDraft>;
   firstSeconds: number;
   /** 存檔時的主卡版號（contract.ts 的 MAIN_LINEUP）；2026-11-05 之前的存檔沒有，視為 1。 */
   lineup?: number;
+  /** 存檔時的顯示預設值版號（VIEW_LINEUP）；2026-11-23 之前的存檔沒有，視為 0。 */
+  viewLineup?: number;
+}
+
+/** 從 from 那一代到現在，預設值換過、不該沿用存檔的欄位。 */
+function resetKeysSince(from: number): Set<ViewKey> {
+  const keys = new Set<ViewKey>();
+  for (let generation = from + 1; generation <= VIEW_LINEUP; generation += 1) {
+    for (const key of VIEW_RESETS[generation] ?? []) keys.add(key);
+  }
+  return keys;
 }
 
 function sameShape(value: unknown, reference: unknown): boolean {
@@ -63,12 +85,16 @@ function snapshot(): StoredSettings {
     config: $state.snapshot(session.config) as ConfigDraft,
     firstSeconds: session.firstSeconds,
     lineup: MAIN_LINEUP,
+    viewLineup: VIEW_LINEUP,
   };
 }
 
 function apply(stored: StoredSettings): void {
   const target = view as unknown as Record<string, unknown>;
+  // 預設值換代前的存檔：換掉的那幾個欄位用新的預設，其餘照存檔。
+  const reset = resetKeysSince(stored.viewLineup ?? 0);
   for (const key of VIEW_KEYS) {
+    if (reset.has(key)) continue;
     const value = stored.view?.[key];
     // 型別與目前預設不同（舊版欄位、損壞資料）就保留預設值。
     if (value !== undefined && sameShape(value, target[key])) target[key] = value;
@@ -95,7 +121,11 @@ export async function startSettingsPersistence(): Promise<void> {
   if (started) return;
   started = true;
   const stored = await dbGet<StoredSettings>(STORE_SETTINGS, SETTINGS_KEY);
-  if (stored) apply(stored);
+  if (stored) {
+    apply(stored);
+    // 剛換過代就先寫回去記下新的版號，免得使用者沒再改任何設定時，下次啟動又把那幾個欄位換回預設。
+    if ((stored.viewLineup ?? 0) < VIEW_LINEUP) void dbPut(STORE_SETTINGS, snapshot(), SETTINGS_KEY);
+  }
 
   $effect.root(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;

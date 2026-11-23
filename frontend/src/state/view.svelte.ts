@@ -15,10 +15,13 @@ export class ViewSettings {
   /** 音符飛入動畫，純視覺效果，不影響判定時間。 */
   approach = $state(true);
   approachSeconds = $state(0.85);
-  /** 音符照遊戲的配色上色；關掉是中性的白與灰。只換顏色，形狀與時間都不變。 */
-  noteColors = $state(false);
-  /** 打擊效果：判定那一刻在原地擴散的光環。預設關閉；時間完全由播放時鐘決定。 */
-  hitEffects = $state(false);
+  /**
+   * 音符照遊戲的配色上色；關掉是中性的白與灰。只換顏色，形狀與時間都不變。
+   * 預設打開（2026-11-23 使用者指定；換預設值時要一併調 settings.svelte.ts 的 VIEW_LINEUP）。
+   */
+  noteColors = $state(true);
+  /** 打擊效果：判定那一刻在原地擴散的光暈。預設打開（同上）；時間完全由播放時鐘決定。 */
+  hitEffects = $state(true);
   showLeft = $state(true);
   showRight = $state(true);
   /** 整段軌跡預設關閉：長譜面會在盤面留下滿場細線，反而看不清楚目前的動作。 */
@@ -36,8 +39,8 @@ export class ViewSettings {
   /** 手掌覆蓋區：畫面開關而已，覆蓋範圍與時間一律由 Rust 的 palmPlacements 決定。 */
   showPalms = $state(true);
   showButtons = $state(true);
-  /** 盤面裡面的格線（內圈 16 塊感應區磚與外區的點線）。關掉只留外環與八個鍵位白點。 */
-  showBoardGrid = $state(true);
+  /** 盤面裡面的格線（內圈 16 塊感應區磚與外區的點線）。預設關掉（同上），只留外環與八個鍵位白點。 */
+  showBoardGrid = $state(false);
   showCalibrationRing = $state(false);
   zoom = $state(1);
   calibration = $state<Calibration>({ ...DEFAULT_CALIBRATION });

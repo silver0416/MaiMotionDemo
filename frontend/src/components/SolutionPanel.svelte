@@ -727,6 +727,12 @@
     --model-fill: var(--c-entan-deep);
   }
 
+  .temoto-note--asagi,
+  .model-tag--asagi {
+    --model: var(--c-asagi);
+    --model-fill: var(--c-asagi-deep);
+  }
+
   .temoto-note--konruri,
   .model-tag--konruri {
     --model: var(--c-konruri);

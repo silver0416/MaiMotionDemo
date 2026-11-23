@@ -105,8 +105,10 @@ export const SOLVER_REVISION = 'touch-slap-11';
  * v3-7：自動分組預設開啟（groupAuto 0.5）——同鍵反覆、階梯、兩顆交替、一側一手的組內手型不合時加成本；
  *   快速同鍵連打嚴格交替並接續前一手。
  * v3-8：TemotoAI-1 常磐只採用模型把握 0.6 以上的修改（茜維持 0.5）。
+ * v3-9：新增基座 V4.3（V4.1 再加三條節奏規則）並成為預設；TemotoAI-2 浅葱換成照 V4.3 的手重訓、配 V4.3 的版本（模型 id 不變，所以用修訂號讓舊結果失效）。
+ * v3-10：浅葱換成新訓練的版本（2026-11-24；模型 id 不變，所以用修訂號讓舊結果失效）。
  */
-export const SCORING_REVISION = 'v3-8';
+export const SCORING_REVISION = 'v3-10';
 
 /** 快取鍵：核心版本＋求解修訂＋原文雜湊＋起始秒數＋已投影的參數。任一項不同就重新分析。 */
 async function cacheKey(
@@ -301,12 +303,12 @@ export class Session {
     this.selectedNoteId = noteId;
   }
 
-  /** 切換 Temoto 模型；null 回到預設基座。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
+  /** 切換 Temoto 模型；null 回到預設（2026-11-24 起是浅葱）。mlModel 是投影後設定的一部分，快取鍵自然分開。 */
   setMlModel(id: MlModelId | null): void {
     this.config = id ? withScoring(this.config, { kind: 'ml', id }) : withScoring(this.config, null);
   }
 
-  /** 切換基座（V4.1、原始 V3 或 V3.1、V3.2、V4）。選了基座就不用 Temoto 模型。 */
+  /** 切換基座（V4.3、V4.1、V4、V3.2、V3.1 或原始 V3）。選了基座就不用 Temoto 模型。 */
   setV3Variant(id: BaseChoice): void {
     this.config = withScoring(this.config, { kind: 'base', id });
   }

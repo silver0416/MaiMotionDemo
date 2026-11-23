@@ -65,6 +65,10 @@ fn engine() -> ScoringV3 {
         hold_cross_min: 0.3,
         stair_flow: 0.0,
         stair_flow_gap: 0.15,
+        stair_chain: 0.0,
+        stair_chain_alt: 0.0,
+        stair_chain_gap: 0.11,
+        stair_chain_side: 0.0,
     });
     ScoringV3::new(PreferenceConfigV3 {
         travel_comfort: 6.5,

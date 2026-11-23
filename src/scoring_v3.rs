@@ -202,6 +202,26 @@ pub struct TuningV3 {
     /// which takes precedence over these research fields.
     pub stair_flow: f64,
     pub stair_flow_gap: f64,
+    /// A chain of fast stairs: runs of three or more single buttons stepping to
+    /// the neighbour in one direction, every gap at most stair_chain_gap, each
+    /// run starting right after the previous one ends (a jump, within the same
+    /// gap). The annotator plays every run of such a chain with one hand and
+    /// takes the next run with the other (93% of 374 adjacent pairs in the 130
+    /// development charts); V4.1 kept the shape but moved the last or first
+    /// note of a run to the other hand where that hand sat closer.
+    /// stair_chain: flat cost per step for changing hands inside a run of a
+    /// chain. stair_chain_alt: flat cost for starting the next run with the
+    /// hand that ended the previous one. 0 = off.
+    pub stair_chain: f64,
+    pub stair_chain_alt: f64,
+    pub stair_chain_gap: f64,
+    /// Per note of the first run of a chain struck by the hand of the other
+    /// half than most of that run's keys (1-4 right, 5-8 left; a tie goes to
+    /// the side of its first key). With every run in one hand and the hands
+    /// alternating, this start decides the whole chain: applied directly to
+    /// the 166 chains of the development charts it matches 91.2% of the notes
+    /// (V4.1 84.5%). 0 = off.
+    pub stair_chain_side: f64,
 }
 impl Default for TuningV3 {
     fn default() -> Self {
@@ -264,6 +284,10 @@ impl Default for TuningV3 {
             hold_cross_min: 0.3,
             stair_flow: 0.0,
             stair_flow_gap: 0.15,
+            stair_chain: 0.0,
+            stair_chain_alt: 0.0,
+            stair_chain_gap: 0.11,
+            stair_chain_side: 0.0,
         }
     }
 }
@@ -308,7 +332,11 @@ pub fn with_tuning<R>(tuning: &'static TuningV3, f: impl FnOnce() -> R) -> R {
 /// 不一手包）與 `tripletAlt`（頭尾同鍵的快速三顆一組兩手交互）；App 預設用它。
 /// V4.1 是 V4 再打開 `sideRest`（兩手都空著時，各打自己那一半）與 `holdCross`
 /// （長押開始的和弦不交叉，也不一手包下散開的和弦）。
-pub const V3_VARIANTS: [&str; 4] = ["v3.1", "v3.2", "v4", "v4.1"];
+/// V4.3 是 V4.1 再打開三條節奏規則（2026-11-23，使用者決定取代 V4.1 當 App 的主卡）：
+/// `stairChain`（相接的快速階梯每串一隻手、串與串換手，第一串由多數鍵那一側的手起手）、
+/// `jackExit` 0.3（同鍵兩顆一隻手、接著換鍵的那顆換手）與 `jackAlt` 0.5（快速同鍵連打兩手交互）。
+/// 開發集 130 首 +348 步；測試集（測試 20 首 +35、eval18 −5）在誤差內。沒有 V4.2（只調權重，不推廣）。
+pub const V3_VARIANTS: [&str; 5] = ["v3.1", "v3.2", "v4", "v4.1", "v4.3"];
 
 /// V3 變體的權重（第一次使用時解析）。
 pub fn variant_tuning(id: &str) -> Option<&'static TuningV3> {
@@ -316,11 +344,13 @@ pub fn variant_tuning(id: &str) -> Option<&'static TuningV3> {
     static V32: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     static V4: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     static V41: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
+    static V43: std::sync::OnceLock<TuningV3> = std::sync::OnceLock::new();
     let (cell, text) = match id {
         "v3.1" => (&V31, include_str!("../models/v3.1.tuning.json")),
         "v3.2" => (&V32, include_str!("../models/v3.2.tuning.json")),
         "v4" => (&V4, include_str!("../models/v4.tuning.json")),
         "v4.1" => (&V41, include_str!("../models/v4.1.tuning.json")),
+        "v4.3" => (&V43, include_str!("../models/v4.3.tuning.json")),
         _ => return None,
     };
     Some(cell.get_or_init(|| serde_json::from_str(text).expect("內建 V3 變體權重")))

@@ -60,6 +60,12 @@ pub(super) struct Context<'a> {
     sweep_prev: BTreeMap<&'a str, (&'a str, f64)>,
     /// 快速階梯一組（stairUnit）的第二顆起 → 上一步與換手成本。
     unit_prev: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 相接的快速階梯（stairChain）：串內第二顆起 → 上一步與換手成本。
+    chain_keep: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 相接的快速階梯（stairChain）：下一串的第一顆 → 上一串的最後一顆與同手成本。
+    chain_alt: BTreeMap<&'a str, (&'a str, f64)>,
+    /// 相接的快速階梯（stairChain）：串列第一串的每一顆 → 多數鍵那一側的手與另一手的成本。
+    chain_side: BTreeMap<&'a str, (Hand, f64)>,
     /// 快速而等距的階梯（stairFlow）的一步 → 上一步，以及起步那一側的手。
     flow_prev: BTreeMap<&'a str, (&'a str, Hand)>,
     /// stairFlow 免收的比例：設定打開時是 STAIR_FLOW_SHARE，否則照權重檔（研究用）。
@@ -132,6 +138,7 @@ impl<'a> Context<'a> {
         } else {
             (tuning.stair_flow, tuning.stair_flow_gap)
         };
+        let (chain_keep, chain_alt, chain_side) = stair_chains(chart);
         let (found, group_weight) = match phrases::given_groups(chart) {
             Some(given) => (
                 given.into_iter().map(|(n, r)| (n, r, None)).collect(),
@@ -192,6 +199,9 @@ impl<'a> Context<'a> {
             stair_prev: stair_steps(chart, c.travel_comfort),
             sweep_prev: sweep_steps(chart),
             unit_prev: stair_units(chart),
+            chain_keep,
+            chain_alt,
+            chain_side,
             flow_prev: if flow_share > 0.0 {
                 stair_flow_steps(chart, flow_gap)
             } else {
@@ -287,6 +297,7 @@ impl<'a> Context<'a> {
                     + self.sweep_break(link)
                     + self.jack_alt(link)
                     + self.stair_unit(link)
+                    + self.stair_chain(link)
                     + self.jack_exit(link)
                     + self.chord_cross(link)
                     + self.hold_cross(link)
@@ -547,6 +558,20 @@ impl<'a> Context<'a> {
     /// 快速階梯一組的中途換手（stairUnit），算法同 stair_break。
     fn stair_unit(&self, link: &Link<Assignment>) -> f64 {
         self.pair_break(link, &self.unit_prev)
+    }
+
+    /// 相接的快速階梯（stairChain）：串內中途換手，或下一串沿用上一串結尾的手。
+    fn stair_chain(&self, link: &Link<Assignment>) -> f64 {
+        let current = &link.value;
+        let side = match self.chain_side.get(current.note_id.as_str()) {
+            Some(&(hand, weight))
+                if hand != current.hand && matches!(current.part.as_str(), "contact" | "head") =>
+            {
+                weight
+            }
+            _ => 0.0,
+        };
+        side + self.pair_break(link, &self.chain_keep) + self.pair_cost(link, &self.chain_alt, true)
     }
 
     /// 同鍵兩顆和接著換鍵的那顆不是「兩顆同手、這顆換手」（jackExit）：三顆同一隻手，
@@ -1152,6 +1177,7 @@ impl<'a> Context<'a> {
                 + self.sweep_break(link)
                 + self.jack_alt(link)
                 + self.stair_unit(link)
+                + self.stair_chain(link)
                 + self.jack_exit(link)
                 + self.chord_cross(link)
                 + self.hold_cross(link)
@@ -1538,6 +1564,99 @@ fn stair_units(chart: &Chart) -> BTreeMap<&str, (&str, f64)> {
         i = j + 1;
     }
     result
+}
+
+/// stairChain 一串最少幾顆。
+const STAIR_CHAIN_MIN: usize = 3;
+
+/// stairChain：單顆按鍵往同方向走相鄰鍵、每步不超過 stairChainGap 的一串（Touch 或同時
+/// 落下的音符切斷）；兩串各至少 STAIR_CHAIN_MIN 顆，而且下一串的第一顆緊接在上一串的
+/// 最後一顆之後（不超過 stairChainGap）時算相接。回傳 (串內第二顆起 → 上一步與換手成本,
+/// 下一串第一顆 → 上一串最後一顆與同手成本, 串列第一串的每一顆 → 多數鍵那一側的手與
+/// 另一手的成本)。只有和別串相接的串才算。
+/// 開發集 130 首的 374 對相接的串，標記者 93% 每串一隻手、串與串換手；第一串由多數鍵
+/// 那一側的手起手（鍵 1–4 右、5–8 左，一樣多看第一顆），照這樣排逐顆 91.2% 相符（2026-11-23）。
+#[allow(clippy::type_complexity)]
+fn stair_chains(
+    chart: &Chart,
+) -> (
+    BTreeMap<&str, (&str, f64)>,
+    BTreeMap<&str, (&str, f64)>,
+    BTreeMap<&str, (Hand, f64)>,
+) {
+    let t = crate::scoring_v3::tuning();
+    let (mut keep, mut alt, mut side) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+    if t.stair_chain == 0.0 && t.stair_chain_alt == 0.0 && t.stair_chain_side == 0.0 {
+        return (keep, alt, side);
+    }
+    let seq: Vec<Option<&Note>> = single_contacts(chart)
+        .into_iter()
+        .map(|n| n.filter(|n| n.touch_area.is_none()))
+        .collect();
+    let gap = |a: &Note, b: &Note| b.time_seconds - a.time_seconds;
+    let mut runs: Vec<(usize, usize)> = vec![];
+    let mut i = 0;
+    while i < seq.len() {
+        if seq[i].is_none() {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        let mut direction = None;
+        while let (Some(a), Some(Some(b))) = (seq[j], seq.get(j + 1)) {
+            let d = (b.button + 8 - a.button) % 8;
+            if !matches!(d, 1 | 7)
+                || gap(a, b) > t.stair_chain_gap + EPS
+                || direction.is_some_and(|x| x != d)
+            {
+                break;
+            }
+            direction = Some(d);
+            j += 1;
+        }
+        runs.push((i, j));
+        i = j + 1;
+    }
+    let long = |r: &(usize, usize)| r.1 - r.0 + 1 >= STAIR_CHAIN_MIN;
+    let linked = |a: &(usize, usize), b: &(usize, usize)| {
+        b.0 == a.1 + 1
+            && long(a)
+            && long(b)
+            && gap(seq[a.1].unwrap(), seq[b.0].unwrap()) <= t.stair_chain_gap + EPS
+    };
+    for k in 0..runs.len() {
+        let before = k > 0 && linked(&runs[k - 1], &runs[k]);
+        let after = k + 1 < runs.len() && linked(&runs[k], &runs[k + 1]);
+        if !before && !after {
+            continue;
+        }
+        let (a, b) = runs[k];
+        if t.stair_chain != 0.0 {
+            for m in a..b {
+                let (p, n) = (seq[m].unwrap(), seq[m + 1].unwrap());
+                keep.insert(n.id.as_str(), (p.id.as_str(), t.stair_chain));
+            }
+        }
+        if before && t.stair_chain_alt != 0.0 {
+            let p = seq[runs[k - 1].1].unwrap();
+            alt.insert(seq[a].unwrap().id.as_str(), (p.id.as_str(), t.stair_chain_alt));
+        }
+        if !before && t.stair_chain_side != 0.0 {
+            let right = (a..=b)
+                .filter(|m| (1..=4).contains(&seq[*m].unwrap().button))
+                .count();
+            let left = b - a + 1 - right;
+            let hand = if right > left || (right == left && (1..=4).contains(&seq[a].unwrap().button)) {
+                Hand::R
+            } else {
+                Hand::L
+            };
+            for m in a..=b {
+                side.insert(seq[m].unwrap().id.as_str(), (hand, t.stair_chain_side));
+            }
+        }
+    }
+    (keep, alt, side)
 }
 
 /// 設定打開 stairFlow 時免收的比例與每步最長間隔（2026-11-07 在新 30 首選定：1.0、0.10 秒；

@@ -6,7 +6,6 @@
     CONFIG_RANGE,
     DEFAULT_BASE,
     FIELD_LABEL,
-    MAIN_BASE,
     MAIN_MODELS,
     MORE_BASES,
     MORE_MODELS,
@@ -39,12 +38,12 @@
   /** 選了 Temoto 時打法偏好由模型決定，四個滑桿收起；規則開關與手掌設定照常可調。 */
   const usingTemoto = $derived(config.mlModel !== null);
   const selectedTemoto = $derived(TEMOTO_MODELS.find((model) => model.id === config.mlModel) ?? null);
-  /** AI 卡一律半寬；換系列（TemotoAI-2 → TemotoAI-1）時從新的一排開始（2026-11-07 使用者指定）。 */
+  /** AI 卡半寬、兩兩並排；同一清單裡換系列時從新的一排開始（2026-11-07 使用者指定）。 */
   const startsRow = (list: readonly TemotoModel[], index: number) =>
     index > 0 && list[index - 1].label !== list[index].label;
 
-  // V4、V3.2、V3.1、原始 V3 與 TemotoAI-1 收在「顯示更多模型」裡；
-  // 目前選的是其中之一時自動展開，選中的卡不會藏起來。
+  // 2026-11-24 起主區只留浅葱；全部基座（V4.3、V4.1、V4、V3.2、V3.1、原始 V3）、山吹、鉛丹與全部 TemotoAI-1
+  // 收在「顯示更多模型」裡；目前選的是其中之一時自動展開，選中的卡不會藏起來。
   let moreOpen = $state(false);
   const moreLabel = $derived(
     MORE_MODELS.some((model) => model.id === config.mlModel)
@@ -78,10 +77,11 @@
   }
 </script>
 
-{#snippet temotoCard(model: TemotoModel, newRow = false)}
+{#snippet temotoCard(model: TemotoModel, newRow = false, solo = false)}
   <button
     class={`model-card model-card--${model.color}`}
     class:model-card--row={newRow}
+    class:model-card--solo={solo}
     role="radio"
     aria-checked={config.mlModel === model.id}
     aria-label={`${model.label}（${TEMOTO_COLOR_NAME[model.color]}）`}
@@ -100,16 +100,8 @@
       {/if}
     </div>
     <div class="models" role="radiogroup" aria-labelledby="scoring-title">
-      <button
-        class="model-card model-card--v3"
-        role="radio"
-        aria-checked={config.mlModel === null && config.v3Variant === MAIN_BASE.id}
-        onclick={() => session.setV3Variant(MAIN_BASE.id)}
-      >
-        <span class="model-card-name">{MAIN_BASE.label}</span>
-      </button>
       {#each MAIN_MODELS as model, index (model.id)}
-        {@render temotoCard(model, startsRow(MAIN_MODELS, index))}
+        {@render temotoCard(model, startsRow(MAIN_MODELS, index), MAIN_MODELS.length === 1)}
       {/each}
     </div>
     <div class="more-row">
@@ -145,12 +137,12 @@
           {/each}
         </div>
         <p class="field-hint help">
-          V4.1 之前的版本與舊的 TemotoAI-1，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮四件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍、快速三顆一組頭尾同一鍵（例如 6、5、6）時兩手交互；V4.1 再多考慮兩件事：兩手都空著時各打靠自己那一側的音符、和長押同時按下的幾顆兩手不交叉，散得太開時也不一隻手硬包。
+          只用規則的基座（V4.3、V4.1、V4、V3.2、V3.1、V3）、TemotoAI-2 黃、橘兩張與 TemotoAI-1，留著方便對照。V3.1、V3.2 只換了打法權重；V4 再多考慮四件事：很快連續的相鄰音符用同一隻手帶過、雙押時兩手不交叉、同時好幾個 Touch 散得太開時兩手分著拍、快速三顆一組頭尾同一鍵（例如 6、5、6）時兩手交互；V4.1 再多考慮兩件事：兩手都空著時各打靠自己那一側的音符、和長押同時按下的幾顆兩手不交叉，散得太開時也不一隻手硬包；V4.3 再多考慮三件事：好幾串快速階梯接在一起時每串交給一隻手、下一串換手，第一串由大部分音符所在那一側的手開始；同一個鍵連按兩顆用同一隻手，接著換到別的鍵時換手；很快的同一鍵連打兩手輪流。
         </p>
       </div>
     {/if}
     <p class="field-hint help" style="margin-top: var(--space-2)">
-      TemotoAI 要先跑一次基座（上方四張都是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
+      TemotoAI 要先跑一次基座（最上面那張是 V4.3，更多模型裡 TemotoAI-2 黃、橘兩張是 V4.1）再照模型修正重算，分析時間是基座的數倍；結果仍由核心確認可行，不代表官方判定。
     </p>
   </section>
 
@@ -484,18 +476,28 @@
 </div>
 
 <style>
-  /* 評分方式：V4.1 卡佔一整列；AI 卡一律半寬、兩兩並排，換系列時從新的一排開始（使用者指定）：
-     TemotoAI-2 山吹與鉛丹一排（2026-11-09 鉛丹補進山吹右邊），下一排是 TemotoAI-1 的紺瑠璃與菖蒲しょうぶ。
-     分隔列「顯示更多模型」下面同一套規則：V4、V3.2、V3.1、V3 由新到舊各佔一整列，
-     五張舊的 TemotoAI-1 兩兩並排（瑠璃紺與菖蒲あやめ、瑠璃與茜各一排，常磐第三排同尺寸）。 */
+  /* 評分方式：2026-11-24 起主區只有浅葱一張，佔一整列（--solo）——好幾張並排時才需要半寬，
+     只剩一張還半寬會像右邊缺了一張。扇形維持和半寬卡同樣大小（見下方），不隨卡片放寬而變大。
+     分隔列「顯示更多模型」下面：基座 V4.3、V4.1、V4、V3.2、V3.1、V3 由新到舊各佔一整列；
+     AI 卡半寬、兩兩並排，換系列時從新的一排開始（使用者指定）：TemotoAI-2 鉛丹與山吹一排，
+     七張 TemotoAI-1 由新到舊兩兩並排（紺瑠璃與菖蒲しょうぶ、瑠璃紺與菖蒲あやめ、瑠璃與茜各一排，常磐第四排同尺寸）。 */
   .models {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
   }
 
-  .models .model-card--v3 {
+  .models .model-card--v3,
+  .models .model-card--solo {
     grid-column: 1 / -1;
+  }
+
+  /* 全寬卡的寬度約是半寬卡的兩倍，扇形半徑從 31cqi 減半，看起來和兩兩並排時一樣大。 */
+  .models .model-card--solo::before {
+    right: -15.5cqi;
+    bottom: -15.5cqi;
+    width: 31cqi;
+    height: 31cqi;
   }
 
   .models .model-card--row {

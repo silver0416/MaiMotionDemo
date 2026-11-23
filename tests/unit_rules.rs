@@ -74,10 +74,12 @@ fn unit_rules_only_hold_cross_in_v41() {
     assert_eq!((t.stair_unit, t.jack_exit, t.hold_cross), (0.0, 0.0, 0.0));
     for id in V3_VARIANTS {
         let t = variant_tuning(id).unwrap();
-        let hold_cross = if id == "v4.1" { 5.0 } else { 0.0 };
+        // holdCross 從 V4.1 起；jackExit 0.3 只有 V4.3（2026-11-23）；stairUnit 沒有版本開。
+        let hold_cross = if matches!(id, "v4.1" | "v4.3") { 5.0 } else { 0.0 };
+        let jack_exit = if id == "v4.3" { 0.3 } else { 0.0 };
         assert_eq!(
             (t.stair_unit, t.jack_exit, t.hold_cross, t.hold_cross_min),
-            (0.0, 0.0, hold_cross, 0.3),
+            (0.0, jack_exit, hold_cross, 0.3),
             "{id}"
         );
     }

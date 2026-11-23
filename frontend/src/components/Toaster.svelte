@@ -34,16 +34,19 @@
             {toast.body}
           </p>
         {/if}
-        {#if toast.toggle}
-          {@const toggle = toast.toggle}
-          <label class="check toast-toggle">
-            <input
-              type="checkbox"
-              checked={toggle.checked()}
-              onchange={(event) => toggle.set(event.currentTarget.checked)}
-            />
-            <span>{toggle.label}</span>
-          </label>
+        {#if toast.toggles?.length}
+          <div class="toast-toggles">
+            {#each toast.toggles as toggle (toggle.label)}
+              <label class="check toast-toggle">
+                <input
+                  type="checkbox"
+                  checked={toggle.checked()}
+                  onchange={(event) => toggle.set(event.currentTarget.checked)}
+                />
+                <span>{toggle.label}</span>
+              </label>
+            {/each}
+          </div>
         {/if}
         {#if toast.progress !== undefined}
           {@const value = Math.min(100, Math.max(0, toast.progress))}
@@ -153,9 +156,15 @@
     overflow-wrap: anywhere;
   }
 
+  .toast-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
   .toast-toggle {
     align-items: center;
-    margin-top: var(--space-2);
   }
 
   /* 一般通知的底色就是 --c-control-hover，關著的開關底槽改用 --c-control 才看得出來（同關閉鈕）。 */

@@ -193,7 +193,7 @@
 
   /** 目前參數頁選的 TemotoAI；null 是只用基座。畫面上只顯示系列名稱與顏色，複製的版本資訊才帶模型 id。 */
   const temoto = $derived(TEMOTO_MODELS.find((model) => model.id === session.config.mlModel) ?? null);
-  /** 基座名稱：TemotoAI 用模型附帶的基座（主卡 TemotoAI-2 是 V4.1），沒選模型時是參數頁選的基座。 */
+  /** 基座名稱：TemotoAI 用模型附帶的基座（主卡浅葱 2026-11-23 起是 V4.3，更多模型裡的 TemotoAI-2 山吹、鉛丹是 V4.1），沒選模型時是參數頁選的基座。 */
   const baseName = $derived(v3Label(temoto ? temoto.base : session.config.v3Variant));
 
   function versionText(): string {
@@ -1092,6 +1092,11 @@
   /* 鉛丹色同理：原值在淺色配色只有 2.9:1，淺色配色的 --c-entan 是加深的 #bb4025。 */
   .scoring-model--entan {
     --dot: var(--c-entan);
+  }
+
+  /* 浅葱色同理：原值在淺色配色只有 2.9:1，淺色配色的 --c-asagi 是加深的 #007884。 */
+  .scoring-model--asagi {
+    --dot: var(--c-asagi);
   }
 
   .scoring-model--konruri {

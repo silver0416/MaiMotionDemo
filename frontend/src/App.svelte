@@ -36,6 +36,7 @@
   import { updateState } from './state/update.svelte';
   import { videoSync } from './state/videoSync.svelte';
   import { showConciseIntroOnce } from './state/conciseIntro';
+  import { showDiscDefaultsIntroOnce } from './state/discDefaultsIntro';
 
   type Tab = 'solution' | 'note' | 'config' | 'view' | 'annotate';
 
@@ -233,6 +234,10 @@
 
   // v1.2.0 起預設精簡模式：從舊版更新上來的人第一次開啟時跳一次介紹（見 state/conciseIntro.ts）。
   void showConciseIntroOnce();
+
+  // 盤面的預設顯示換過（照遊戲上色、打擊效果、盤面格線）：更新上來的人第一次開啟時跳一次通知，
+  // 上面直接有這三個開關（見 state/discDefaultsIntro.ts）。
+  void showDiscDefaultsIntroOnce();
 
   // 每次開啟都自動檢查一次更新；有新版才提示，失敗靜默忽略。從舊版更新過來時先自動刪掉舊版。
   $effect(() => {

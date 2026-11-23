@@ -40,10 +40,11 @@ fn alternates(hands: &[Hand]) -> bool {
 }
 
 #[test]
-fn jack_alt_off_everywhere() {
+fn jack_alt_only_in_v43() {
     assert_eq!(TuningV3::default().jack_alt, 0.0);
     for id in V3_VARIANTS {
-        assert_eq!(variant_tuning(id).unwrap().jack_alt, 0.0, "{id}");
+        let expected = if id == "v4.3" { 0.5 } else { 0.0 };
+        assert_eq!(variant_tuning(id).unwrap().jack_alt, expected, "{id}");
     }
 }
 

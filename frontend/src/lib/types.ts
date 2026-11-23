@@ -167,13 +167,14 @@ export interface V3SolverConfig extends BaseSolverConfig, V3PreferenceControls {
 }
 
 /**
- * Temoto 模型（修正基座的手順）。介面上只顯示系列名稱「TemotoAI-2」（主卡山吹色、鉛丹色，以手標譜面訓練）或
- * 「TemotoAI-1」（學玩家手元影片；主卡紺瑠璃、菖蒲色しょうぶいろ，更多模型裡的瑠璃紺、菖蒲色あやめいろ、瑠璃色、茜色、常磐色），
+ * Temoto 模型（修正基座的手順）。介面上只顯示系列名稱「TemotoAI-2」（山吹色、鉛丹色、浅葱色，以手標譜面訓練；2026-11-24 起主卡只有浅葱，山吹、鉛丹在更多模型裡）或
+ * 「TemotoAI-1」（學玩家手元影片；2026-11-22 起全部在更多模型裡：紺瑠璃、菖蒲色しょうぶいろ、瑠璃紺、菖蒲色あやめいろ、瑠璃色、茜色、常磐色），
  * 各變體只用顏色區分，不顯示 id。
  */
 export type MlModelId =
   | 'temoto-2-yamabuki'
   | 'temoto-2-entan'
+  | 'temoto-2-asagi'
   | 'temoto-1-konruri'
   | 'temoto-1-shoubu'
   | 'temoto-1-rurikon'
@@ -184,9 +185,9 @@ export type MlModelId =
 
 /**
  * V3 變體（與 src/scoring_v3.rs 的 V3_VARIANTS 一致）：同一套搜尋，V3.1、V3.2 只換打法權重，
- * V4 再多開四個成本項，V4.1 再多開兩個。
+ * V4 再多開四個成本項，V4.1 再多開兩個，V4.3 再多三條節奏規則（V4.2 是沒採用的試作，沒有這個 id）。
  */
-export type V3VariantId = 'v3.1' | 'v3.2' | 'v4' | 'v4.1';
+export type V3VariantId = 'v3.1' | 'v3.2' | 'v4' | 'v4.1' | 'v4.3';
 
 /** 參數頁選的基座：'v3' 為原始 V3（送給 Rust 時不帶 v3Variant），其餘為 V3 變體。 */
 export type BaseChoice = 'v3' | V3VariantId;
@@ -210,7 +211,7 @@ export interface ConfigDraft extends BaseSolverConfig {
   stairFlow: boolean;
   /** null 為純 V3。選了 Temoto 時「打法偏好」的四個控制不影響結果，介面應隱藏。 */
   mlModel: MlModelId | null;
-  /** 選的基座（預設 V4.1；沿用既有保存資料的欄位名）；選了 Temoto 模型時一律為 null（模型自帶基座）。 */
+  /** 選的基座（沿用既有保存資料的欄位名）；選了 Temoto 模型時一律為 null（模型自帶基座）。預設是浅葱，所以預設為 null。 */
   v3Variant: BaseChoice | null;
 }
 

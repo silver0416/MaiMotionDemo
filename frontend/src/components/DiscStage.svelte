@@ -220,7 +220,7 @@
   );
 
   /**
-   * 目前要畫的打擊效果（可選，預設關閉）。和煙火一樣只由絕對播放時間換算；
+   * 目前要畫的打擊效果（「顯示」的開關，預設打開）。和煙火一樣只由絕對播放時間換算；
    * 系統設成減少動態效果時不畫。
    */
   const hitsOn = $derived(view.hitEffects && view.showNotes && !reducedMotion());

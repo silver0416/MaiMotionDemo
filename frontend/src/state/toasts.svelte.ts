@@ -21,8 +21,8 @@ export interface Toast {
   progress?: number;
   /** 精簡模式下一般通知的內文算說明、不顯示；這則的內文就是重點時設 true（例：精簡模式介紹）。 */
   keepBody?: boolean;
-  /** 通知上的開關（畫成 switch），例：精簡模式介紹上的「詳細模式」。 */
-  toggle?: ToastToggle;
+  /** 通知上的開關（畫成 switch，一個一列），例：精簡模式介紹上的「詳細模式」。 */
+  toggles?: ToastToggle[];
 }
 
 export interface ToastToggle {

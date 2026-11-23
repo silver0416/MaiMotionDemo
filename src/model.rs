@@ -237,7 +237,7 @@ pub struct SolverConfig {
     pub stair_flow: bool,
     /// V3 限定：以 Temoto 模型修正手順（TemotoAI-1 學玩家手元影片的打法，TemotoAI-2 學手標譜面）；None 為純 V3。
     pub ml_model: Option<String>,
-    /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`、`v4`、`v4.1`，見 `scoring_v3::V3_VARIANTS`）；None 為原始 V3。
+    /// V3 限定：改用調過權重的 V3（`v3.1`、`v3.2`、`v4`、`v4.1`、`v4.3`，見 `scoring_v3::V3_VARIANTS`）；None 為原始 V3。
     /// Temoto 模型自帶基座權重，兩者不能同時指定。
     pub v3_variant: Option<String>,
     pub preparation_seconds: f64,

@@ -62,8 +62,8 @@ fn builtin_models_load() {
         );
     }
     // konruri（紺瑠璃）與 shoubu（菖蒲，しょうぶ）：同樣兩個網路（共用模型檔）改配 V4.1 的權重，門檻 0.5；
-    // yamabuki（山吹）與 entan（鉛丹，山吹再補影片的 Touch／Slide 標籤），都是 TemotoAI-2：
-    // 分組架構，模型檔本身附 V4.1 的權重，門檻 0.5
+    // yamabuki（山吹）與 entan（鉛丹，山吹再補影片的 Touch／Slide 標籤）是 TemotoAI-2：分組架構，
+    // 模型檔本身附 V4.1 的權重，門檻 0.5
     for id in [
         "temoto-1-konruri",
         "temoto-1-shoubu",
@@ -81,6 +81,19 @@ fn builtin_models_load() {
     }
 }
 
+/// asagi（浅葱，TemotoAI-2）：再加 51 首手標與第 3 版特徵「兩手現在在哪裡」；2026-11-23 換成照 V4.3 的手
+/// 重訓的版本，模型檔附 V4.3 的權重，門檻 0.5。
+#[test]
+fn asagi_carries_v43_tuning() {
+    let model = TemotoModel::builtin("temoto-2-asagi").unwrap();
+    assert!(model.grouped());
+    assert_eq!(model.flip_at(), 0.5);
+    assert_eq!(
+        serde_json::to_value(model.tuning().unwrap()).unwrap(),
+        serde_json::to_value(variant_tuning("v4.3").unwrap()).unwrap()
+    );
+}
+
 /// 提醒文字裡的基座名稱照模型附帶的權重，不是一律寫 V3。
 #[test]
 fn base_label_follows_model_tuning() {
@@ -94,6 +107,7 @@ fn base_label_follows_model_tuning() {
         ("temoto-1-shoubu", "V4.1"),
         ("temoto-2-yamabuki", "V4.1"),
         ("temoto-2-entan", "V4.1"),
+        ("temoto-2-asagi", "V4.3"),
     ] {
         assert_eq!(
             TemotoModel::builtin(id).unwrap().base_label(),
