@@ -1,5 +1,5 @@
 // 盤面演示資料：對每一段 simai 呼叫 Rust 核心（target/release/mai-motion-core.exe），
-// 以 App 的預設參數（projectConfig(DEFAULT_DRAFT)）算出左右手，精簡後寫到 src/lib/demos/data/<id>.json。
+// 以 App 的預設參數、評分方式固定 V4.3 算出左右手，精簡後寫到 src/lib/demos/data/<id>.json。
 // 前端只播放這些資料，不重算左右手。
 //
 //   npm.cmd run demos            全部重算
@@ -18,9 +18,11 @@ const repoRoot = join(siteRoot, '..');
 const outDir = join(siteRoot, 'src', 'lib', 'demos', 'data');
 const exe = join(repoRoot, 'target', 'release', process.platform === 'win32' ? 'mai-motion-core.exe' : 'mai-motion-core');
 
-// App 的預設參數：直接沿用前端的投影函式，和 App 按「生成」送出的設定完全一致。
+// App 的預設參數：直接沿用前端的投影函式。評分方式固定用基座 V4.3：App 的預設 2026-11-24 起是 TemotoAI-2 浅葱，
+// 但這些演示說明的是規則與成本，不跟著 AI 模型重訓而變。重算後若和浅葱的結果不同，對應文件要寫明是 V4.3
+// （2026-11-24 對過：只有 abab 與 stair 不同，model/taps.md 已註明）。
 const contract = await import(pathToFileURL(join(repoRoot, 'frontend', 'src', 'lib', 'contract.ts')).href);
-const solverConfig = contract.projectConfig(contract.DEFAULT_DRAFT);
+const solverConfig = contract.projectConfig(contract.withScoring(contract.DEFAULT_DRAFT, { kind: 'base', id: 'v4.3' }));
 
 /** 與 site/README.md「盤面演示 id」表一致。 */
 const DEMOS = [

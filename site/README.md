@@ -36,7 +36,7 @@ site/
 - 不改 `frontend/`、`src/`、`src-tauri/`、`docs/`、repo 根目錄的設定檔。文件站只「讀」它們。
 - 不 commit、不 push、不部署（`cf deploy`）。部署由主控在驗收後執行。
 - 內容來源只有：`USER_GUIDE.md`、`README.md`、App 實際的畫面文字（`frontend/src`）。`docs/` 底下是只留本機的工作文件，**不可把它們的文字搬上網站**。
-- 不寫模型的訓練來源、不寫模型變體的內部 id（yamabuki、entan、konruri…）；畫面上的名稱只有「V4.1」「TemotoAI-2」「TemotoAI-1」與顏色名。
+- 不寫模型的訓練來源、不寫模型變體的內部 id（yamabuki、entan、konruri…）；畫面上的名稱只有「V4.3」等基座版本、「TemotoAI-2」「TemotoAI-1」與顏色名。
 - 不把模型的參數或結果說成官方判定、人類真實機率或唯一正確打法。
 - 不用 emoji、漸層、半透明面板、巢狀卡片、左側強調邊框；不引入 UI 套件、CSS framework、動畫庫、字型 CDN。
 
@@ -149,7 +149,7 @@ keywords: [播放, 範例, 新增]   # 選填：使用者可能會打、但內�
 
 兩種演示，畫面上要標清楚：
 
-- **盤面演示**（徽章「核心實際結果」）：資料由 `scripts/gen-demos.mjs` 呼叫 Rust 核心（`target/release/mai-motion-core.exe`，stdin 是 `AnalyzeRequest` JSON）以 App 的預設參數算出，存成 `src/lib/demos/data/<id>.json`（已精簡、進版控）。前端只播放，不重算左右手。
+- **盤面演示**（徽章「核心實際結果」）：資料由 `scripts/gen-demos.mjs` 呼叫 Rust 核心（`target/release/mai-motion-core.exe`，stdin 是 `AnalyzeRequest` JSON）以 App 的預設參數、評分方式固定基座 V4.3 算出（App 預設的浅葱色 TemotoAI-2 會再修正部分手順；結果和它不同的段落，文件要寫明是 V4.3），存成 `src/lib/demos/data/<id>.json`（已精簡、進版控）。前端只播放，不重算左右手。
 - **示意動畫**（徽章「示意」）：用來解釋介面操作或概念的手繪動畫，數字是示意用的。
 
 共同規則：進入可視範圍才開始播、離開就暫停；有播放／暫停鈕與重播；`prefers-reduced-motion` 時不自動播，停在最有代表性的一格並保留手動控制；寬度 100%，375px 寬也要能看能按；動畫只用 `transform`、`opacity`、SVG 屬性與既有曲線（`--ease-out`、`--ease-spring`）。
