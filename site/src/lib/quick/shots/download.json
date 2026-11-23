@@ -1,6 +1,6 @@
 {
   "flow": "download",
-  "app": "1.2.5",
+  "app": "1.3.0",
   "viewport": {
     "width": 1280,
     "height": 800,
@@ -10,7 +10,7 @@
     {
       "id": "page",
       "src": "/shots/quick/download-page.webp",
-      "bytes": 131694
+      "bytes": 133436
     }
   ],
   "steps": [
@@ -33,6 +33,6 @@
   ],
   "meta": {
     "button": "下載 Windows 版",
-    "version": "v1.2.5"
+    "version": "v1.3.0"
   }
 }
