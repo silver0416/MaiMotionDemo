@@ -1,6 +1,6 @@
 {
   "flow": "search",
-  "app": "1.2.5",
+  "app": "1.3.0",
   "viewport": {
     "width": 1280,
     "height": 800,
@@ -10,32 +10,32 @@
     {
       "id": "home",
       "src": "/shots/quick/search-home.webp",
-      "bytes": 67236
+      "bytes": 54166
     },
     {
       "id": "dialog",
       "src": "/shots/quick/search-dialog.webp",
-      "bytes": 48418
+      "bytes": 47614
     },
     {
       "id": "typed",
       "src": "/shots/quick/search-typed.webp",
-      "bytes": 48070
+      "bytes": 47020
     },
     {
       "id": "results",
       "src": "/shots/quick/search-results.webp",
-      "bytes": 72270
+      "bytes": 71512
     },
     {
       "id": "preview",
       "src": "/shots/quick/search-preview.webp",
-      "bytes": 72342
+      "bytes": 71560
     },
     {
       "id": "loaded",
       "src": "/shots/quick/search-loaded.webp",
-      "bytes": 109942
+      "bytes": 88782
     }
   ],
   "steps": [
