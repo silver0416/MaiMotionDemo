@@ -51,7 +51,8 @@
     starOutlinePath,
     starFillOuter,
   } from '../lib/noteShape';
-  import { hitEffects, hitGlow, hitOpacity, hitStrokes, holdLoopRings } from '../lib/hitEffect';
+  import { glowHalf, hitEffects, hitGlows, hitOpacity, holdLoopRings, type GlowKind } from '../lib/hitEffect';
+  import { glowSprite, warmGlowSprites } from '../lib/hitSprite';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
   import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
   import {
@@ -241,12 +242,18 @@
   }
 
   /**
-   * 打擊效果的光暈：整組過一次模糊，疊成「外面一圈寬而淡的光＋裡面一條柔邊的亮線」。
-   * 模糊半徑跟著圖形的大小走（`hitGlow`），所以每個效果各有一個濾鏡；
-   * 遊戲的圖是整張一起放大，線和光暈跟著變粗，這樣才不會小的時候糊成一團、大的時候又太銳利。
-   * 濾鏡 id 每個盤面各自一組，同一頁有兩個盤面時不會互相指到。
+   * 打擊效果的光暈：「外面一圈寬而淡的光＋裡面一條柔邊的亮線」。線和光暈都跟著圖形等比例放大
+   * （遊戲的圖是整張一起放大），所以每一種圖形的光暈先算好一張圖（hitSprite.ts），
+   * 這裡只決定每張圖放在哪、多大、轉幾度。不再每一格即時模糊，播放才不會卡（2026-11-24）。
+   * 一打開打擊效果就趁空檔把目前配色要用的圖先算好。
    */
-  const hitGlowId = `hit-glow-${Math.random().toString(36).slice(2, 8)}`;
+  $effect(() => {
+    if (hitsOn) warmGlowSprites(view.noteColors);
+  });
+
+  function glowUrl(kind: GlowKind): string {
+    return glowSprite(kind, view.noteColors);
+  }
 
   /**
    * EX 音符的光暈：每個盤面一個模糊濾鏡，所有 EX 音符共用（模糊半徑是固定的像素值）。
@@ -996,62 +1003,34 @@
 
         {#if hits.length > 0 || holdRings.length > 0}
           <!-- 打擊效果（可選）：判定那一刻在原地放出的光暈。一般音符是六角形、Break 是星星、
-               Touch 是實心圓。線條本身只畫一次，光暈交給濾鏡：寬的模糊當外圈的光、
-               窄的模糊疊兩次當柔邊的亮線（使用者 2026-11-23 要求要有模糊的光暈，不要純線條）。
+               Touch 是實心圓（使用者 2026-11-23 要求要有模糊的光暈，不要純線條）。
+               光暈是先算好的圖（線＋柔邊＋外圈的光），這裡只放大、旋轉、調不透明度；
                進度只由絕對播放時間換算，暫停與拖曳都停在同一刻。
-               按住 Hold／Touch Hold 的期間另有圓形的光圈一圈一圈往外擴：每一圈各自的濾鏡，
-               線寬與模糊都跟著那一圈的半徑放大。 -->
+               按住 Hold／Touch Hold 的期間另有圓形的光圈一圈一圈往外擴，線寬與光暈都跟著那一圈的半徑放大。 -->
           <g class="hits" aria-hidden="true">
-            {#each holdRings as ring, slot (ring.key)}
-              <filter
-                id={`${hitGlowId}-loop-${slot}`}
-                x="-45%"
-                y="-45%"
-                width="190%"
-                height="190%"
-                color-interpolation-filters="sRGB"
-              >
-                <feGaussianBlur in="SourceGraphic" stdDeviation={ring.wide} result="wide" />
-                <feGaussianBlur in="SourceGraphic" stdDeviation={ring.soft} result="soft" />
-                <feMerge>
-                  <feMergeNode in="wide" />
-                  <feMergeNode in="soft" />
-                  <feMergeNode in="soft" />
-                </feMerge>
-              </filter>
-              <path
-                class="hit-line hit-ring"
-                d={ring.d}
-                stroke-width={ring.width}
+            {#each holdRings as ring (ring.key)}
+              {@const half = ring.r * glowHalf('loop')}
+              <image
+                href={glowUrl('loop')}
+                x={ring.cx - half}
+                y={ring.cy - half}
+                width={half * 2}
+                height={half * 2}
                 opacity={ring.opacity}
-                filter={`url(#${hitGlowId}-loop-${slot})`}
               />
             {/each}
-            {#each hits as hit, slot (hit.key)}
-              {@const glow = hitGlow(calibration, hit)}
-              <filter
-                id={`${hitGlowId}-${slot}`}
-                x="-45%"
-                y="-45%"
-                width="190%"
-                height="190%"
-                color-interpolation-filters="sRGB"
-              >
-                <feGaussianBlur in="SourceGraphic" stdDeviation={glow.wide} result="wide" />
-                <feGaussianBlur in="SourceGraphic" stdDeviation={glow.soft} result="soft" />
-                <feMerge>
-                  <feMergeNode in="wide" />
-                  <feMergeNode in="soft" />
-                  <feMergeNode in="soft" />
-                </feMerge>
-              </filter>
-              <g class="hit" opacity={hitOpacity(hit)} filter={`url(#${hitGlowId}-${slot})`}>
-                {#each hitStrokes(calibration, hit) as stroke, index (index)}
-                  {#if stroke.filled}
-                    <path class="hit-fill" d={stroke.d} />
-                  {:else}
-                    <path class="hit-line" d={stroke.d} stroke-width={stroke.width} />
-                  {/if}
+            {#each hits as hit (hit.key)}
+              <g class="hit" opacity={hitOpacity(hit)}>
+                {#each hitGlows(calibration, hit) as glow, index (index)}
+                  {@const half = glow.r * glowHalf(glow.kind)}
+                  <image
+                    href={glowUrl(glow.kind)}
+                    x={glow.cx - half}
+                    y={glow.cy - half}
+                    width={half * 2}
+                    height={half * 2}
+                    transform={glow.rotate ? `rotate(${glow.rotate} ${glow.cx} ${glow.cy})` : undefined}
+                  />
                 {/each}
               </g>
             {/each}
@@ -1766,45 +1745,11 @@
     stroke-width: 3;
   }
 
-  /* 打擊效果：發光的線條。線只畫一次（筆寬寫在元素上），光暈由整組的模糊濾鏡疊出來；
-     線條略帶透明，兩條線交疊的地方會更亮，像遊戲的加亮混色。
-     模糊與半透明只用在這個一閃而過的筆觸上，不是面板底色。
-     不上色時是白光，照遊戲上色時是遊戲的淡黃光。 */
+  /* 打擊效果：先算好的光暈圖（lib/hitSprite.ts），顏色也算在圖裡：
+     不上色時是白光，照遊戲上色時是遊戲的淡黃光（lib/hitEffect.ts 的 glowColor）。
+     模糊與半透明只用在這個一閃而過的光暈上，不是面板底色。 */
   .hits {
     pointer-events: none;
-  }
-
-  .hit-line {
-    fill: none;
-    stroke: #f4f7fb;
-    stroke-opacity: 0.8;
-    stroke-linejoin: round;
-  }
-
-  /* 按住 Hold／Touch Hold 時往外擴的光圈：一圈一圈各自獨立、不會互相交疊加亮，
-     所以線本身畫到全亮，靠整圈的不透明度淡出（錄影裡剛冒出來的那一圈幾乎是全亮）。 */
-  .hit-ring {
-    stroke-opacity: 1;
-  }
-
-  /* Touch 的實心圓：整片淡淡的光，邊緣被濾鏡暈開。 */
-  .hit-fill {
-    fill: #eef2f8;
-    fill-opacity: 0.6;
-    stroke: none;
-  }
-
-  .stage-svg.is-colored .hit-line {
-    stroke: #f2e75c;
-  }
-
-  .stage-svg.is-colored .hit-fill {
-    fill: #f8ee7c;
-  }
-
-  /* 光圈的黃比六角形那組亮一階（錄影裡量到的顏色）。 */
-  .stage-svg.is-colored .hit-ring {
-    stroke: #fff76a;
   }
 
   /* 判定中、選中：Tap／Hold 的環帶加粗（筆寬寫在元素上），Touch 的深色描邊加粗。 */

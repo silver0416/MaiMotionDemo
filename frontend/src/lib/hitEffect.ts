@@ -62,12 +62,14 @@ function frameAngle(position: Point): number {
 export function hitEffects(notes: Note[], time: number): Hit[] {
   const out: Hit[] = [];
   for (const note of notes) {
-    if (note.kind === 'slide' && !note.hasHead) continue;
+    // 每一格都會掃過整首譜，先用時間篩掉，剩下的幾顆才算形狀與方位。
     const held = note.kind === 'hold' || note.kind === 'touchHold';
     const at = held ? Math.max(note.endSeconds, note.timeSeconds) : note.timeSeconds;
     const age = time - at;
+    if (age < 0 || age > HIT_SECONDS) continue;
+    if (note.kind === 'slide' && !note.hasHead) continue;
     const shape = shapeOf(note);
-    if (age < 0 || age > (shape === 'disc' ? DISC_SECONDS : HIT_SECONDS)) continue;
+    if (shape === 'disc' && age > DISC_SECONDS) continue;
     out.push({ key: note.id, at: note.position, shape, age, angle: frameAngle(note.position) });
   }
   return out;
@@ -151,12 +153,10 @@ const ORBITERS: { x: number; y: number; turn: 1 | -1; size: number }[] = [
 /** 倍率 1 時六角形線條中心的外接圓半徑（遊戲單位）。 */
 const SPRITE_RADIUS = 0.58;
 /** 星星：尖端比六角形的頂點稍微遠一點，內凹頂點是尖端的一半。 */
-const STAR_TIP = 1.014;
-const STAR_INNER = 0.5;
-/** 線條粗細是外接圓半徑的幾倍（遊戲的圖是整張一起放大，線跟著變粗），以及上下限（像素）。 */
+export const STAR_TIP = 1.014;
+export const STAR_INNER = 0.5;
+/** 線條粗細是外接圓半徑的幾倍（遊戲的圖是整張一起放大，線跟著變粗）。 */
 const LINE_RATIO = 0.08;
-const LINE_MIN_PX = 1.5;
-const LINE_MAX_PX = 8;
 /** 光暈的模糊半徑是正中間那個圖形半徑的幾倍：裡面那條柔邊的亮線、外面那圈寬而淡的光。 */
 const GLOW_SOFT_RATIO = 0.03;
 const GLOW_WIDE_RATIO = 0.09;
@@ -218,68 +218,60 @@ export function hitRings(age: number, angle: number): HitRing[] {
   return rings;
 }
 
-/** 畫面上的一筆：路徑、線寬（像素）、是不是實心。 */
-export interface HitStroke {
-  d: string;
-  width: number;
-  filled: boolean;
-}
-
-function circlePath(c: Point, r: number): string {
-  const x0 = (c.x + r).toFixed(2);
-  const x1 = (c.x - r).toFixed(2);
-  const y = c.y.toFixed(2);
-  const rr = r.toFixed(2);
-  return `M${x0} ${y}A${rr} ${rr} 0 1 1 ${x1} ${y}A${rr} ${rr} 0 1 1 ${x0} ${y}Z`;
-}
+// ---- 光暈怎麼畫 ----
+// 每個圖形的線、柔邊的亮線、外圈寬而淡的光，三者都跟著圖形大小等比例放大（遊戲的圖是整張一起放大）。
+// 所以每一種圖形的光暈只要先算好一張圖（hitSprite.ts，開啟時算一次），播放時放大、旋轉、調不透明度就好。
+// 原本是每個效果各掛一個 SVG 模糊濾鏡、模糊半徑每一格都不同：顯示卡每遇到新的模糊大小就要重新準備，
+// 播放時會不定時停頓（2026-11-24 量到一次 30～660 毫秒），平常每一格也多花好幾毫秒。畫面和原本一樣。
 
 /**
- * 六角形或星星的一圈。
- * 六角形：一個頂點朝盤外（另一個朝盤心）。
- * 星星：一個尖端沿著切線（錄影裡量到的；和六角形差 90°，是那張圖本來的朝向）。
+ * 光暈圖的種類。六角形與星星各分三種：正中間的（0）、繞行的大（1）小（2）——
+ * 模糊半徑是照正中間那個的大小算的，所以小的圖形相對於自己會暈得比較開。
+ * 另外是 Touch 的實心圓與按住 Hold 時的光圈。
  */
-function outline(c: Point, r: number, shape: HitShape, angle: number): string {
-  const star = shape === 'star';
-  const corners = star ? 10 : 6;
-  const first = star ? angle + Math.PI / 2 : angle;
-  let d = '';
-  for (let i = 0; i < corners; i += 1) {
-    const reach = star ? r * (i % 2 === 1 ? STAR_INNER : STAR_TIP) : r;
-    const theta = first + (i * 2 * Math.PI) / corners;
-    d += `${i === 0 ? 'M' : 'L'}${(c.x + Math.cos(theta) * reach).toFixed(2)} ${(c.y + Math.sin(theta) * reach).toFixed(2)}`;
-  }
-  return `${d}Z`;
+export type GlowKind = `${'hex' | 'star'}${0 | 1 | 2}` | 'disc' | 'loop';
+
+/** 一張光暈圖怎麼畫：長度都以圖形自己的外接圓半徑為 1。 */
+export interface GlowSpec {
+  shape: 'hex' | 'star' | 'disc' | 'ring';
+  /** 線寬；實心圓是 0（填滿） */
+  line: number;
+  /** 線或填色本身的不透明度（線略帶透明，交疊的地方會更亮，像遊戲的加亮混色） */
+  alpha: number;
+  /** 兩個模糊半徑：柔邊的亮線（疊兩次）、外圈寬而淡的光 */
+  soft: number;
+  wide: number;
 }
 
-/** 這一刻最大的那個圖形有多大（盤面單位）：光暈的模糊半徑跟著它放大，像遊戲的圖整張一起放大。 */
-function hitSize(hit: Hit): number {
-  if (hit.shape === 'disc') return DISC_SPRITE_RADIUS * sample(DISC_SCALE, hit.age) * U;
-  return SPRITE_RADIUS * sample(ROOT_SCALE, hit.age) * U;
+/** 畫面上的一張光暈圖：圖形中心、外接圓半徑（畫面單位）、旋轉角（度，順時針）。 */
+export interface GlowPlacement {
+  kind: GlowKind;
+  cx: number;
+  cy: number;
+  r: number;
+  rotate: number;
 }
 
-/** 光暈的兩個模糊半徑（畫面像素）。 */
-export function hitGlow(calibration: Calibration, hit: Hit): { soft: number; wide: number } {
-  const r = toStageLength(calibration, hitSize(hit));
-  return { soft: r * GLOW_SOFT_RATIO, wide: r * GLOW_WIDE_RATIO };
-}
-
-/** 一個效果這一刻要畫的每一筆（畫面座標）。 */
-export function hitStrokes(calibration: Calibration, hit: Hit): HitStroke[] {
+/** 這一刻要畫的每一張光暈圖（畫面座標）。 */
+export function hitGlows(calibration: Calibration, hit: Hit): GlowPlacement[] {
   if (hit.shape === 'disc') {
+    const c = toStage(calibration, hit.at);
     const r = toStageLength(calibration, DISC_SPRITE_RADIUS * sample(DISC_SCALE, hit.age) * U);
-    return [{ d: circlePath(toStage(calibration, hit.at), r), width: 0, filled: true }];
+    return [{ kind: 'disc', cx: c.x, cy: c.y, r, rotate: 0 }];
   }
-  const out: HitStroke[] = [];
-  for (const ring of hitRings(hit.age, hit.angle)) {
+  // 六角形：一個頂點朝盤外（另一個朝盤心）。
+  // 星星：一個尖端沿著切線（錄影裡量到的；和六角形差 90°，是那張圖本來的朝向）。
+  const shape = hit.shape;
+  const first = shape === 'star' ? hit.angle + Math.PI / 2 : hit.angle;
+  const rotate = (first * 180) / Math.PI;
+  const out: GlowPlacement[] = [];
+  hitRings(hit.age, hit.angle).forEach((ring, index) => {
     const r = toStageLength(calibration, ring.radius);
-    if (r <= 0.5) continue;
+    if (r <= 0.5) return;
     const c = toStage(calibration, { x: hit.at.x + ring.dx, y: hit.at.y + ring.dy });
-    out.push({
-      d: outline(c, r, hit.shape, hit.angle),
-      width: Math.min(LINE_MAX_PX, Math.max(LINE_MIN_PX, r * LINE_RATIO)),
-      filled: false,
-    });
-  }
+    const size = index === 0 ? 0 : ORBITERS[index - 1].size === SIZE_BIG ? 1 : 2;
+    out.push({ kind: `${shape}${size}`, cx: c.x, cy: c.y, r, rotate });
+  });
   return out;
 }
 
@@ -301,20 +293,19 @@ const LOOP_RADIUS = 0.65;
 const LOOP_SPEED = 3.45;
 /**
  * 線與光暈都跟著半徑放大：線寬、兩個模糊半徑各是半徑的幾倍。
- * 擬合錄影裡圈的剖面（半高寬約半徑的 0.17 倍，正中間幾乎全亮）得到的；線本身不透明（`.hit-ring`）。
+ * 擬合錄影裡圈的剖面（半高寬約半徑的 0.17 倍，正中間幾乎全亮）得到的；線本身不透明（`GLOW_SPECS.loop`）。
  */
 const LOOP_LINE_RATIO = 0.1;
 const LOOP_SOFT_RATIO = 0.03;
 const LOOP_WIDE_RATIO = 0.1;
 
-/** 按住時的一圈光圈（畫面座標）：路徑、線寬、不透明度、兩個模糊半徑。 */
+/** 按住時的一圈光圈：圓心、半徑（畫面座標）、不透明度。 */
 export interface LoopRing {
   key: string;
-  d: string;
-  width: number;
+  cx: number;
+  cy: number;
+  r: number;
   opacity: number;
-  soft: number;
-  wide: number;
 }
 
 /**
@@ -334,15 +325,43 @@ export function holdLoopRings(calibration: Calibration, notes: Note[], time: num
       if (slot >= LOOP_EMITS) continue;
       const age = held - beat * LOOP_BEAT;
       const r = toStageLength(calibration, (LOOP_RADIUS + LOOP_SPEED * age) * U);
-      out.push({
-        key: `${note.id}:${beat}`,
-        d: circlePath(centre, r),
-        width: Math.max(LINE_MIN_PX, r * LOOP_LINE_RATIO),
-        opacity: 1 - age / LOOP_LIFE,
-        soft: r * LOOP_SOFT_RATIO,
-        wide: r * LOOP_WIDE_RATIO,
-      });
+      out.push({ key: `${note.id}:${beat}`, cx: centre.x, cy: centre.y, r, opacity: 1 - age / LOOP_LIFE });
     }
   }
   return out;
+}
+
+// ---- 每一種光暈圖的畫法與顏色（hitSprite.ts 照這裡算圖） ----
+
+export const GLOW_SPECS: Record<GlowKind, GlowSpec> = {
+  hex0: { shape: 'hex', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO, wide: GLOW_WIDE_RATIO },
+  hex1: { shape: 'hex', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO / SIZE_BIG, wide: GLOW_WIDE_RATIO / SIZE_BIG },
+  hex2: { shape: 'hex', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO / SIZE_SMALL, wide: GLOW_WIDE_RATIO / SIZE_SMALL },
+  star0: { shape: 'star', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO, wide: GLOW_WIDE_RATIO },
+  star1: { shape: 'star', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO / SIZE_BIG, wide: GLOW_WIDE_RATIO / SIZE_BIG },
+  star2: { shape: 'star', line: LINE_RATIO, alpha: 0.8, soft: GLOW_SOFT_RATIO / SIZE_SMALL, wide: GLOW_WIDE_RATIO / SIZE_SMALL },
+  // Touch 的實心圓：整片淡淡的光，邊緣暈開。
+  disc: { shape: 'disc', line: 0, alpha: 0.6, soft: GLOW_SOFT_RATIO, wide: GLOW_WIDE_RATIO },
+  // 光圈一圈一圈各自獨立、不會互相交疊加亮，所以線本身畫到全亮，靠整圈的不透明度淡出。
+  loop: { shape: 'ring', line: LOOP_LINE_RATIO, alpha: 1, soft: LOOP_SOFT_RATIO, wide: LOOP_WIDE_RATIO },
+};
+
+/** 光暈畫到模糊半徑（寬的那個）的幾倍為止；再外面已經暗到看不出來。 */
+const GLOW_MARGIN = 3.2;
+
+/** 整張光暈圖的半邊長是外接圓半徑的幾倍：圖形最外緣（含半個線寬）再加上光暈的範圍。 */
+export function glowHalf(kind: GlowKind): number {
+  const spec = GLOW_SPECS[kind];
+  const outer = spec.shape === 'star' ? STAR_TIP : 1;
+  return outer + spec.line / 2 + GLOW_MARGIN * spec.wide;
+}
+
+/**
+ * 光暈的顏色：不上色時是白光，照遊戲上色時是遊戲的淡黃光；
+ * 按住時的光圈比六角形那組亮一階（錄影裡量到的顏色）。
+ */
+export function glowColor(kind: GlowKind, colored: boolean): string {
+  if (kind === 'disc') return colored ? '#f8ee7c' : '#eef2f8';
+  if (kind === 'loop') return colored ? '#fff76a' : '#f4f7fb';
+  return colored ? '#f2e75c' : '#f4f7fb';
 }
