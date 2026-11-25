@@ -55,7 +55,7 @@ mod v3_tests;
 use crate::geometry::button;
 use crate::scoring_v3::{ActionEvent, ActionKind};
 use crate::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -901,9 +901,9 @@ fn group_order(a: &Task, b: &Task, chart: &Chart) -> std::cmp::Ordering {
         .then_with(|| a.note.cmp(&b.note))
 }
 
-/// tasks() 依精確的開始時間排序，求解迴圈卻把差在 EPS 內的任務當成同一組。Slide 起點由頭時間
-/// 加等待推算，可能比同一時刻的音符晚 1e-14 秒，於是 group_order 失效、Slide 被排到組尾。
-/// 回傳整組依 group_order 重排的順序；和現有順序相同時回傳 None。
+/// tasks() 依精確的開始時間排序，求解迴圈卻把差在 EPS 內的任務當成同一組。音符時間是逐格累加
+/// 的，Slide 起點卻是頭時間加一次等待，兩者在同一刻也可能差 1e-15 秒，於是 group_order 失效、
+/// Slide 被排到組尾。回傳整組依 group_order 重排的順序；和現有順序相同時回傳 None。
 fn canonical_group(group: &[Task], chart: &Chart) -> Option<Vec<Task>> {
     let mut order = group.to_vec();
     order.sort_by(|a, b| group_order(a, b, chart));
@@ -3712,7 +3712,38 @@ pub fn trace_v3(chart: &Chart, c: &SolverConfig) -> Result<Vec<String>, Diagnost
     Ok(lines)
 }
 
+thread_local! {
+    /// 整首照標準順序重解：同一刻的任務一律先照 group_order 展開，整組走不通才用原順序。
+    static CANONICAL_ORDER: Cell<bool> = const { Cell::new(false) };
+}
+
+/// 平常同一刻的任務照精確時間的順序展開（權重是在這個順序下校準的）。差在 EPS 內的時間
+/// 也會被浮點誤差排反：同鍵的「拍星星頭」排到「Slide 開始滑」前面時，同一隻手順帶碰頭的接法
+/// 展不出來，這一組只剩另一手橫跨過去的接法，幾毫秒後的下一組就可能沒有手可接
+/// （Åntinomiε 2:18）。所以整首走不下去時，改成每一組都照標準順序重解一次。
+/// 全部都照標準順序的版本 2026-11-25 評測過：測試集持平、開發集略差，所以只當退路。
 fn solve_traced(
+    chart: &Chart,
+    c: &SolverConfig,
+    mut trace: Option<&mut Vec<String>>,
+    rules: Option<&HandRules>,
+) -> Result<Vec<Solution>, Diagnostic> {
+    let stuck = |e: &Diagnostic| matches!(e.code.as_str(), "no_solution" | "annotation_infeasible");
+    match solve_traced_once(chart, c, trace.as_deref_mut(), rules) {
+        Err(e) if stuck(&e) && !CANONICAL_ORDER.with(Cell::get) => {
+            let previous = CANONICAL_ORDER.with(|flag| flag.replace(true));
+            let retried = solve_traced_once(chart, c, trace, rules);
+            CANONICAL_ORDER.with(|flag| flag.set(previous));
+            match retried {
+                Err(again) if stuck(&again) => Err(e),
+                other => other,
+            }
+        }
+        other => other,
+    }
+}
+
+fn solve_traced_once(
     chart: &Chart,
     c: &SolverConfig,
     mut trace: Option<&mut Vec<String>>,
@@ -4072,9 +4103,15 @@ fn solve_with(
             }
         }
         // 這組的順序被浮點誤差打亂時，先照原順序展開（結果與校準時相同）；整組都走不通才改用
-        // 標準順序重來一次。順序只是搜尋策略，不同順序能展開出的接法不完全一樣。
-        let mut retry = canonical_group(group, chart).map(|order| (order, beam.clone()));
-        let mut reordered: Option<Vec<Task>> = None;
+        // 標準順序重來一次。整首照標準順序重解時（見 CANONICAL_ORDER）反過來。順序只是搜尋策略，
+        // 不同順序能展開出的接法不完全一樣。
+        let canonical = canonical_group(group, chart);
+        let (mut retry, mut reordered) = if CANONICAL_ORDER.with(Cell::get) {
+            let original = canonical.is_some().then(|| (group.to_vec(), beam.clone()));
+            (original, canonical)
+        } else {
+            (canonical.map(|order| (order, beam.clone())), None)
+        };
         // 一手同按相鄰兩鍵：標記者標成同一隻手的照標註展開；其餘只在整首最後的放寬重試裡、
         // 這一組兩手怎麼分都走不下去時，才帶著原本的 beam 重來一次，每一對都展開。
         let last_pass = relaxed && leave && c.hold_early_release;

@@ -70,3 +70,53 @@ fn slide_starting_microseconds_before_a_tap_on_its_button() {
         );
     }
 }
+
+/// Åntinomiε（DX MASTER）2:18 的寫法：7-4／3-8 開始滑的同一刻，起點上各有一顆新星星（7V14>7、3V58<3）。
+/// 星星頭的時間是逐格累加的，Slide 起點是頭時間加一拍，前面多一小節時星星頭會早 1e-15 秒，排到 Slide 前面。
+/// 原本只有整組無解才改用標準順序；這一組本身有解（3 號那隻手跨到 7 號去拍頭或接滑行），
+/// 2.6 毫秒後 3 號的星星頭與 3-8 卻沒有手可接，整首無解。現在整首走不下去時，每一組都改照標準順序重解。
+fn antinomie() -> &'static str {
+    "(242){1},\n\
+     {8}2,5/7b,6,6,3b/5,3/5,2h[8:1]/6hb[8:1],,\n\
+     1/7b-3[8:1],7,2b-6[8:1]b/7,2,2/8b-4[8:1],8,1b/8,,\n\
+     {16}2,8,2,8,2,8,2,8,{32}3,4,5,6,7,8,1,2,3,4,5,6,7,8,1,2,\n\
+     {384}7x-4[8:1]b,3x-8[384:47],,,{32},{24},,,,,{384}7xV14>7[4:7],3xV58<3[384:671]b,,,,,,,{24},{16}Cf,,,,,,,,,,,\n\
+     {1},,\nE"
+}
+
+#[test]
+fn new_stars_on_two_slide_starts_do_not_strand_the_next_group() {
+    let mut v43 = SolverConfig::v3();
+    v43.v3_variant = Some("v4.3".into());
+    v43.stair_flow = true;
+    for config in [SolverConfig::v3(), v43] {
+        let response = analyze_chart(AnalyzeRequest {
+            request_id: "order".into(),
+            source: antinomie().into(),
+            first_seconds: 0.0,
+            solver_config: config,
+        });
+        assert_eq!(response.status, "ok", "{:?}", response.diagnostics);
+        let chart = response.chart.unwrap();
+        let id = |text: &str| {
+            chart
+                .notes
+                .iter()
+                .find(|n| n.key.ends_with(&format!("|{text}")))
+                .unwrap_or_else(|| panic!("{text}"))
+                .id
+                .clone()
+        };
+        let top = &response.solutions[0];
+        let hand = |note: &str, part: &str| {
+            top.assignments
+                .iter()
+                .find(|a| a.note_id == note && a.part == part)
+                .unwrap_or_else(|| panic!("{note} {part}"))
+                .hand
+        };
+        // 兩顆新星星各由正在接那條 Slide 的手順帶碰到。
+        assert_eq!(hand(&id("7-4"), "slide"), hand(&id("7V>7"), "head"));
+        assert_eq!(hand(&id("3-8"), "slide"), hand(&id("3V<3"), "head"));
+    }
+}
