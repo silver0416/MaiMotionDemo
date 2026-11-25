@@ -116,7 +116,7 @@
 
   const visuals = $derived.by<NoteVisual[]>(() =>
     session.notes.map((note) =>
-      noteVisual(note, time, view.noteMode, view.approach, view.approachSeconds),
+      noteVisual(note, time, view.noteMode, view.approach, view.approachSeconds, view.touchSeconds),
     ),
   );
 

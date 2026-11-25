@@ -12,6 +12,8 @@
     /** 滑桿的常用範圍；數字欄仍接受 min–max 的完整合法範圍。 */
     sliderMin?: number;
     sliderMax?: number;
+    /** 滑桿下方的刻度與數字（例：對應的遊戲速度）；位置和圓點中心對齊。 */
+    ticks?: { value: number; label: string }[];
     onValue: (value: number) => void;
   }
 
@@ -27,6 +29,7 @@
     slider = true,
     sliderMin,
     sliderMax,
+    ticks = [],
     onValue,
   }: Props = $props();
 
@@ -34,8 +37,13 @@
 
   const lo = $derived(sliderMin ?? min);
   const hi = $derived(sliderMax ?? max);
+  /** 某個值在滑桿上的比例 0–1。 */
+  function ratio(at: number): number {
+    return hi > lo ? Math.min(1, Math.max(0, (at - lo) / (hi - lo))) : 0;
+  }
+
   /** 滑桿已填滿的比例：從軌道左端到圓點中心。 */
-  const fill = $derived(hi > lo ? Math.min(1, Math.max(0, (value - lo) / (hi - lo))) : 0);
+  const fill = $derived(ratio(value));
 
   function commit(raw: string) {
     const parsed = Number(raw);
@@ -75,6 +83,13 @@
         oninput={(event) => commit(event.currentTarget.value)}
       />
     </div>
+    {#if ticks.length > 0}
+      <div class="slider-ticks mono" aria-hidden="true">
+        {#each ticks as tick (tick.label)}
+          <span class="slider-tick" style={`--p:${ratio(tick.value)}`}>{tick.label}</span>
+        {/each}
+      </div>
+    {/if}
   {/if}
   {#if hint}<p class="field-hint help">{hint}</p>{/if}
   {#if error}<p class="field-error">{error}</p>{/if}
@@ -106,6 +121,35 @@
 
   .slider input::-webkit-slider-runnable-track {
     background: transparent;
+  }
+
+  /* 刻度：一條短線＋數字，中心和該值的圓點中心對齊（同 .slider-fill 的換算）。 */
+  .slider-ticks {
+    position: relative;
+    height: 18px;
+    margin-top: calc(-1 * var(--space-1));
+  }
+
+  .slider-tick {
+    position: absolute;
+    top: 0;
+    left: calc(10px + (100% - 20px) * var(--p, 0));
+    transform: translateX(-50%);
+    padding-top: 5px;
+    font-size: var(--fs-xs);
+    line-height: 1;
+    color: var(--c-text-dim);
+    white-space: nowrap;
+  }
+
+  .slider-tick::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(50% - 0.5px);
+    width: 1px;
+    height: 3px;
+    background: var(--c-border-strong);
   }
 
   .slider::before {

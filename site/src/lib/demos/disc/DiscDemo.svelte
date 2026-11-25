@@ -17,6 +17,7 @@
     touchGather,
     eachInfo,
   } from '$app/lib/notes';
+  import { APPROACH_RANGE, TOUCH_RANGE } from '$app/lib/noteSpeed';
   import { buildTrack, sampleWithStarts, trackSlice, type HandState, type Track } from '$app/lib/motion';
   import { MODE_LABEL } from '$app/lib/contract';
   import { activePalms, coveredTargets, palmCovers } from '$app/lib/palm';
@@ -415,13 +416,14 @@
 
   // ---- 盤面（照 DiscStage，資料換成 demo） ----
 
-  /** App 的顯示預設值（view.svelte.ts）：飛入 0.85 秒、最近軌跡 1.2 秒。 */
-  const APPROACH_SECONDS = 0.85;
+  /** App 的顯示預設值（view.svelte.ts）：飛入與 Touch 進場時間照 noteSpeed.ts 的預設、最近軌跡 1.2 秒。 */
+  const APPROACH_SECONDS = APPROACH_RANGE.initial;
+  const TOUCH_SECONDS = TOUCH_RANGE.initial;
   const TRAIL_SECONDS = 1.2;
   const SPARK_ANGLES = sparkAngles();
 
   const visuals = $derived(
-    demo ? demo.notes.map((note) => noteVisual(note, time, 'window', true, APPROACH_SECONDS)) : [],
+    demo ? demo.notes.map((note) => noteVisual(note, time, 'window', true, APPROACH_SECONDS, TOUCH_SECONDS)) : [],
   );
 
   /** 同時押的連線（同 DiscStage）：只看時間，和左右手的分配無關。 */

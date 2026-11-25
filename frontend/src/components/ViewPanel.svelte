@@ -3,6 +3,13 @@
   import Icon from './Icon.svelte';
   import NumberField from './NumberField.svelte';
   import { IMAGE_HEIGHT, IMAGE_WIDTH } from '../lib/disc';
+  import {
+    APPROACH_RANGE,
+    TOUCH_RANGE,
+    speedTicks,
+    tapSpeedSeconds,
+    touchSpeedSeconds,
+  } from '../lib/noteSpeed';
   import { PALM_APPROX_HINT } from '../lib/palm';
   import {
     TOUCH_AREA_PLACE,
@@ -16,6 +23,10 @@
   } from '../lib/touch';
   import { view } from '../state/view.svelte';
   import type { SensorDisplayMode } from '../state/view.svelte';
+
+  /** 飛入時間與 Touch 進場時間滑桿上的遊戲速度刻度（5～10）。 */
+  const APPROACH_TICKS = speedTicks(APPROACH_RANGE, tapSpeedSeconds);
+  const TOUCH_TICKS = speedTicks(TOUCH_RANGE, touchSpeedSeconds);
 
   const SENSOR_MODES: { id: SensorDisplayMode; label: string }[] = [
     { id: 'auto', label: '有 Touch 時顯示' },
@@ -275,7 +286,7 @@
     </p>
   </section>
 
-  <section class="section">
+  <section id="note-display-settings" class="section">
     <div class="section-title"><span>音符呈現</span></div>
     <div class="seg" role="group" aria-label="音符顯示方式" use:segmented>
       <button
@@ -299,16 +310,28 @@
       </span>
     </label>
     {#if view.noteMode === 'window' && view.approach}
-      <div style="margin-top: var(--space-3)">
+      <div class="stack" style="margin-top: var(--space-3)">
         <NumberField
           label="飛入時間"
-          hint="音符從內圈飛到鍵位要多久。起飛前會先在原地放大，所以會更早出現。"
+          hint="Tap／Hold／Slide 從內圈飛到鍵位要多久；起飛前會先在原地放大，所以會更早出現。滑桿下的數字是大約對應的遊戲速度，不是官方數字。"
           value={view.approachSeconds}
-          min={0.2}
-          max={2}
-          step={0.05}
+          min={APPROACH_RANGE.min}
+          max={APPROACH_RANGE.max}
+          step={APPROACH_RANGE.step}
           unit="秒"
+          ticks={APPROACH_TICKS}
           onValue={(value) => (view.approachSeconds = value)}
+        />
+        <NumberField
+          label="Touch 進場時間"
+          hint="Touch 從出現到合起來要多久，和遊戲一樣與飛入時間分開設定。滑桿下的數字是大約對應的 Touch 速度，不是官方數字。"
+          value={view.touchSeconds}
+          min={TOUCH_RANGE.min}
+          max={TOUCH_RANGE.max}
+          step={TOUCH_RANGE.step}
+          unit="秒"
+          ticks={TOUCH_TICKS}
+          onValue={(value) => (view.touchSeconds = value)}
         />
       </div>
     {/if}

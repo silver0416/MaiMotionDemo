@@ -1,4 +1,5 @@
 import { DEFAULT_CALIBRATION, type Calibration } from '../lib/disc';
+import { APPROACH_RANGE, TOUCH_RANGE } from '../lib/noteSpeed';
 
 export type NoteDisplayMode = 'window' | 'all';
 
@@ -14,7 +15,12 @@ export class ViewSettings {
   noteMode = $state<NoteDisplayMode>('window');
   /** 音符飛入動畫，純視覺效果，不影響判定時間。 */
   approach = $state(true);
-  approachSeconds = $state(0.85);
+  /**
+   * 飛入時間（Tap／Hold／Slide）與 Touch 進場時間，範圍與預設值見 lib/noteSpeed.ts。
+   * 2026-11-25 使用者指定改成 0.30／0.50 秒（約遊戲速度 7），更新上來的人也換過去（settings.svelte.ts 的 VIEW_LINEUP 2）。
+   */
+  approachSeconds = $state(APPROACH_RANGE.initial);
+  touchSeconds = $state(TOUCH_RANGE.initial);
   /**
    * 音符照遊戲的配色上色；關掉是中性的白與灰。只換顏色，形狀與時間都不變。
    * 預設打開（2026-11-23 使用者指定；換預設值時要一併調 settings.svelte.ts 的 VIEW_LINEUP）。

@@ -13,6 +13,7 @@ const VIEW_KEYS = [
   'noteMode',
   'approach',
   'approachSeconds',
+  'touchSeconds',
   'noteColors',
   'hitEffects',
   'showLeft',
@@ -40,10 +41,12 @@ type ViewKey = (typeof VIEW_KEYS)[number];
  * 並在 VIEW_RESETS 列出那一代換掉的欄位：讀到比較舊的存檔，這些欄位不沿用存檔的值，改用這一版的預設
  * （之後使用者自己再改的照常保存）。更新後第一次開啟的通知另見 state/discDefaultsIntro.ts。
  * 1＝2026-11-23 使用者指定：照遊戲上色打開、打擊效果打開、盤面格線關掉。
+ * 2＝2026-11-25 使用者指定：飛入時間 0.30 秒（範圍改成 0.20～0.40）；Touch 進場時間是新欄位，本來就用預設。
  */
-export const VIEW_LINEUP = 1;
+export const VIEW_LINEUP = 2;
 const VIEW_RESETS: Record<number, readonly ViewKey[]> = {
   1: ['noteColors', 'hitEffects', 'showBoardGrid'],
+  2: ['approachSeconds'],
 };
 
 interface StoredSettings {

@@ -37,6 +37,7 @@
   import { videoSync } from './state/videoSync.svelte';
   import { showConciseIntroOnce } from './state/conciseIntro';
   import { showDiscDefaultsIntroOnce } from './state/discDefaultsIntro';
+  import { showApproachIntroOnce } from './state/approachIntro';
 
   type Tab = 'solution' | 'note' | 'config' | 'view' | 'annotate';
 
@@ -238,6 +239,16 @@
   // 盤面的預設顯示換過（照遊戲上色、打擊效果、盤面格線）：更新上來的人第一次開啟時跳一次通知，
   // 上面直接有這三個開關（見 state/discDefaultsIntro.ts）。
   void showDiscDefaultsIntroOnce();
+
+  // 飛入時間的範圍與預設換過、Touch 多了自己的進場時間：更新上來的人第一次開啟時跳一次通知，
+  // 按「調整」直接切到「顯示」分頁、捲到「音符呈現」（見 state/approachIntro.ts）。
+  void showApproachIntroOnce(async () => {
+    tab = 'view';
+    await tick();
+    document
+      .getElementById('note-display-settings')
+      ?.scrollIntoView({ block: 'start', behavior: reducedMotion() ? 'auto' : 'smooth' });
+  });
 
   // 每次開啟都自動檢查一次更新；有新版才提示，失敗靜默忽略。從舊版更新過來時先自動刪掉舊版。
   $effect(() => {

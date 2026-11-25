@@ -143,14 +143,6 @@ const SLIDE_SOLID_RAMP = 0.18;
 const TOUCH_FADE_PORTION = 0.2;
 
 /**
- * Touch 整段進場（淡入＋收攏）是飛入時間的幾倍。
- * 遊戲的 Touch 有自己的速度設定；使用者的錄影裡整段約 0.54 秒（逐格量三角形的位置，
- * 和下面的收攏曲線對得上），同一段錄影的 Tap 提前量和這裡的預設差不多，
- * 所以預設飛入時間 0.85 秒時讓它也是 0.54 秒左右。拉得太長，前半段幾乎不動、看起來像卡住。
- */
-export const TOUCH_WHOLE_RATIO = 0.64;
-
-/**
  * Touch 四片三角形的收攏曲線（MajdataPlay TouchDrop）：
  * 距離 = (−exp(−8 × 0.43 × 剩餘時間比例 − 0.85) + 0.42) × 0.75，夾在 0–0.3 之間。
  * remain 是剩餘的收攏時間比例（1 = 剛開始收，0 = 判定時間），回傳 0–1 的收攏進度：
@@ -208,12 +200,17 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/**
+ * approachSeconds 是 Tap／Hold／Slide 的飛入時間（飛行期）；
+ * touchSeconds 是 Touch 從出現到判定的整段時間（淡入＋收攏），遊戲裡和 Tap 是分開的速度設定（見 noteSpeed.ts）。
+ */
 export function noteVisual(
   note: Note,
   time: number,
   mode: 'window' | 'all',
   approach: boolean,
   approachSeconds: number,
+  touchSeconds: number,
 ): NoteVisual {
   const start = note.timeSeconds;
   const end = Math.max(note.endSeconds, note.timeSeconds);
@@ -276,8 +273,8 @@ export function noteVisual(
     travel = 1;
     if (phase === 'done') opacity = Math.max(0, 1 - (time - end) / FADE_OUT);
   } else if (touchStage) {
-    // Touch 比同一時間的 Tap 晚出現：照遊戲，短短一段淡入之後加速收攏（TOUCH_WHOLE_RATIO）。
-    const whole = flight * TOUCH_WHOLE_RATIO;
+    // Touch 有自己的進場時間：照遊戲，短短一段淡入之後加速收攏。
+    const whole = Math.max(touchSeconds, 1e-6);
     const fadeSeconds = whole * TOUCH_FADE_PORTION;
     appear = start - whole;
     travel = touchClose(clamp01((start - time) / (whole - fadeSeconds)));
