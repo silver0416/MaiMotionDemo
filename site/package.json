@@ -16,6 +16,8 @@
     "worker:build": "cd worker && cf build",
     "worker:preview": "cd worker && vite preview",
     "build:all": "npm run index && npm run build && npm run worker:build",
+    "build:ci": "npm ci --prefix .. --no-audit --no-fund && npm run build:all",
+    "deploy": "cd worker && cf deploy",
     "deploy:dry": "cd worker && cf deploy --dry-run"
   },
   "devDependencies": {

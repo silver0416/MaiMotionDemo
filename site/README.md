@@ -34,7 +34,7 @@ site/
 ## 絕對不要做的事
 
 - 不改 `frontend/`、`src/`、`src-tauri/`、`docs/`、repo 根目錄的設定檔。文件站只「讀」它們。
-- 不 commit、不 push、不部署（`cf deploy`）。部署由主控在驗收後執行。
+- 不 commit、不 push、不部署（`cf deploy`）。推上 `main` 就會自動部署（見「部署」），所以 push 等於上線，由主控在驗收後執行。
 - 內容來源只有：`USER_GUIDE.md`、`README.md`、App 實際的畫面文字（`frontend/src`）。`docs/` 底下是只留本機的工作文件，**不可把它們的文字搬上網站**。
 - 不寫模型的訓練來源、不寫模型變體的內部 id（yamabuki、entan、konruri…）；畫面上的名稱只有「V4.3」等基座版本、「TemotoAI-2」「TemotoAI-1」與顏色名。
 - 不把模型的參數或結果說成官方判定、人類真實機率或唯一正確打法。
@@ -245,16 +245,38 @@ npm.cmd run worker:build # 在 worker/ 跑 cf build，輸出到 worker/.cloudfla
 npm.cmd run worker:preview # 先 worker:build；跑建好的 Worker（http://localhost:4333），會套用 _headers（CSP 等）。worker:dev 不套用 _headers，要驗 CSP 用這個
 npm.cmd run build:all    # index → build → worker:build（部署前的完整建置）
 npm.cmd run deploy:dry   # cf deploy --dry-run：建置並檢查，不上傳
+npm.cmd run build:ci     # 自動部署用：先在 repo 根目錄 npm ci，再 build:all
+npm.cmd run deploy       # 在 worker/ 跑 cf deploy（自動部署用；本機手動部署也用這個）
 ```
 
 `worker/` 用 `cf` 與 `cloudflare.config.ts`，不用 Wrangler、不要建立 wrangler 設定檔。`worker/package.json` 只是讓 `cf` 認得這是 Vite 專案，套件實際裝在 `site/node_modules`。
 
-部署（主控驗收後才做）：
+### 部署
+
+推上 GitHub 的 `main` 就會自動部署：Cloudflare 的 Workers Builds 接著這個 repo，每次 push 到 `main` 都會在 Cloudflare 的建置機上從頭建置並部署，不用在本機跑任何指令。建置結果與紀錄在 Cloudflare 後台 Workers & Pages → `maimotiondemo-docs` → Deployments。建置失敗時不會部署，網站維持上一版。
+
+Workers Builds 的設定（Settings → Build）：
+
+| 項目 | 值 |
+| --- | --- |
+| Git repository | `silver0416/MaiMotionDemo` |
+| Production branch | `main` |
+| Root directory | `site` |
+| Build command | `npm run build:ci` |
+| Deploy command | `npm run deploy` |
+| Preview builds（非 `main` 分支） | 關閉 |
+| API token | 自建的使用者 token，權限見下方 |
+
+- `build:ci` 先在 repo 根目錄 `npm ci`（文件站直接引用 `frontend/src` 的程式與樣式，要用根目錄的 `tsconfig.json` 與套件），再跑 `build:all`。`site/` 本身的套件由 Workers Builds 自動安裝。
+- 建置機上沒有 `.cache/`，每次都會重新算整份搜尋索引（呼叫 Workers AI，約 10 秒、用量很小）。所以 `static/search/` 不必手動更新再 commit，線上一定是依當次內容算的。
+- 發版時：推版號 commit 的那次部署，GitHub Release 還沒建好，首頁與下載頁的建置時快照仍是上一版（只靠 Worker 向 GitHub 要最新版常被限流）。等 release.yml 跑完、Release 的檔案到齊後再推一次 `main`（例如重拍的下載頁截圖），那次部署的快照才是新版。
+- API token：在建置設定選「Create new token」讓 Cloudflare 建一把（含 Workers Scripts、Workers Routes 等部署權限），再到 My Profile → API Tokens 編輯它，加上帳號層級的 Workers AI（Read 與 Edit）。少了 Workers AI 權限，建置會在 `[index]` 這步失敗。
+
+本機手動部署（自動部署壞掉、或要部署沒推上 `main` 的版本時才用；要先 `cf auth login`）：
 
 ```powershell
 npm.cmd run build:all
-cd worker
-npx.cmd cf deploy
+npm.cmd run deploy
 ```
 
 部署會在 Cloudflare 建立或更新：Worker `maimotiondemo-docs`（含靜態檔、observability logs、Workers AI 與 rate limit 綁定）、自訂網域 `maimotiondemo.bapu.dev`（bapu.dev 這個 zone 底下會多一筆由 Workers 管理的 DNS 紀錄與憑證）。不開 workers.dev 與預覽網址；不需要任何 secret。
