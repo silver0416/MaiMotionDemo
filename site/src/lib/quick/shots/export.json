@@ -1,6 +1,6 @@
 {
   "flow": "export",
-  "app": "1.3.0",
+  "app": "1.3.2",
   "viewport": {
     "width": 1280,
     "height": 800,
@@ -10,22 +10,22 @@
     {
       "id": "list",
       "src": "/shots/quick/export-list.webp",
-      "bytes": 92908
+      "bytes": 93040
     },
     {
       "id": "menu",
       "src": "/shots/quick/export-menu.webp",
-      "bytes": 98268
+      "bytes": 98126
     },
     {
       "id": "picked1",
       "src": "/shots/quick/export-picked1.webp",
-      "bytes": 94322
+      "bytes": 94276
     },
     {
       "id": "picked2",
       "src": "/shots/quick/export-picked2.webp",
-      "bytes": 94874
+      "bytes": 94896
     }
   ],
   "steps": [

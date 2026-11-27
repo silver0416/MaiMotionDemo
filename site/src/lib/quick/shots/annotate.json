@@ -1,6 +1,6 @@
 {
   "flow": "annotate",
-  "app": "1.3.0",
+  "app": "1.3.2",
   "viewport": {
     "width": 1280,
     "height": 800,
@@ -10,42 +10,42 @@
     {
       "id": "start",
       "src": "/shots/quick/annotate-start.webp",
-      "bytes": 88162
+      "bytes": 88378
     },
     {
       "id": "panel",
       "src": "/shots/quick/annotate-panel.webp",
-      "bytes": 104508
+      "bytes": 104456
     },
     {
       "id": "selected",
       "src": "/shots/quick/annotate-selected.webp",
-      "bytes": 105326
+      "bytes": 103106
     },
     {
       "id": "key1",
       "src": "/shots/quick/annotate-key1.webp",
-      "bytes": 104670
+      "bytes": 102002
     },
     {
       "id": "key2",
       "src": "/shots/quick/annotate-key2.webp",
-      "bytes": 108276
+      "bytes": 108426
     },
     {
       "id": "key3",
       "src": "/shots/quick/annotate-key3.webp",
-      "bytes": 112844
+      "bytes": 113040
     },
     {
       "id": "key4",
       "src": "/shots/quick/annotate-key4.webp",
-      "bytes": 112720
+      "bytes": 112734
     },
     {
       "id": "key5",
       "src": "/shots/quick/annotate-key5.webp",
-      "bytes": 100762
+      "bytes": 98880
     }
   ],
   "steps": [
