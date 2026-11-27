@@ -7,8 +7,19 @@ import type { Point } from './types';
  * 只決定「長什麼樣」，位置與時間一律來自 Rust。
  */
 
-/** Tap 環帶的中心半徑，也是 Hold 長條的半寬：兩者筆寬相同，外緣對齊。 */
-export const NOTE_RADIUS = 0.089;
+/*
+ * Tap 與 Hold 的大小和粗細：照使用者 2026-11-27 給的遊戲截圖，用程式量徑向剖面（半高處當邊緣）。
+ * 那張截圖的盤面半徑 442.3 px；兩顆已長到全尺寸的 Tap 剖面完全一樣：
+ *   外緣 47.1 px（0.1065）、洞的邊緣 28.3 px（0.064），環寬 18.8 px（0.0425），內外白邊各約 3.15 px。
+ * Hold：截圖裡那條正被按住，橫切面框的中線離軸 38.4 px（0.0869，和 Tap 環帶的中心半徑幾乎一樣）、
+ *   框寬 21.9 px（0.0495），比 Tap 多 3.1 px，邊緣是柔的（按住時的發光）。所以 Hold 平常和 Tap 一樣粗，
+ *   判定中（按住）加粗 BAND_EMPHASIS_PX，剛好是截圖裡按住的樣子。
+ * App 預設校準的盤面半徑是 480 px，下面的 _PX 都是照這個換算的。
+ * （2026-11-25 一度因為「比別的模擬器粗」改細到 13 px，看了截圖才知道遊戲本來就這麼粗，照截圖改回來。）
+ */
+
+/** Tap 環帶的中心半徑（盤面單位）：外緣 0.1065、洞的邊緣 0.064 的中間；也是 Hold 長條的半寬，兩者外緣對齊。 */
+export const NOTE_RADIUS = 0.0852;
 
 /** Tap 正中心的小點（實心）；Hold 尾端也用同一顆。 */
 export const NOTE_DOT = 0.016;
@@ -16,17 +27,17 @@ export const NOTE_DOT = 0.016;
 /** 星星正中心的小點：星形孔比 Tap 的洞小，點也小一號。 */
 export const STAR_DOT = 0.013;
 
-/** 環帶的寬度（Tap 與 Hold 相同）。 */
-export const BAND_PX = 19;
+/** 環帶的寬度（Tap 與 Hold 相同；0.0425 × 480）。 */
+export const BAND_PX = 20.4;
 
-/** 判定中或選中時，環帶加粗多少。 */
-export const BAND_EMPHASIS_PX = 4;
+/** 判定中（Hold 按住）或選中時，環帶加粗多少：截圖裡按住的 Hold 比 Tap 粗 0.0071（× 480）。 */
+export const BAND_EMPHASIS_PX = 3.4;
 
 /** 環帶兩側深色描邊各露出多寬；音符疊在箭頭或別的音符上時靠它分開。 */
-export const EDGE_PX = 2.5;
+export const EDGE_PX = 2;
 
-/** 照遊戲上色時，環帶外緣那一圈白邊的寬度。 */
-export const RIM_PX = 3.5;
+/** 照遊戲上色時，環帶外緣那一圈白邊的寬度（截圖約 3.15 px，換算成 480 是 3.4）。 */
+export const RIM_PX = 3.4;
 
 /**
  * EX：音符底下墊一圈同形狀的筆觸，整圈再模糊，變成貼著音符外緣的柔和光暈
@@ -62,8 +73,8 @@ export function exGlowOffset(band: number): number {
   return exGlowWidth(band) / 2;
 }
 
-/** 照遊戲上色時，環帶內緣（洞的邊緣）也有一圈白邊，比外緣細。 */
-export const RIM_INNER_PX = 2.5;
+/** 照遊戲上色時，環帶內緣（洞的邊緣）也有一圈白邊；截圖裡和外緣一樣寬。 */
+export const RIM_INNER_PX = 3.4;
 
 /** 內緣白邊的中心離環帶中心多遠（像素，往內是負的）。 */
 export function rimInnerOffset(band: number): number {
@@ -116,7 +127,7 @@ export const STAR_OUTER = 0.122;
 /** 內凹頂點的半徑是外角的幾倍；遊戲的星星比正五角星（0.38）胖。 */
 export const STAR_INNER_RATIO = 0.5;
 
-/** 星星中間挖掉的星形孔，外角半徑是整顆的幾倍。 */
+/** 星星中間挖掉的星形孔，外角半徑是整顆的幾倍（量自遊戲畫面；2026-11-25 一度改成 0.6，11-27 跟著 Tap 改回）。 */
 export const STAR_HOLE_RATIO = 0.48;
 
 /**

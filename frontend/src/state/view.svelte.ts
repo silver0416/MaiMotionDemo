@@ -1,5 +1,6 @@
 import { DEFAULT_CALIBRATION, type Calibration } from '../lib/disc';
 import { APPROACH_RANGE, TOUCH_RANGE } from '../lib/noteSpeed';
+import { SATURATION_RANGE } from '../lib/gameColors';
 
 export type NoteDisplayMode = 'window' | 'all';
 
@@ -26,6 +27,11 @@ export class ViewSettings {
    * 預設打開（2026-11-23 使用者指定；換預設值時要一併調 settings.svelte.ts 的 VIEW_LINEUP）。
    */
   noteColors = $state(true);
+  /**
+   * 照遊戲上色時的彩度（百分比）：100 是遊戲原本的顏色，越低越接近同樣明暗的灰，
+   * 和介面比較搭（2026-11-25 使用者要求）。只在照遊戲上色時有作用；換算在 lib/gameColors.ts。
+   */
+  noteSaturation = $state<number>(SATURATION_RANGE.initial);
   /** 打擊效果：判定那一刻在原地擴散的光暈。預設打開（同上）；時間完全由播放時鐘決定。 */
   hitEffects = $state(true);
   showLeft = $state(true);

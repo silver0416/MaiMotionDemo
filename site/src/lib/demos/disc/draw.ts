@@ -12,11 +12,10 @@ import {
   chevronStrip,
   directionOnSamples,
   eachArcPath,
+  firstRemaining,
   pointOnSamples,
   polylinePath,
   radiusPx,
-  remainingChevronShadows,
-  remainingChevrons,
   toStage,
   toStageLength,
   type ChevronStrip,
@@ -115,20 +114,24 @@ function stripFor(samples: PathSample[]): ChevronStrip {
   return strip;
 }
 
-/** 一條箭頭帶的兩層：底下的黑色（箭頭的外框＋往後錯開的陰影），上面才是箭頭本身。 */
+/**
+ * 一條箭頭帶：每個箭頭兩層（strip.unders[i] 是黑色的外框＋往後錯開的陰影，strip.pieces[i] 是箭頭本身），
+ * 從 first 開始畫（星星走過的不畫）。
+ */
 export interface SlideTrack {
-  under: string;
-  chevrons: string;
+  strip: ChevronStrip;
+  first: number;
 }
 
 function trackLayers(strip: ChevronStrip, slideU: number): SlideTrack {
-  return { under: remainingChevronShadows(strip, slideU), chevrons: remainingChevrons(strip, slideU) };
+  return { strip, first: firstRemaining(strip, slideU) };
 }
 
 /**
  * Slide 的箭頭帶（同 DiscStage 的 slide-path）：每條路徑只算一次，之後依 slideU 取還沒走過的那段。
  * WiFi（剛好兩條側線）是一整面扇形；其餘形狀每條側線各一條箭頭帶，最後是中央那條。
- * 每條都是兩層（slide-under 在下、slide-chevrons 在上），疊在別條軌道上時箭頭一個一個分得開。
+ * 每個箭頭兩層（slide-under 在下、slide-chevrons 在上），一個一個交錯疊上去，
+ * 疊在別條軌道上、或同一條軌道繞回來交疊時，箭頭一個一個分得開。
  */
 export function slideTracks(path: SlidePath, slideU: number): SlideTrack[] {
   if (path.branches.length === 2) {

@@ -23,6 +23,7 @@
   } from '../lib/touch';
   import { view } from '../state/view.svelte';
   import type { SensorDisplayMode } from '../state/view.svelte';
+  import { SATURATION_RANGE } from '../lib/gameColors';
 
   /** 飛入時間與 Touch 進場時間滑桿上的遊戲速度刻度（5～10）。 */
   const APPROACH_TICKS = speedTicks(APPROACH_RANGE, tapSpeedSeconds);
@@ -344,6 +345,21 @@
         </span>
       </span>
     </label>
+    {#if view.noteColors}
+      <div class="stack" style="margin-top: var(--space-3)">
+        <NumberField
+          label="顏色彩度"
+          hint="100% 是遊戲原本的顏色；調低會變得比較淡、比較灰，和介面比較搭。明暗與色相不變，打擊效果的光也跟著變。"
+          value={view.noteSaturation}
+          min={SATURATION_RANGE.min}
+          max={SATURATION_RANGE.max}
+          step={SATURATION_RANGE.step}
+          unit="%"
+          onValue={(value) =>
+            (view.noteSaturation = Math.min(SATURATION_RANGE.max, Math.max(SATURATION_RANGE.min, Math.round(value))))}
+        />
+      </div>
+    {/if}
     <label class="check" style="margin-top: var(--space-3)">
       <input type="checkbox" bind:checked={view.hitEffects} />
       <span>

@@ -13,8 +13,7 @@
     pointOnSamples,
     polylinePath,
     radiusPx,
-    remainingChevronShadows,
-    remainingChevrons,
+    firstRemaining,
     toStage,
     toStageLength,
     type ChevronStrip,
@@ -53,6 +52,7 @@
   } from '../lib/noteShape';
   import { glowHalf, hitEffects, hitGlows, hitOpacity, holdLoopRings, type GlowKind } from '../lib/hitEffect';
   import { glowSprite, warmGlowSprites } from '../lib/hitSprite';
+  import { gameColorStyle, saturationFactor } from '../lib/gameColors';
   import { sampleWithStarts, trackSlice, type HandState } from '../lib/motion';
   import { MODE_LABEL, KIND_LABEL, shapeLabel } from '../lib/contract';
   import {
@@ -108,6 +108,12 @@
   });
   const calibration = $derived(view.calibration);
   const center = $derived(centerPx(calibration));
+  /**
+   * 照遊戲上色時的顏色：CSS 只寫 var(--g-…)，實際顏色依「彩度」換算後寫在 <svg> 的 style 上
+   * （lib/gameColors.ts）。不上色時用不到。
+   */
+  const saturation = $derived(saturationFactor(view.noteSaturation));
+  const gameColors = $derived(view.noteColors ? gameColorStyle(saturation) : undefined);
   const discRadius = $derived(radiusPx(calibration));
 
   const zoomTransform = $derived(
@@ -248,11 +254,11 @@
    * 一打開打擊效果就趁空檔把目前配色要用的圖先算好。
    */
   $effect(() => {
-    if (hitsOn) warmGlowSprites(view.noteColors);
+    if (hitsOn) warmGlowSprites(view.noteColors, saturation);
   });
 
   function glowUrl(kind: GlowKind): string {
-    return glowSprite(kind, view.noteColors);
+    return glowSprite(kind, view.noteColors, saturation);
   }
 
   /**
@@ -560,6 +566,7 @@
   <svg
     class="stage-svg"
     class:is-colored={view.noteColors}
+    style={gameColors}
     viewBox={VIEW_BOX}
     preserveAspectRatio="xMidYMid meet"
     aria-label="maimai 盤面：音符與左右手軌跡"
@@ -651,6 +658,20 @@
       {/if}
 
       {#if view.showNotes}
+        <!-- 每個箭頭兩層：底下一層黑色（箭頭的外框＋往後錯開的陰影），上面才是箭頭本身。
+             一個箭頭一個箭頭交錯疊上去（後面的壓在前面的上面），疊在別條軌道上、
+             或同一條軌道繞回來交疊時，每個箭頭都看得出是一個一個的，不會糊成一片。
+             星星走過的箭頭不畫，只留前方那段；箭頭的字串每條路徑只算一次（stripFor）。 -->
+        {#snippet chevrons(strip: ChevronStrip, slideU: number)}
+          {@const first = firstRemaining(strip, slideU)}
+          {#each strip.pieces as piece, index (index)}
+            {#if index >= first}
+              <path class="slide-under" d={strip.unders[index]} />
+              <path class="slide-chevrons" d={piece} />
+            {/if}
+          {/each}
+        {/snippet}
+
         <!-- Slide 軌道：直接畫 Rust 輸出的路徑取樣點，前端不重算路徑 -->
         <g class="paths">
           {#each visuals as visual (visual.note.id)}
@@ -666,22 +687,12 @@
                   class:is-each={each.tracks.has(visual.note.id)}
                   opacity={visual.trackOpacity}
                 >
-                  <!-- 每條箭頭帶兩層：底下一層黑色（箭頭的外框＋往後錯開的陰影），上面才是箭頭本身。
-                       疊在別條軌道上時，每個箭頭都看得出是一個一個的，不會糊成一片。 -->
                   {#if !isFan(path)}
                     {#each path.branches as branch, index (index)}
-                      <path
-                        class="slide-under"
-                        d={remainingChevronShadows(stripFor(branch), visual.slideU)}
-                      />
-                      <path
-                        class="slide-chevrons"
-                        d={remainingChevrons(stripFor(branch), visual.slideU)}
-                      />
+                      {@render chevrons(stripFor(branch), visual.slideU)}
                     {/each}
                   {/if}
-                  <path class="slide-under" d={remainingChevronShadows(trackFor(path), visual.slideU)} />
-                  <path class="slide-chevrons" d={remainingChevrons(trackFor(path), visual.slideU)} />
+                  {@render chevrons(trackFor(path), visual.slideU)}
                 </g>
               {/if}
             {/if}
@@ -1373,99 +1384,100 @@
 
   /* 遊戲配色：Tap／Hold 粉紅、Slide 與 Touch 藍、同時押黃、Break 橘。
      每個顏色有淺（--nc）深（--nd）兩端：環帶不是一個顏色塗滿，是由深漸到淺（量自遊戲畫面）。
-     EX 光暈的顏色（--xc）照遊戲：Tap／Hold 粉、星星白，同時押與 Break 都是黃。 */
+     EX 光暈的顏色（--xc）照遊戲：Tap／Hold 粉、星星白，同時押與 Break 都是黃。
+     顏色本身在 lib/gameColors.ts（var(--g-…)），依「彩度」換算後寫在 <svg> 的 style 上。 */
   .stage-svg.is-colored .note.is-tap,
   .stage-svg.is-colored .note.is-hold {
     /* 深淺兩端與 EX 光暈都量自使用者 2026-11-23 的截圖。 */
-    --nc: #ff7fd0;
-    --nd: #ff1f7f;
-    --xc: #ffc0f2;
+    --nc: var(--g-tap);
+    --nd: var(--g-tap-deep);
+    --xc: var(--g-tap-ex);
   }
 
   .stage-svg.is-colored .note.is-slide,
   .stage-svg.is-colored .note.is-touch {
-    --nc: #22b8f0;
-    --sc: #22b8f0;
+    --nc: var(--g-slide);
+    --sc: var(--g-slide);
     --xc: #ffffff;
   }
 
   .stage-svg.is-colored .note.is-touch {
-    --nc: #1aa6f7;
-    --nd: #1aa6f7;
+    --nc: var(--g-touch);
+    --nd: var(--g-touch);
   }
 
   .stage-svg.is-colored .slide-path {
-    --tc: #22b8f0;
+    --tc: var(--g-slide);
   }
 
   .stage-svg.is-colored .note.is-each {
-    --nc: #fbfd1e;
-    --nd: #f4cc2d;
-    --xc: #fffe77;
+    --nc: var(--g-each);
+    --nd: var(--g-each-deep);
+    --xc: var(--g-gold-ex);
   }
 
   .stage-svg.is-colored .note.is-slide.is-each {
-    --nc: #faf52c;
+    --nc: var(--g-each-line);
   }
 
   .stage-svg.is-colored .note.is-each-track {
-    --sc: #faf52c;
+    --sc: var(--g-each-line);
   }
 
   .stage-svg.is-colored .slide-path.is-each {
-    --tc: #faf52c;
+    --tc: var(--g-each-line);
   }
 
   .stage-svg.is-colored .note.is-break {
-    --nc: #ffb24a;
-    --nd: #ec7a10;
-    --xc: #fffe77;
+    --nc: var(--g-break);
+    --nd: var(--g-break-deep);
+    --xc: var(--g-gold-ex);
   }
 
   .stage-svg.is-colored .note.is-slide.is-break {
-    --nc: #f0913a;
+    --nc: var(--g-break-star);
   }
 
   /* Touch Hold 的四片三角形與外框四段，照遊戲各有自己的顏色：右上紅、右下黃、左下綠、左上藍
      （三角形量自遊戲錄影；外框那一段比三角形淡一階）。 */
   .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(1) {
-    --nc: #f64303;
+    --nc: var(--g-th-1);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(2) {
-    --nc: #f3ee00;
+    --nc: var(--g-th-2);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(3) {
-    --nc: #10a667;
+    --nc: var(--g-th-3);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .fan:nth-child(4) {
-    --nc: #0093f6;
+    --nc: var(--g-th-4);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(1) {
-    --nc: #f5713a;
+    --nc: var(--g-thb-1);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(2) {
-    --nc: #f2d62a;
+    --nc: var(--g-thb-2);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(3) {
-    --nc: #2fbf7a;
+    --nc: var(--g-thb-3);
   }
 
   .stage-svg.is-colored .note.is-touch-hold .quarter:nth-child(4) {
-    --nc: #3aa6ee;
+    --nc: var(--g-thb-4);
   }
 
   .stage-svg.is-colored .note.is-break-track {
-    --sc: #f0913a;
+    --sc: var(--g-break-star);
   }
 
   .stage-svg.is-colored .slide-path.is-break {
-    --tc: #f0913a;
+    --tc: var(--g-break-star);
   }
 
   .note.is-selected,
@@ -1494,12 +1506,12 @@
   }
 
   /* Slide 軌道：沒有中心線，一整排實心的寬「＞」。平常比音符暗一階，音符與手永遠壓在上面。
-     每個箭頭底下墊一層黑色：一圈黑外框（描邊露出 3.5）加上往後錯開的陰影。
-     黑底上看不出來；兩條軌道交疊時，上面那條的箭頭一個一個分得開，不會糊在一起。 */
+     每個箭頭各自墊一層黑色：一圈黑外框（描邊露出 3）加上往後錯開的陰影。
+     黑底上看不出來；軌道交疊時（別條軌道或同一條繞回來），箭頭一個一個分得開，不會糊在一起。 */
   .slide-under {
     fill: #000;
     stroke: #000;
-    stroke-width: 7;
+    stroke-width: 6;
     stroke-linejoin: round;
   }
 
@@ -1515,7 +1527,7 @@
   }
 
   .stage-svg.is-colored .each-line {
-    stroke: #faf52c;
+    stroke: var(--g-each-line);
   }
 
   /* 墊在環帶下面的深色描邊（Tap 是圓、Hold 是長條）；筆寬由環帶寬度換算，寫在元素上。 */
@@ -1551,12 +1563,12 @@
   .note-rim {
     fill: none;
     stroke: #f6f8fc;
-    stroke-width: 3.5;
+    stroke-width: 3.4;
     stroke-linejoin: miter;
   }
 
   .note-rim.is-inner {
-    stroke-width: 2.5;
+    stroke-width: 3.4;
   }
 
   /* Tap 與星星正中心的小點，Hold 尾端也有一顆。 */

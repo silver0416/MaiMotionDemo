@@ -21,8 +21,9 @@ const SIZE: Record<GlowKind, number> = {
 const KINDS = Object.keys(GLOW_SPECS) as GlowKind[];
 const cache = new Map<string, string>();
 
-function cacheKey(kind: GlowKind, colored: boolean): string {
-  return `${kind}:${colored ? 'colored' : 'plain'}`;
+/** 彩度只在上色時有作用；倍率取到百分之一，拖動滑桿時才不會每一點都算一張新圖。 */
+function cacheKey(kind: GlowKind, colored: boolean, saturation: number): string {
+  return colored ? `${kind}:colored:${Math.round(saturation * 100)}` : `${kind}:plain`;
 }
 
 /**
@@ -30,24 +31,24 @@ function cacheKey(kind: GlowKind, colored: boolean): string {
  * 圖的正中心是圖形的中心，半邊長是外接圓半徑的 `glowHalf(kind)` 倍；
  * 六角形與星星的第一個頂點朝右（0°），用的時候再轉到該朝的方向。
  */
-export function glowSprite(kind: GlowKind, colored: boolean): string {
-  const key = cacheKey(kind, colored);
+export function glowSprite(kind: GlowKind, colored: boolean, saturation = 1): string {
+  const key = cacheKey(kind, colored, saturation);
   let url = cache.get(key);
   if (url === undefined) {
-    url = render(kind, colored);
+    url = render(kind, colored, saturation);
     cache.set(key, url);
   }
   return url;
 }
 
 /** 趁空檔把某個配色用得到的光暈圖一張一張先算好；已經算過的跳過。 */
-export function warmGlowSprites(colored: boolean): void {
+export function warmGlowSprites(colored: boolean, saturation = 1): void {
   if (typeof document === 'undefined') return;
-  const queue = KINDS.filter((kind) => !cache.has(cacheKey(kind, colored)));
+  const queue = KINDS.filter((kind) => !cache.has(cacheKey(kind, colored, saturation)));
   const step = (): void => {
     const kind = queue.shift();
     if (kind === undefined) return;
-    glowSprite(kind, colored);
+    glowSprite(kind, colored, saturation);
     later(step);
   };
   later(step);
@@ -59,7 +60,7 @@ function later(task: () => void): void {
   else setTimeout(task, 16);
 }
 
-function render(kind: GlowKind, colored: boolean): string {
+function render(kind: GlowKind, colored: boolean, saturation: number): string {
   const spec = GLOW_SPECS[kind];
   const size = SIZE[kind];
   const canvas = document.createElement('canvas');
@@ -103,7 +104,7 @@ function render(kind: GlowKind, colored: boolean): string {
   for (let index = 0; index < count; index += 1) shape[index] = (pixels[index * 4 + 3] / 255) * spec.alpha;
   const wide = gaussian(shape, size, spec.wide * unit);
   const soft = gaussian(shape, size, spec.soft * unit);
-  const [red, green, blue] = hexRgb(glowColor(kind, colored));
+  const [red, green, blue] = hexRgb(glowColor(kind, colored, saturation));
   for (let index = 0; index < count; index += 1) {
     // 寬的墊底、窄的疊兩次（一般的「蓋上去」混色）。
     const rest = 1 - soft[index];

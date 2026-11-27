@@ -695,12 +695,16 @@
                 {#if visual.visible && visual.note.pathId}
                   {@const path = data.pathById.get(visual.note.pathId)}
                   {#if path}
-                    <!-- 一條軌道的箭頭合成一個 path；星星走過的箭頭不畫。WiFi 是一整面扇形。
-                         每條箭頭帶兩層：底下黑色（外框＋往後錯開的陰影），上面才是箭頭本身。 -->
+                    <!-- 星星走過的箭頭不畫；WiFi 是一整面扇形。每個箭頭兩層：底下黑色（外框＋往後錯開的陰影），
+                         上面才是箭頭本身，一個一個交錯疊上去，軌道交疊時箭頭才分得開。 -->
                     <g class="slide-path" class:is-break={visual.note.modifiers.breakSlide} opacity={visual.trackOpacity}>
                       {#each slideTracks(path, visual.slideU) as track, index (index)}
-                        <path class="slide-under" d={track.under} />
-                        <path class="slide-chevrons" d={track.chevrons} />
+                        {#each track.strip.pieces as piece, k (k)}
+                          {#if k >= track.first}
+                            <path class="slide-under" d={track.strip.unders[k]} />
+                            <path class="slide-chevrons" d={piece} />
+                          {/if}
+                        {/each}
                       {/each}
                     </g>
                   {/if}

@@ -71,21 +71,25 @@ type Sample = { u: number; x: number; y: number };
 /*
  * Slide 箭頭的尺寸（盤面單位，鍵位半徑為 1），量自遊戲畫面：
  * 沒有中心線，整條軌道是一排實心的寬「＞」，兩側是和軌道平行的直邊。
- * 半寬比 Tap 外緣（約 0.114）窄，箭頭帶不會蓋過音符。
+ * 半寬比 Tap 外緣（0.1065）窄，箭頭帶不會蓋過音符。
+ * 2026-11-25 使用者覺得比別的模擬器粗，箭頭改薄、軌道改窄（原本間距 0.098、半寬 0.072、厚 0.066、深 0.033）。
  */
 
 /** 相鄰箭頭的間距。 */
-export const CHEVRON_PITCH = 0.098;
+export const CHEVRON_PITCH = 0.088;
 /** 箭頭帶的半寬。 */
-export const CHEVRON_HALF_WIDTH = 0.072;
+export const CHEVRON_HALF_WIDTH = 0.064;
 /** 一個箭頭沿軌道方向的厚度；間距扣掉它就是箭頭之間的縫。 */
-export const CHEVRON_THICKNESS = 0.066;
+export const CHEVRON_THICKNESS = 0.046;
 /** 尖端比兩翼往前多少。 */
-export const CHEVRON_DEPTH = 0.033;
+export const CHEVRON_DEPTH = 0.03;
 /** WiFi 的扇形條排得比較疏（遊戲裡一條 WiFi 只有十一條）。 */
 export const FAN_PITCH = 0.15;
-/** 每個箭頭底下的陰影往後（朝起點）錯開多少：兩條軌道交疊時，上面那條的箭頭才一個一個分得開。 */
-export const CHEVRON_SHADOW = 0.016;
+/**
+ * 每個箭頭底下的陰影往後（朝起點）錯開多少。每個箭頭各自墊一層（黑外框＋陰影）再畫箭頭本身，
+ * 疊在別條軌道或同一條軌道繞回來的地方時，箭頭才一個一個分得開。
+ */
+export const CHEVRON_SHADOW = 0.012;
 
 /** 一個箭頭：位置、沿路徑的單位切線、在路徑上的 u（和 slideU 同一個尺度）。 */
 export interface ChevronMark {
@@ -144,28 +148,22 @@ export function chevronMarks(samples: Sample[], pitch = CHEVRON_PITCH): ChevronM
 }
 
 /**
- * 一條軌道的箭頭帶，已換成畫面座標。suffix[i] 是第 i 個以後所有箭頭合成的一個 path d，
- * 每條路徑只算一次；播放時只依 slideU 挑出還沒走過的那一段，不必每幀重組字串。
+ * 一條軌道的箭頭帶，已換成畫面座標。每條路徑只算一次；播放時只依 slideU 挑出還沒走過的箭頭。
+ * 每個箭頭是兩個 path：先畫 unders[i]（箭頭本身＋往後錯開的陰影，黑色填滿再加黑色描邊），
+ * 再畫 pieces[i]。一個一個交錯疊上去，後面的箭頭壓在前面的上面，
+ * 同一條軌道自己交疊（pp／qq、V 的轉角、繞一圈）時也分得開。
  */
 export interface ChevronStrip {
   u: number[];
-  suffix: string[];
-  /** 墊在底下那一層：每個箭頭本身，加上往後錯開的陰影（同樣是第 i 個以後合成一條）。 */
-  under: string[];
-}
-
-function suffixes(pieces: string[]): string[] {
-  const suffix: string[] = new Array(pieces.length + 1);
-  suffix[pieces.length] = '';
-  for (let i = pieces.length - 1; i >= 0; i -= 1) suffix[i] = pieces[i] + suffix[i + 1];
-  return suffix;
+  pieces: string[];
+  unders: string[];
 }
 
 function stripOf(marks: ChevronMark[], pieces: string[], shadows: string[]): ChevronStrip {
   return {
     u: marks.map((m) => m.u),
-    suffix: suffixes(pieces),
-    under: suffixes(pieces.map((piece, index) => piece + shadows[index])),
+    pieces,
+    unders: pieces.map((piece, index) => piece + shadows[index]),
   };
 }
 
@@ -264,7 +262,8 @@ export function chevronFan(
   return stripOf(marks, build(0), build(CHEVRON_SHADOW));
 }
 
-function firstRemaining(strip: ChevronStrip, slideU: number): number {
+/** 第一個星星還沒走到的箭頭（u > slideU）的索引；走過的箭頭不畫，照遊戲只留前方那段。 */
+export function firstRemaining(strip: ChevronStrip, slideU: number): number {
   let lo = 0;
   let hi = strip.u.length;
   while (lo < hi) {
@@ -273,19 +272,6 @@ function firstRemaining(strip: ChevronStrip, slideU: number): number {
     else hi = mid;
   }
   return lo;
-}
-
-/** 星星還沒走到的箭頭（u > slideU）合成的 path d；走過的箭頭不畫，照遊戲只留前方那段。 */
-export function remainingChevrons(strip: ChevronStrip, slideU: number): string {
-  return strip.suffix[firstRemaining(strip, slideU)];
-}
-
-/**
- * 同一批箭頭墊在底下的那一層（箭頭本身＋往後錯開的陰影），用黑色填滿再加黑色描邊：
- * 每個箭頭因此都有一圈黑外框、後面拖一道黑影。黑底上看不出來，疊在別的軌道上才分得開。
- */
-export function remainingChevronShadows(strip: ChevronStrip, slideU: number): string {
-  return strip.under[firstRemaining(strip, slideU)];
 }
 
 export function pointOnSamples(samples: { u: number; x: number; y: number }[], u: number): Point {

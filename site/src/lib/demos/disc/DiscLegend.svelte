@@ -170,8 +170,12 @@
           <g class="item" class:is-dim={dim('slide')} class:is-on={active === 'slide'} data-id="slide">
             <g class="slide-path">
               {#each ARROWS as track, index (index)}
-                <path class="slide-under" d={track.under} />
-                <path class="slide-chevrons" d={track.chevrons} />
+                {#each track.strip.pieces as piece, k (k)}
+                  {#if k >= track.first}
+                    <path class="slide-under" d={track.strip.unders[k]} />
+                    <path class="slide-chevrons" d={piece} />
+                  {/if}
+                {/each}
               {/each}
             </g>
             <g class="note">

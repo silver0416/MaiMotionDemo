@@ -19,6 +19,7 @@
 
 import { toStage, toStageLength, type Calibration } from './disc';
 import type { Note, Point } from './types';
+import { GAME_GLOW, desaturate } from './gameColors';
 
 /** 效果全長（秒）。 */
 export const HIT_SECONDS = 0.5;
@@ -357,11 +358,11 @@ export function glowHalf(kind: GlowKind): number {
 }
 
 /**
- * 光暈的顏色：不上色時是白光，照遊戲上色時是遊戲的淡黃光；
- * 按住時的光圈比六角形那組亮一階（錄影裡量到的顏色）。
+ * 光暈的顏色：不上色時是白光，照遊戲上色時是遊戲的淡黃光（顏色在 gameColors.ts 的 GAME_GLOW），
+ * 按住時的光圈比六角形那組亮一階（錄影裡量到的顏色）。saturation 是「彩度」設定換成的 0–1 倍率。
  */
-export function glowColor(kind: GlowKind, colored: boolean): string {
-  if (kind === 'disc') return colored ? '#f8ee7c' : '#eef2f8';
-  if (kind === 'loop') return colored ? '#fff76a' : '#f4f7fb';
-  return colored ? '#f2e75c' : '#f4f7fb';
+export function glowColor(kind: GlowKind, colored: boolean, saturation = 1): string {
+  if (!colored) return kind === 'disc' ? '#eef2f8' : '#f4f7fb';
+  const hex = kind === 'disc' ? GAME_GLOW.disc : kind === 'loop' ? GAME_GLOW.loop : GAME_GLOW.hit;
+  return desaturate(hex, saturation);
 }

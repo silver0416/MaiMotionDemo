@@ -15,6 +15,7 @@ const VIEW_KEYS = [
   'approachSeconds',
   'touchSeconds',
   'noteColors',
+  'noteSaturation',
   'hitEffects',
   'showLeft',
   'showRight',
