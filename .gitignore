@@ -11,6 +11,8 @@
 /docs/FRONTEND_BRIEF.md
 /docs/HANDOFF.md
 /.claude/skills/
+# Local plugin workspace
+/plugins/
 /target/
 /src-tauri/target/
 /src-tauri/gen/

@@ -11,6 +11,9 @@ import type {
   PreviousVersion,
   ReleaseNote,
   MajdataChartSummary,
+  PluginInfo,
+  PluginPanel,
+  PluginRunResult,
   UpdateAsset,
   UpdateInfo,
   WikiChartPayload,
@@ -229,6 +232,47 @@ export async function settlePreviousVersion(remove: boolean): Promise<void> {
   const { invoke } = await import('@tauri-apps/api/core');
   await invoke('update_remove_previous', { remove });
 }
+
+/** 選用外掛（只有桌面版）。失敗時 reject 可讀字串；plugin_run 被取消時 reject CANCELLED。 */
+export const pluginApi = {
+  async list(): Promise<PluginInfo[]> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<PluginInfo[]>('plugin_list');
+  },
+  /** 安裝使用者選的 .mmplugin；同代號的舊版會被換掉。 */
+  async install(path: string): Promise<PluginInfo> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<PluginInfo>('plugin_install', { path });
+  },
+  /** deleteData 為 true 時連外掛自己的資料一起刪。 */
+  async remove(id: string, deleteData: boolean): Promise<void> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('plugin_remove', { id, deleteData });
+  },
+  async panel(id: string): Promise<PluginPanel> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<PluginPanel>('plugin_panel', { id });
+  },
+  /** 執行一個動作直到結束（可能跑很久）；進度看事件 plugin-progress。 */
+  async run(
+    id: string,
+    action: string,
+    options: { savePath?: string; selection?: string[] } = {},
+  ): Promise<PluginRunResult> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<PluginRunResult>('plugin_run', {
+      id,
+      action,
+      savePath: options.savePath ?? null,
+      selection: options.selection ?? null,
+    });
+  },
+  /** 請正在執行的外掛停下來；沒有在執行時回傳 false。 */
+  async cancel(id: string): Promise<boolean> {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<boolean>('plugin_cancel', { id });
+  },
+};
 
 let counter = 0;
 

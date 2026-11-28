@@ -87,16 +87,26 @@ pub fn parse_catalog_html(html: &str) -> Result<Vec<AdxSong>, String> {
     if best.is_empty() {
         return Err("adxdls 目錄頁讀不到歌曲資料，版面可能已變更".into());
     }
+    Ok(ordered(best))
+}
+
+/// 把站方目錄的原始物件（離線外掛存下來的）轉成目錄；規則與解析網頁時相同。
+pub fn songs_from_entries(entries: &[Value]) -> Vec<AdxSong> {
+    ordered(entries.iter().filter_map(song_from).collect())
+}
+
+/// 去掉重複的 slug，依 (種類, slug) 排序。
+fn ordered(mut songs: Vec<AdxSong>) -> Vec<AdxSong> {
     let mut seen = std::collections::HashSet::new();
-    best.retain(|song| seen.insert(song.slug.clone()));
-    best.sort_by(|a, b| {
+    songs.retain(|song| seen.insert(song.slug.clone()));
+    songs.sort_by(|a, b| {
         (a.chart_type, slug_order(&a.slug), &a.slug).cmp(&(
             b.chart_type,
             slug_order(&b.slug),
             &b.slug,
         ))
     });
-    Ok(best)
+    songs
 }
 
 /// 數字 slug 依數值排（9 在 10 前面），其他排在後面。
@@ -294,6 +304,24 @@ mod tests {
             songs[1].difficulties[&Difficulty::Master].level.as_deref(),
             Some("13")
         );
+    }
+
+    #[test]
+    fn converts_raw_entries_from_the_offline_plugin() {
+        let entries = serde_json::json!([
+            {"id":"12061-xodus","slug":"12061","title":"XODUS","artist":"x","cabinet":"DX","bpm":202.5,
+             "difficulties":[{"slot":5,"name":"Master","level":"14.6","designer":"-"}]},
+            {"id":"100042","slug":"100042","title":"[宴]jelly","cabinet":"宴",
+             "difficulties":[{"slot":7,"name":"Utage","level":"12+?","designer":""}]},
+            {"id":"121","slug":"121","title":"スイートマジック","cabinet":"SD",
+             "difficulties":[{"slot":2,"name":"Basic","level":"4.0","designer":"-"}]},
+            {"id":"121","slug":"121","title":"dup","cabinet":"SD",
+             "difficulties":[{"slot":2,"name":"Basic","level":"4.0","designer":"-"}]}
+        ]);
+        let songs = songs_from_entries(entries.as_array().unwrap());
+        let slugs: Vec<&str> = songs.iter().map(|song| song.slug.as_str()).collect();
+        assert_eq!(slugs, ["121", "12061"]);
+        assert_eq!(songs[0].title, "スイートマジック");
     }
 
     #[test]

@@ -4,6 +4,7 @@ mod adx;
 mod chart_search;
 mod handcam;
 mod majdata;
+mod plugins;
 mod self_update;
 mod update;
 mod video;
@@ -387,6 +388,7 @@ fn main() {
         .manage(UpdateClient(update_client))
         .manage(wiki::WikiState::new(wiki_client))
         .manage(adx::AdxState::new(adx_client))
+        .manage(plugins::PluginState::default())
         .manage(video::VideoState::new(video_client))
         .manage(handcam::HandcamState::new(handcam_client))
         .manage(self_update::SelfUpdateState::new(
@@ -434,7 +436,13 @@ fn main() {
             self_update::commands::update_download,
             self_update::commands::update_restart,
             self_update::commands::update_previous,
-            self_update::commands::update_remove_previous
+            self_update::commands::update_remove_previous,
+            plugins::commands::plugin_list,
+            plugins::commands::plugin_install,
+            plugins::commands::plugin_remove,
+            plugins::commands::plugin_panel,
+            plugins::commands::plugin_run,
+            plugins::commands::plugin_cancel
         ])
         .run(tauri::generate_context!())
         .expect("Failed to run MaiMotionDemo");

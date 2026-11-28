@@ -1,5 +1,9 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import Icon, { type IconName } from './Icon.svelte';
+  import PluginSection from './PluginSection.svelte';
+  import PluginSelectDialog from './PluginSelectDialog.svelte';
+  import { plugins } from '../state/plugins.svelte';
   import { appVersion, clearWikiCache, wikiCacheInfo, type WikiCacheInfo } from '../lib/api';
   import { BUILD_ID, BUILD_TIME, FRONTEND_VERSION } from '../lib/build';
   import {
@@ -32,12 +36,13 @@
 
   let { open = $bindable() }: Props = $props();
 
-  type Section = 'about' | 'appearance' | 'errors' | 'video' | 'export' | 'data';
+  type Section = 'about' | 'appearance' | 'errors' | 'video' | 'export' | 'plugins' | 'data';
   const SECTIONS: { id: Section; label: string; icon: IconName; desktop?: boolean }[] = [
     { id: 'about', label: '版本與更新', icon: 'info' },
     { id: 'appearance', label: '外觀', icon: 'palette' },
     { id: 'video', label: '影片同步', icon: 'video', desktop: true },
     { id: 'export', label: '匯出', icon: 'download', desktop: true },
+    { id: 'plugins', label: '外掛', icon: 'plug', desktop: true },
     { id: 'data', label: '資料管理', icon: 'database' },
     { id: 'errors', label: '錯誤紀錄', icon: 'circle-alert' },
   ];
@@ -52,6 +57,14 @@
     // 換分類時取消還沒按第二次的危險操作。
     confirming = null;
   }
+
+  /** 外掛分類（只有桌面版）；Esc 與重新開啟時先收掉它還沒按第二次的確認。 */
+  let pluginSection: PluginSection | null = $state(null);
+
+  // 開著外掛分類時重讀清單與各外掛的內容（會啟動外掛程式，所以只在看這一頁時讀）。
+  $effect(() => {
+    if (open && section === 'plugins' && session.desktop) untrack(() => void plugins.refresh());
+  });
   let closeButton: HTMLButtonElement | null = $state(null);
   let version = $state('');
   /** 分析快取筆數；null = 讀不到資料庫。 */
@@ -78,6 +91,7 @@
       closing = false;
       if (!dialog.open) {
         confirming = null;
+        untrack(() => pluginSection?.cancelConfirm());
         void refresh();
         dialog.showModal();
         closeButton?.focus();
@@ -327,7 +341,7 @@
     if (event.key === 'Escape') {
       event.preventDefault();
       if (confirming) confirming = null;
-      else open = false;
+      else if (!pluginSection?.cancelConfirm()) open = false;
     }
   }}
   onpointerdown={(event) => (pressedOutside = isOutside(event))}
@@ -732,6 +746,10 @@
       </section>
     {/if}
 
+    {#if section === 'plugins' && session.desktop}
+      <PluginSection bind:this={pluginSection} />
+    {/if}
+
     {#if section === 'data'}
     <section class="block" aria-labelledby="settings-data">
       <div class="block-head">
@@ -796,6 +814,11 @@
   </div>
   </div>
 </dialog>
+
+<!-- 外掛要使用者勾選項目時開的對話框；放在設定頁外面，設定頁關掉後動作才結束也開得起來。 -->
+{#if session.desktop}
+  <PluginSelectDialog />
+{/if}
 
 <style>
   /* 固定高度：換分類時對話框不會跟著內容忽大忽小。 */

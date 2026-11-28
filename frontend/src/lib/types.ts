@@ -714,3 +714,79 @@ export interface EvaluateResponse {
   /** 有送 routes 時每種走法的吻合（只換那一段、其他照主線；主線在最前）；沒送或模型沒有解時為空。舊暫存沒有這一項。 */
   routeScores?: RouteScore[];
 }
+
+// ---------------------------------------------------------------------------
+// 選用外掛（src-tauri/src/plugins，camelCase 序列化）。
+// 主程式不知道外掛做什麼，只顯示外掛回報的摘要、數字與動作。
+
+/** 一個已安裝的外掛。 */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  /** 外掛宣告的能力（主程式在固定的地方詢問它）。 */
+  provides: string[];
+  /** 外掛自己的資料佔用的空間。 */
+  dataBytes: number;
+  /** 有動作正在執行（設定頁重新開啟時用來接回進度）。 */
+  running: boolean;
+}
+
+export interface PluginFact {
+  label: string;
+  value: string;
+}
+
+export interface PluginSaveSpec {
+  defaultName: string;
+  filterName: string | null;
+  extensions: string[];
+}
+
+/** 外掛在設定頁提供的一個動作。 */
+export interface PluginAction {
+  id: string;
+  label: string;
+  primary: boolean;
+  /** 有值時先請使用者確認（內容是確認的說明）。 */
+  confirm: string | null;
+  /** 有值時先讓使用者選存檔位置，選到的路徑當 savePath 傳給外掛。 */
+  save: PluginSaveSpec | null;
+}
+
+/** 外掛目前要在設定頁顯示的內容；每次動作結束後重讀。 */
+export interface PluginPanel {
+  summary: string | null;
+  facts: PluginFact[];
+  actions: PluginAction[];
+}
+
+export interface PluginSelectItem {
+  id: string;
+  label: string;
+  detail: string | null;
+  group: string | null;
+}
+
+/** 動作結束後外掛要使用者勾選項目；確認後以 action 再執行一次，勾選的 id 放 selection。 */
+export interface PluginSelectRequest {
+  title: string;
+  message: string | null;
+  items: PluginSelectItem[];
+  action: string;
+  confirmLabel: string | null;
+}
+
+export interface PluginRunResult {
+  message: string | null;
+  select: PluginSelectRequest | null;
+}
+
+/** 事件 plugin-progress；total 為 null 表示還不知道總數。 */
+export interface PluginProgress {
+  id: string;
+  done: number;
+  total: number | null;
+  message: string | null;
+}

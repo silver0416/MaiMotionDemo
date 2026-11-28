@@ -5,11 +5,15 @@
 //! /charts 目錄頁 → 本機目錄（24 小時快取）→ 搜尋只查本機
 //! 選中難度 → /adxcs/{slug}/maidata.txt → 只留該難度 → 既有 parser 驗證
 //! ```
+//! 裝了提供 `adx-source` 的外掛時，譜面先問外掛、沒有才連網；
+//! 目錄則在連不上網站又沒有快取時改用外掛的。
 
 use super::catalog::{
-    inote_slot, is_valid_slug, parse_catalog_html, AdxSong, MIN_CATALOG_SONGS, SITE_ROOT,
+    inote_slot, is_valid_slug, parse_catalog_html, songs_from_entries, AdxSong, MIN_CATALOG_SONGS,
+    SITE_ROOT,
 };
 use super::maidata;
+use crate::plugins;
 use crate::wiki::{cache_base, ChartType, Difficulty};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -224,9 +228,42 @@ pub async fn refresh_index(
                 store_memory(state, cached.songs, cached.fetched_at);
                 Ok(payload)
             }
-            None => Err(error),
+            None => match offline_catalog(app).await {
+                // 沒有快取也連不上：用外掛的目錄。
+                Some((fetched_at, songs)) => {
+                    let payload = AdxIndexPayload {
+                        count: songs.len(),
+                        fetched_at,
+                        from_cache: true,
+                        stale: true,
+                    };
+                    store_memory(state, songs, fetched_at);
+                    Ok(payload)
+                }
+                None => Err(error),
+            },
         },
     }
+}
+
+/// 離線外掛的目錄；沒裝外掛或外掛還沒有資料時為 None。
+async fn offline_catalog(app: &AppHandle) -> Option<(u64, Vec<AdxSong>)> {
+    let app = app.clone();
+    let (fetched_at, entries) =
+        tauri::async_runtime::spawn_blocking(move || plugins::adx_catalog(&app))
+            .await
+            .ok()??;
+    let songs = songs_from_entries(&entries);
+    (!songs.is_empty()).then_some((fetched_at, songs))
+}
+
+/// 離線外掛裡這首歌的 maidata.txt。
+async fn offline_chart(app: &AppHandle, slug: &str) -> Option<String> {
+    let app = app.clone();
+    let slug = slug.to_string();
+    tauri::async_runtime::spawn_blocking(move || plugins::adx_chart(&app, &slug))
+        .await
+        .ok()?
 }
 
 /// 合併搜尋用：在已載入的目錄上執行 `read`；記憶體沒有就讀磁碟快取（過期也可），仍沒有回傳 None。
@@ -273,19 +310,23 @@ pub async fn fetch_chart(
         .and_then(|bytes| String::from_utf8(bytes).ok())
     {
         Some(cached) => cached,
-        None => {
-            space_chart_requests(state);
-            let fresh = get_text(
-                &state.client,
-                &format!("{SITE_ROOT}/adxcs/{slug}/maidata.txt"),
-                CHART_LIMIT_BYTES,
-            )
-            .await?;
-            if let Err(error) = write_file(&path, fresh.as_bytes()) {
-                eprintln!("{error}");
+        None => match offline_chart(app, slug).await {
+            // 外掛有這首：不連網，也不另外寫快取。
+            Some(offline) => offline,
+            None => {
+                space_chart_requests(state);
+                let fresh = get_text(
+                    &state.client,
+                    &format!("{SITE_ROOT}/adxcs/{slug}/maidata.txt"),
+                    CHART_LIMIT_BYTES,
+                )
+                .await?;
+                if let Err(error) = write_file(&path, fresh.as_bytes()) {
+                    eprintln!("{error}");
+                }
+                fresh
             }
-            fresh
-        }
+        },
     };
     let slot = inote_slot(difficulty);
     let chart_text = maidata::single_chart(&text, slot)

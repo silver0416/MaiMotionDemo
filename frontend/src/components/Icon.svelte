@@ -158,6 +158,7 @@
       'M3 12a9 3 0 0 0 18 0',
     ],
     'text-cursor': ['M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1', 'M7 22h1a4 4 0 0 0 4-4v-1', 'M7 2h1a4 4 0 0 1 4 4v1'],
+    plug: ['M12 22v-5', 'M9 8V2', 'M15 8V2', 'M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z'],
   } as const;
 
   export type IconName = keyof typeof ICONS;

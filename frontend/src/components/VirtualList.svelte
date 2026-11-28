@@ -16,6 +16,7 @@
     focusToken = undefined,
     overscan = 8,
     label,
+    role = 'listbox',
     class: className = '',
   }: {
     items: T[];
@@ -32,6 +33,8 @@
     focusToken?: unknown;
     overscan?: number;
     label: string;
+    /** 列本身不是選項（例如每列有自己的勾選開關）時改成 group。 */
+    role?: 'listbox' | 'group' | 'list';
     class?: string;
   } = $props();
 
@@ -94,7 +97,7 @@
   bind:this={element}
   bind:clientHeight={viewport}
   onscroll={(event) => (scrollTop = event.currentTarget.scrollTop)}
-  role="listbox"
+  {role}
   aria-label={label}
 >
   {#if items.length === 0}
