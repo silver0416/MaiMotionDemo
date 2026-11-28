@@ -174,12 +174,13 @@ export interface VersionInfoInput {
   distribution: string;
   /** 判定規則修訂（session.svelte.ts SOLVER_REVISION）。 */
   solverRevision: string;
-  config: Pick<ConfigDraft, 'mlModel' | 'v3Variant' | 'stairFlow'>;
+  config: Pick<ConfigDraft, 'mlModel' | 'v3Variant'>;
 }
 
 /**
  * 版本資訊，每項一行（不含項目符號）：設定 →「版本與更新」的「複製」與比對回報共用。
  * 畫面上只顯示系列名稱與顏色，這裡才帶模型 id。
+ * 「快速階梯一隻手刷完」是參數不是版本，不放這裡；比對回報另外帶（CompareReportInput.stairFlow）。
  */
 export function versionInfoLines(input: VersionInfoInput): string[] {
   const temoto = TEMOTO_MODELS.find((model) => model.id === input.config.mlModel) ?? null;
@@ -192,7 +193,6 @@ export function versionInfoLines(input: VersionInfoInput): string[] {
     `Build：${BUILD_ID}（${BUILD_TIME}）`,
     `判定規則修訂：${input.solverRevision}`,
     `模型：${model}`,
-    `快速階梯一隻手刷完：${input.config.stairFlow ? '開' : '關'}`,
     `評分方式：${SCORING_LABEL}（${SCORING_V3}，schema ${SCHEMA_VERSION}）`,
   ];
 }
@@ -216,6 +216,8 @@ export interface CompareSpot {
 
 export interface CompareReportInput {
   versionLines: string[];
+  /** 「快速階梯一隻手刷完」開關：會改變模型結果，重現時需要，接在版本那幾行之後。 */
+  stairFlow: boolean;
   /** 譜面標題（標註草稿的 title）。 */
   title: string;
   requestId: string;
@@ -291,6 +293,7 @@ export function buildCompareReport(input: CompareReportInput): string {
   const meta = [
     `- 產生時間：${new Date().toISOString()}`,
     ...input.versionLines.map((line) => `- ${line}`),
+    `- 快速階梯一隻手刷完：${input.stairFlow ? '開' : '關'}`,
     '- 位置：標註 → 比對',
     `- 譜面：${input.title || '（未命名）'}`,
     `- 比對狀態：${input.status}`,

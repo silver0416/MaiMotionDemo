@@ -979,6 +979,7 @@
         solverRevision: SOLVER_REVISION,
         config: session.config,
       }),
+      stairFlow: session.config.stairFlow,
       title: annotation.draft.title,
       requestId: result.requestId,
       status: result.status,
